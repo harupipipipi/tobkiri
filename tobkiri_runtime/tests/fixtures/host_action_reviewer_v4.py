@@ -273,20 +273,23 @@ def build_shared_store_reviewer(
 
     boundary = CapturedReviewerBoundary(facts, authority_digest(facts), guard)
 
-    def bind(payload, boundary_digest, payload_digest):
-        session = "session.approval-review." + payload["request_id"]
+    def bind_context(session, request_id):
         harness.store.bind_authenticated_session(
             session_id=session,
             domain=caller_domain,
             channel_digest=caller_domain.authenticated_channel_digest,
             principal_id=caller.principal_id,
         )
-        context = replace(
-            _context(proxy, request_id=payload["request_id"]),
+        return replace(
+            _context(proxy, request_id=request_id),
             activation_digest=activation_digest,
             caller_session_id=session,
             target_backend_digest=backend.status.backend_digest,
         )
+
+    def bind(payload, boundary_digest, payload_digest):
+        session = "session.approval-review." + payload["request_id"]
+        context = bind_context(session, payload["request_id"])
         prepared = broker.prepare(
             InvocationFrame(
                 contract_id=GENERATE_TARGET[0],
@@ -369,6 +372,8 @@ def build_shared_store_reviewer(
         port=port,
         transport=transport,
         broker=broker,
+        bind_context=bind_context,
+        authority=authority,
         kernel=kernel,
         independent_capture=independent,
     )

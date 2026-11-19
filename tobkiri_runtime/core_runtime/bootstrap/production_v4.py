@@ -1940,6 +1940,7 @@ def capture_production_dispatch(
         GATEWAY_PROVIDER_SNAPSHOT_ROLES,
         MODEL_RESOLVE_MINIMUM_MEMORY,
         PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
+        REVIEWER_HEALTH_ROLES,
         WORKFLOW_PROVIDER_HEALTH_ROLES,
         WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES,
         SAVED_RECEIPT_MAX_ID_CHARS,
@@ -1979,6 +1980,7 @@ def capture_production_dispatch(
         NativeProviderSnapshotRequest,
         ProjectedProviderSnapshotRole,
         ProviderSnapshotRole,
+        ReviewerHealthRole,
         WorkflowProviderHealthRole,
         WorkflowProviderSnapshotRole,
         WorkflowSnapshotEntry,
@@ -2672,9 +2674,10 @@ def capture_production_dispatch(
         backend: str = "tobkiri.python-host-v4",
         execution_kind: str = "host_extension",
         domain_kind: str = "dedicated_process",
+        extra_scope_dimensions: Mapping[str, tuple[str, ...]] | None = None,
     ) -> bool:
         binding = edge.binding
-        return (
+        if not (
             edge.authority_mode == mode
             and edge.target.function_id == function_id
             and binding.get("variant_id") == function_id + ".python"
@@ -2684,10 +2687,14 @@ def capture_production_dispatch(
             and binding.get("execution_kind") == execution_kind
             and binding.get("domain_kind") == domain_kind
             and binding.get("adapter_digests") == []
-            and edge.edge.get("requested_scope_template") == _operation_scope(
-                binding["contract_id"], binding["operation_id"], edge.target,
-            ).to_dict()
-        )
+        ):
+            return False
+        expected_scope = _operation_scope(binding["contract_id"], binding["operation_id"], edge.target)
+        if extra_scope_dimensions is not None:
+            expected_scope = replace(
+                expected_scope, dimensions={**expected_scope.dimensions, **extra_scope_dimensions},
+            )
+        return edge.edge.get("requested_scope_template") == expected_scope.to_dict()
 
     turn_pack = "rumi_turn_runtime_pack"
     saved_pack = "tobkiri_conversation_orchestration_pack"
@@ -2854,6 +2861,52 @@ def capture_production_dispatch(
         capture_gateway_snapshot_routes(
             side_chat_turn_edge, side_chat_orchestration_edge, side_chat_edge,
         )
+
+    from .action_review_v4.canonical_reviewer_port import GENERATE_TARGET, REVIEW_SURFACE
+    from .action_review_v4.reviewer_capture_factory import QUOTE_TARGET
+    from .action_review_v4.reviewer_session_binder import ReviewerDispatchIdentity, ReviewerDispatchRegistry
+
+    reviewer_health_routes: dict[
+        tuple[str, str], tuple[ReviewerHealthRole, _CapturedPlanEdge, _CapturedPlanEdge],
+    ] = {}
+    reviewer_saved_complete = None
+    if getattr(native_provider_snapshot_reader, "supports_reviewer_health", False) is True:
+        reviewer_saved_complete = select_original_chat_edge(
+            {
+                edge.caller.principal_id for edge in captured_edges
+                if edge.caller.function_id == f"{turn_pack}.turn-runtime.saved"
+            },
+            saved_pack, SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION,
+            f"{saved_pack}.saved", EffectClass.PURE,
+        )
+        reviewer_targets: tuple[tuple[ReviewerHealthRole, tuple[str, str]], ...] = (
+            ("reviewer-health-quote", QUOTE_TARGET),
+            ("reviewer-health-generate", GENERATE_TARGET),
+        )
+        for role, pair in (reviewer_targets if reviewer_saved_complete is not None else ()):
+            dimensions = {"request_surface": (REVIEW_SURFACE,), "tool_calling": ("false",)}
+            if pair == GENERATE_TARGET:
+                dimensions["allow_failover"] = ("false",)
+            gateways = tuple(
+                edge for edge in captured_edges
+                if edge.caller.function_id
+                == "rumi_host_authority_bridge_pack.host-authority.approval-policy"
+                and edge.binding_key[1:] == pair
+                and edge.resolved_binding.artifact.pack_id == gateway_pack
+                and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
+                and is_exact_original_python_edge(edge, pair[1], extra_scope_dimensions=dimensions)
+            )
+            if len(gateways) != 1:
+                continue
+            gateway, = gateways
+            health = select_original_chat_edge(
+                {gateway.target.principal_id}, "rumi_provider_registry_pack",
+                _PROVIDER_HEALTH_CONTRACT, f"{_PROVIDER_HEALTH_OPERATION}.generate",
+                _PROVIDER_HEALTH_FUNCTION, EffectClass.PRIVILEGED,
+            )
+            if health is not None:
+                reviewer_health_routes[pair] = role, gateway, health
+    reviewer_dispatches = ReviewerDispatchRegistry() if reviewer_health_routes else None
 
     saved_local_chat_routes: dict[str, list[_SavedLocalChatRoute]] = {}
     saved_local_chat_bindings: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
@@ -5559,6 +5612,49 @@ def capture_production_dispatch(
             or gateway_projection_role("quote-generate", gateway.payload) == role
         )
 
+    def reviewer_health_lineage(
+        context: RequestContext,
+        parent: CapturedInvocationScopeV4,
+        operation_id: str,
+    ) -> tuple[
+        ReviewerHealthRole, _CapturedPlanEdge, ReviewerDispatchIdentity,
+        tuple[RequestEnvelope, RequestEnvelope],
+    ] | None:
+        if reviewer_dispatches is None or reviewer_saved_complete is None:
+            return None
+        gateway = parent.envelope
+        pair = (gateway.contract_id, gateway.operation_id)
+        route = reviewer_health_routes.get(pair)
+        if route is None:
+            return None
+        role, gateway_edge, health = route
+        identity = reviewer_dispatches.lookup(gateway.context.caller_session_id)
+        if (
+            identity is None or parent.parent is not identity.saved_parent
+            or parent_invocation_scopes.lookup(identity.resolved_session_id)
+            is not identity.saved_parent
+            or not identity.matches_gateway(gateway)
+            or not matches_captured_edge(gateway, gateway_edge)
+            or context.caller_principal.value != health.caller.principal_id
+            or operation_id != health.binding_key[2]
+        ):
+            return None
+        saved = identity.saved_parent.envelope
+        requirements = gateway.payload.get("requirements")
+        if (
+            not matches_captured_edge(saved, reviewer_saved_complete)
+            or saved.context.profile_id != context.profile_id
+            or gateway.context.profile_id != context.profile_id
+            or not isinstance(requirements, Mapping)
+            or requirements.get("request_surface") != REVIEW_SURFACE
+            or requirements.get("tool_calling") is not False
+            or (pair == GENERATE_TARGET and gateway.payload.get("allow_failover") is not False)
+            or (pair == QUOTE_TARGET
+                and gateway_projection_role("quote-generate", gateway.payload) != "quote-generate")
+        ):
+            return None
+        return role, health, identity, (gateway, saved)
+
     def conversation_health_lineage(
         context: RequestContext,
         parent: CapturedInvocationScopeV4 | None,
@@ -5642,6 +5738,10 @@ def capture_production_dispatch(
             conversation_health = conversation_health_lineage(context, parent, operation_id)
             if conversation_health is not None:
                 return CONVERSATION_COMPLETE_HEALTH_ROLE, conversation_health[0], parent, None
+            reviewer_health = reviewer_health_lineage(context, parent, operation_id)
+            if reviewer_health is not None:
+                reviewer_role, reviewer_edge, _, _ = reviewer_health
+                return reviewer_role, reviewer_edge, parent, None
 
         for role, side_chat, edge, parents in gateway_snapshot_routes.get(
             (context.caller_principal.value, operation_id), (),
@@ -5721,6 +5821,7 @@ def capture_production_dispatch(
 
         ancestors = None
         health_role = None
+        reviewer_identity = None
         if role in GATEWAY_PROVIDER_HEALTH_ROLES.values():
             health = gateway_health_lineage(context, parent, envelope.operation_id)
             if health is None or envelope.payload:
@@ -5748,6 +5849,16 @@ def capture_production_dispatch(
             ):
                 raise AuthorityDenied("native Conversation health lineage changed")
             _, ancestors = conversation_health
+        elif role in REVIEWER_HEALTH_ROLES:
+            reviewer_health = (
+                reviewer_health_lineage(context, parent, envelope.operation_id)
+                if parent is not None else None
+            )
+            if reviewer_health is None or envelope.payload or workflow_entry is not None:
+                raise AuthorityDenied("native reviewer health lineage changed")
+            reviewer_role, reviewer_edge, reviewer_identity, ancestors = reviewer_health
+            if reviewer_role != role or reviewer_edge is not edge:
+                raise AuthorityDenied("native reviewer health lineage changed")
 
         if ancestors is not None:
             chain = (envelope, *ancestors)
@@ -5766,7 +5877,17 @@ def capture_production_dispatch(
 
         def guard() -> None:
             invocation.assert_current()
-            if ancestors is not None:
+            if reviewer_identity is not None:
+                session_id = reviewer_identity.resolved_session_id
+                if (
+                    reviewer_dispatches is None
+                    or reviewer_dispatches.lookup(session_id) is not reviewer_identity
+                    or parent_invocation_scopes.lookup(session_id)
+                    is not reviewer_identity.saved_parent
+                ):
+                    raise AuthorityDenied("native reviewer health dispatch changed")
+                reviewer_identity.saved_parent.assert_current()
+            elif ancestors is not None:
                 require_retained_ancestors(envelope, ancestors)
                 if health_role is not None and not matches_gateway_health_delivery(
                     health_role, ancestors[0],
@@ -8342,6 +8463,7 @@ def capture_production_dispatch(
                   for _, _, edge, _ in routes),
                 *(edge for routes in gateway_health_routes.values()
                   for _, _, edge, _ in routes),
+                *(edge for _, _, edge in reviewer_health_routes.values()),
                 *((conversation_health_edge,) if conversation_health_edge is not None else ()),
                 *(edge for _, edge, _ in projected_snapshot_routes.values()),
                 *(edge for routes in workflow_snapshot_routes.values()
@@ -9482,6 +9604,7 @@ def capture_production_dispatch(
                 nested_cancellation_proof_for=nested_cancellation_proof_for,
                 assert_current_capture=assert_current_capture,
                 authority_records=profile_edge_authority_records,
+                reviewer_dispatches=reviewer_dispatches,
                 dispatch_capture={"profile_revision": str(plan["profile_revision"]),
                     "plan_digest": str(plan["plan_digest"]),
                     "activation_id": str(active.activation["activation_id"]),

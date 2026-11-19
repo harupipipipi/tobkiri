@@ -2,17 +2,95 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping
-import json
 
 from core_runtime.authority.v4 import AuthorityDenied, LeaseState, authority_digest
-from tobkiri_host.models import InvocationFrame
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
+from tobkiri_host.broker import RequestEnvelope, _thaw_payload
+from tobkiri_host.models import InvocationFrame, RequestContext
 from tobkiri_host.runtime import V4DispatchSession
-from .canonical_reviewer_port import GENERATE_TARGET, ReviewerGenerateLease
-from .reviewer_capture_factory import CanonicalReviewerCaptureFactory
+from tobkiri_protocol.data_codec import digest_payload
+from .canonical_reviewer_port import GENERATE_TARGET, GenerateDispatch, ReviewerGenerateLease
+from .reviewer_capture_factory import CanonicalReviewerCaptureFactory, QUOTE_TARGET
+
+
+@dataclass(frozen=True)
+class ReviewerDispatchIdentity:
+    """Bind one executing reviewer Gateway request to its saved invocation."""
+
+    context: RequestContext
+    target_pair: tuple[str, str]
+    payload_digest: str
+    request_digest: str
+    resolved_session_id: str
+    saved_parent: CapturedInvocationScopeV4
+
+    def matches_gateway(self, envelope: RequestEnvelope) -> bool:
+        return (
+            envelope.context is self.context
+            and envelope.context.caller_session_id == self.resolved_session_id
+            and (envelope.contract_id, envelope.operation_id) == self.target_pair
+            and envelope.request_digest == self.request_digest
+            and digest_payload(_thaw_payload(envelope.payload)) == self.payload_digest
+        )
+
+
+class ReviewerDispatchRegistry:
+    """Share live prepared reviewer identities with nested Broker workers."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active: dict[str, ReviewerDispatchIdentity] = {}
+
+    def lookup(self, resolved_session_id: str) -> ReviewerDispatchIdentity | None:
+        with self._lock:
+            return self._active.get(resolved_session_id)
+
+    @contextmanager
+    def retain(self, identity: ReviewerDispatchIdentity) -> Iterator[None]:
+        resolved = identity.resolved_session_id
+        if identity.context.caller_session_id != resolved or identity.target_pair not in (
+            QUOTE_TARGET, GENERATE_TARGET,
+        ):
+            raise AuthorityDenied("reviewer dispatch identity changed")
+        with self._lock:
+            if resolved in self._active:
+                raise AuthorityDenied("reviewer dispatch is already active")
+            self._active[resolved] = identity
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._active.pop(resolved)
+
+
+@dataclass(frozen=True)
+class _PreparedReviewerDispatch:
+    dispatch: V4DispatchSession
+    registry: ReviewerDispatchRegistry
+    identity: ReviewerDispatchIdentity
+    session_id: str
+    input_digest: str
+
+    def invoke(
+        self, contract_id: str, operation_id: str, payload: Mapping[str, Any], **options: Any,
+    ) -> Mapping[str, Any]:
+        arguments = dict(payload)
+        if (
+            (contract_id, operation_id) != self.identity.target_pair
+            or arguments.pop("_session_id", None) != self.session_id
+            or digest_payload(arguments) != self.input_digest
+        ):
+            raise AuthorityDenied("reviewer prepared dispatch changed")
+        with self.registry.retain(self.identity):
+            return self.dispatch.invoke(contract_id, operation_id, payload, **options)
 
 
 def build_reviewer_capture(
@@ -40,6 +118,7 @@ def build_reviewer_capture(
     dispatch_capture: Mapping[str, Any],
     parent_deadline_monotonic: float,
     parent_cancellation: threading.Event,
+    reviewer_dispatches: ReviewerDispatchRegistry | None = None,
     evidence_validity_seconds: int = 120,
 ) -> Any:
     """Prepare native reviewer facts; native approval remains the caller's job.
@@ -103,12 +182,18 @@ def build_reviewer_capture(
         try:
             context = context_for(*target_pair, name)
             scope = effect_scope_for(*target_pair, payload, context)
+            arguments = dict(payload)
+            input_digest = (
+                digest_payload(arguments)
+                if reviewer_dispatches is not None and target_pair in (QUOTE_TARGET, GENERATE_TARGET)
+                else None
+            )
             prepared = broker.prepare(
                 InvocationFrame(
                     contract_id=target_pair[0],
                     version_range=None,
                     operation_id=target_pair[1],
-                    payload=dict(payload),
+                    payload=arguments,
                 ),
                 context,
             )
@@ -167,8 +252,17 @@ def build_reviewer_capture(
             cancellation_proof = nested_cancellation_proof_for(invocation.envelope, *owner)
             if cancellation_proof is None:
                 raise AuthorityDenied("reviewer authenticated parent cancellation unavailable")
+            reviewer_dispatch: GenerateDispatch = dispatch
+            if reviewer_dispatches is not None and input_digest is not None:
+                identity = ReviewerDispatchIdentity(
+                    context, target_pair, digest_payload(_thaw_payload(prepared.normalized_payload)),
+                    prepared.request_digest, resolved_session, parent,
+                )
+                reviewer_dispatch = _PreparedReviewerDispatch(
+                    dispatch, reviewer_dispatches, identity, name, input_digest,
+                )
             return ReviewerGenerateLease(
-                dispatch,
+                reviewer_dispatch,
                 name,
                 caller,
                 boundary_digest,

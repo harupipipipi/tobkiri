@@ -2197,8 +2197,8 @@ fn encode_turn_start_reply(
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
         Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
-        ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
-        WorkflowHealth,
+        ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ReviewerHealth, ShellSettings,
+        Workflow, WorkflowHealth,
     };
 
     match role {
@@ -2207,6 +2207,7 @@ fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool
         | Gateway { .. }
         | GatewayHealth { .. }
         | ConversationCompleteHealth
+        | ReviewerHealth(_)
         | Workflow { .. }
         | WorkflowHealth { .. }
         | ModelAccessRead
@@ -2765,15 +2766,15 @@ mod tests {
     fn provider_snapshot_checks_the_exact_role_and_selects_its_projection() {
         use crate::host_contract::ExecutionProfileIdentity;
         use tobkiri_harness_native::{
-            OriginalWorkflowHealthCaller, OriginalWorkflowSnapshotCaller,
-            OriginalWorkflowSnapshotEntry,
+            OriginalReviewerHealthRole, OriginalWorkflowHealthCaller,
+            OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
         };
 
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
-            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
-            WorkflowHealth,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ReviewerHealth,
+            ShellSettings, Workflow, WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -2849,6 +2850,7 @@ mod tests {
                 ModelAccessCatalog,
                 ConversationCompleteHealth,
             ])
+            .chain(OriginalReviewerHealthRole::ALL.map(ReviewerHealth))
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

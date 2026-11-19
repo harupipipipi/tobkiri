@@ -142,19 +142,31 @@ impl RoleArguments {
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
-        use tobkiri_harness_native::OriginalModelResolveRole as GatewayRole;
         use tobkiri_harness_native::OriginalProviderSnapshotRole::{
-            Adapter, ConversationCompleteHealth, GatewayHealth, ModelAccessCatalog, ModelAccessRead,
+            Adapter, ConversationCompleteHealth, GatewayHealth, ModelAccessCatalog,
+            ModelAccessRead, ReviewerHealth,
         };
         use tobkiri_harness_native::OriginalSavedLocalChatRole::{
             Generate, SideChatGenerate, SideChatStream, Stream,
+        };
+        use tobkiri_harness_native::{
+            OriginalModelResolveRole as GatewayRole, OriginalReviewerHealthRole,
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
                 let health = |role, side_chat| {
                     proof.permits_provider_snapshot(GatewayHealth { role, side_chat })
                 };
-                if proof.permits_provider_snapshot(ConversationCompleteHealth) {
+                if OriginalReviewerHealthRole::ALL
+                    .into_iter()
+                    .any(|role| proof.permits_provider_snapshot(ReviewerHealth(role)))
+                {
+                    Some(if proof.permits_raw_provider_snapshot() {
+                        "14"
+                    } else {
+                        "14-health-only"
+                    })
+                } else if proof.permits_provider_snapshot(ConversationCompleteHealth) {
                     Some(if proof.permits_raw_provider_snapshot() {
                         "13"
                     } else {
@@ -4715,6 +4727,25 @@ mod tests {
             "catalog",
             OriginalProviderSnapshotRole::ConversationCompleteHealth,
         );
+        let [reviewer_quote, reviewer_generate] =
+            tobkiri_harness_native::OriginalReviewerHealthRole::ALL.map(|role| {
+                VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                    side_chat.identity.clone(),
+                    "catalog",
+                    OriginalProviderSnapshotRole::ReviewerHealth(role),
+                )
+            });
+        let reviewer_snapshot_and_health =
+            VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+                side_chat.identity.clone(),
+                "catalog",
+                [
+                    OriginalProviderSnapshotRole::ShellSettings,
+                    OriginalProviderSnapshotRole::ReviewerHealth(
+                        tobkiri_harness_native::OriginalReviewerHealthRole::Quote,
+                    ),
+                ],
+            );
         let complete_snapshot_and_health =
             VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
                 side_chat.identity.clone(),
@@ -4820,6 +4851,9 @@ mod tests {
             (Some(&workflow_snapshot_and_health), false, Some("12")),
             (Some(&complete_health), false, Some("13-health-only")),
             (Some(&complete_snapshot_and_health), false, Some("13")),
+            (Some(&reviewer_quote), false, Some("14-health-only")),
+            (Some(&reviewer_generate), false, Some("14-health-only")),
+            (Some(&reviewer_snapshot_and_health), false, Some("14")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

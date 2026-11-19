@@ -6319,12 +6319,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   IPC 703件と署名済みHTTPの会話完了2件が通過した。HTTPでWasm側の応答とGatewayの推論結果を
   差し替え、Wasmを選ぶ場合と元のPackVM ABIを通す場合の両方で、同じ署名済みHealth呼び出しと
   終了後の拒否を照合した。PackVM経路では旧Registry所有者への互換処理も確認した。
-- PythonのHealth所有者を廃止するには、権限レビューのQuote・Generateにも対応が必要。
-  レビューの署名済み権限は `request_surface` と `tool_calling` を固定し、Generateは
-  `allow_failover` も固定する。Hostが作るレビュー専用セッションは、実行中の保存ターンを保持する。
-  Healthの移植では、このセッションと元の呼び出しを照合し、レビュー担当Packの署名済み文書も検証する。
-  設定画面の旧 `/api/ui/provider-health` はv3互換契約に属し、ヘルスに加えてカタログ順・資格情報の
-  設定有無・スコープを投影する。元の投影と呼び出し経路を別途照合する。
+- 権限レビューのQuoteとGenerateをWasmのHealthポートへ接続した。Launcherはレビュー担当Packの
+  署名済みの識別情報と、用途ごとのGateway・Health権限を照合する。Gatewayの権限は
+  `request_surface` と `tool_calling` を固定し、Generateでは `allow_failover` も固定する。
+  Hostは準備したGateway要求のダイジェスト、レビュー専用セッション、元の保存ターンを保持し、
+  Healthの読み取り前後に有効なLeaseと呼び出しの一致を確認する。起動時にはIPCレベル14を通知し、
+  Healthポートのみを使う場合は `14-health-only` を通知する。
+  Rustの経路選択57件とPythonのIPC・レビュー・Broker試験767件が通過した。署名済みProfileで
+  QuoteとGenerateの経路が別々に選ばれることを確認した。実Brokerを使うGenerateの試験では、
+  Healthの応答を差し替えて利用不可時の生成停止と権限失効後の拒否を確認した。署名済みProfileの
+  レビューから配布Launcher上のWasmまでを通した試験は残っている。
+- 設定画面の旧 `/api/ui/provider-health` はv3互換契約に属し、ヘルスに加えてカタログ順、資格情報の
+  設定有無、スコープを投影する。元の投影と呼び出し経路を別途照合する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 

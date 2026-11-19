@@ -20,7 +20,7 @@ use tobkiri_harness_native::{
     OriginalGatewayProviderHealthChoice, OriginalGatewayProviderSnapshotChoice,
     OriginalModelAccessProviderSnapshotSelection, OriginalModelSaveSelection,
     OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
-    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
+    OriginalReviewerHealthChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
     OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
@@ -380,6 +380,34 @@ impl NativeApplicationSources {
             choice.is_side_chat(),
             budget,
         )
+    }
+
+    /// Capture the reviewer identity and the two signed Gateway and Health grants.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn reviewer_provider_health_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalReviewerHealthChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSavedProviderBundle<'pin, 1, 3>> {
+        let policy_identity = choice.policy_anchor();
+        let [gateway, health] = choice.pins();
+        ensure!(
+            gateway.caller_function_id() == policy_identity.function_id()
+                && health.caller_function_id() == gateway.function_id(),
+            "Reviewer Health differs from its selected signed callers"
+        );
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedSavedProviderBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            side_chat: [None],
+            routes: [Some([
+                from_lock(policy_identity)?,
+                from_lock(gateway)?,
+                from_lock(health)?,
+            ])],
+            effects: ["privileged"; 3],
+            budget: Arc::clone(budget),
+        })
     }
 
     /// Capture one tool-intent normalization chain using the original signed Bundle document pins.

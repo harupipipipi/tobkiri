@@ -530,9 +530,13 @@ WORKFLOW_PROVIDER_HEALTH_ROLES: Mapping[
 })
 ConversationCompleteHealthRole = Literal["conversation-complete-health"]
 CONVERSATION_COMPLETE_HEALTH_ROLE: ConversationCompleteHealthRole = "conversation-complete-health"
+ReviewerHealthRole = Literal["reviewer-health-quote", "reviewer-health-generate"]
+REVIEWER_HEALTH_ROLES: tuple[ReviewerHealthRole, ...] = (
+    "reviewer-health-quote", "reviewer-health-generate",
+)
 _PROVIDER_HEALTH_ROLES = frozenset((
     *GATEWAY_PROVIDER_HEALTH_ROLES.values(), *WORKFLOW_PROVIDER_HEALTH_ROLES.values(),
-    CONVERSATION_COMPLETE_HEALTH_ROLE,
+    CONVERSATION_COMPLETE_HEALTH_ROLE, *REVIEWER_HEALTH_ROLES,
 ))
 WorkflowSnapshotEntry = Literal[
     "run.advance", "run.cancel", "run.selected", "run.step.execute",
@@ -542,7 +546,7 @@ ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | GatewayProviderHealthRole
     | ProjectedProviderSnapshotRole
     | WorkflowProviderSnapshotRole | WorkflowProviderHealthRole | ModelAccessProviderSnapshotRole
-    | ConversationCompleteHealthRole
+    | ConversationCompleteHealthRole | ReviewerHealthRole
 )
 _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES = ("model-access-read", "model-access-catalog")
 _MODEL_ACCESS_PROJECTION_ROLES: Mapping[ModelAccessProjectionPhase, ModelAccessProviderSnapshotRole] = {
@@ -816,6 +820,7 @@ class _LauncherProviderSnapshot:
     supports_gateway_quote_health: bool = False
     supports_workflow_health: bool = False
     supports_conversation_complete_health: bool = False
+    supports_reviewer_health: bool = False
     supports_raw_snapshot: bool = True
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
@@ -839,6 +844,7 @@ class _LauncherProviderSnapshot:
                 and request.role in WORKFLOW_PROVIDER_HEALTH_ROLES.values())
             or (not self.supports_conversation_complete_health
                 and request.role == CONVERSATION_COMPLETE_HEALTH_ROLE)
+            or (not self.supports_reviewer_health and request.role in REVIEWER_HEALTH_ROLES)
             or (not self.supports_workflow_adapter
                 and request.role in _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_model_access
@@ -853,9 +859,9 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV, "")
-    raw_snapshot = version not in ("12-health-only", "13-health-only")
+    raw_snapshot = version not in ("12-health-only", "13-health-only", "14-health-only")
     if raw_snapshot:
-        if re.fullmatch(r"[1-9]|1[0-3]", version) is None:
+        if re.fullmatch(r"[1-9]|1[0-4]", version) is None:
             return None
         level = int(version)
     else:
@@ -876,7 +882,8 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
         supports_side_chat_gateway_health=level >= 10,
         supports_gateway_quote_health=level >= 11,
         supports_workflow_health=level >= 12,
-        supports_conversation_complete_health=level == 13,
+        supports_conversation_complete_health=level >= 13,
+        supports_reviewer_health=level == 14,
         supports_raw_snapshot=raw_snapshot,
     )
 

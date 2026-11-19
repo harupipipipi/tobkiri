@@ -1158,11 +1158,11 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
     type Error = &'static str;
 
     fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
-        use tobkiri_harness_native::OriginalWorkflowHealthCaller;
+        use tobkiri_harness_native::{OriginalReviewerHealthRole, OriginalWorkflowHealthCaller};
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
-            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
-            WorkflowHealth,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ReviewerHealth,
+            ShellSettings, Workflow, WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -1213,6 +1213,12 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             "model-access-read" => return snapshot(ModelAccessRead),
             "model-access-catalog" => return snapshot(ModelAccessCatalog),
             "conversation-complete-health" => return snapshot(ConversationCompleteHealth),
+            "reviewer-health-quote" => {
+                return snapshot(ReviewerHealth(OriginalReviewerHealthRole::Quote))
+            }
+            "reviewer-health-generate" => {
+                return snapshot(ReviewerHealth(OriginalReviewerHealthRole::Generate))
+            }
             _ => {}
         }
         let unknown_role = "unknown Provider Snapshot role or missing Workflow entry";
@@ -3259,9 +3265,11 @@ mod tests {
 
     #[test]
     fn provider_snapshot_start_decodes_the_closed_role_set() {
+        use tobkiri_harness_native::OriginalReviewerHealthRole;
         use OriginalProviderSnapshotRole::{
             Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
-            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ReviewerHealth,
+            ShellSettings,
         };
 
         let assert_role = |name: &str, expected| {
@@ -3311,6 +3319,14 @@ mod tests {
         assert_role("model-access-read", ModelAccessRead);
         assert_role("model-access-catalog", ModelAccessCatalog);
         assert_role("conversation-complete-health", ConversationCompleteHealth);
+        assert_role(
+            "reviewer-health-quote",
+            ReviewerHealth(OriginalReviewerHealthRole::Quote),
+        );
+        assert_role(
+            "reviewer-health-generate",
+            ReviewerHealth(OriginalReviewerHealthRole::Generate),
+        );
     }
 
     #[test]
@@ -3430,6 +3446,11 @@ mod tests {
             r#", "provider_snapshot":{"role":"conversation-complete-health","input_bytes":32}"#,
             r#", "provider_snapshot":{"role":"conversation-complete-health","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":"conversation-complete-health-stream"}"#,
+            r#", "provider_snapshot":{"role":"reviewer-health-stream"}"#,
+            r#", "provider_snapshot":{"role":"reviewer-health-quote","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"reviewer-health-quote","input_bytes":32}"#,
+            r#", "provider_snapshot":{"role":"reviewer-health-generate","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"reviewer-health-generate","settings_projection":true}"#,
             r#", "provider_snapshot":{"role":"gateway-health-quote-stream","delivery_mode":"incremental"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","profile_id":"elsewhere"}"#,

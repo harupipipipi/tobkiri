@@ -24,7 +24,8 @@ use tobkiri_harness_native::{
     OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
     OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
-    OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
+    OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
+    OriginalReviewerHealthChoice, OriginalReviewerHealthRole, OriginalRoutePin,
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
@@ -231,6 +232,9 @@ impl VerifiedRegistryLaunch {
                 .bundle(caller.snapshot_caller(), entry)?,
             OriginalProviderSnapshotRole::ConversationCompleteHealth => {
                 source.conversation_health.as_ref()?
+            }
+            OriginalProviderSnapshotRole::ReviewerHealth(role) => {
+                source.reviewer_health[role.index()].as_ref()?
             }
             _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
@@ -823,6 +827,7 @@ struct VerifiedProviderSnapshotSource {
     workflow: VerifiedWorkflowProviderSnapshot,
     workflow_health: VerifiedWorkflowProviderSnapshot,
     conversation_health: Option<VerifiedOrdinarySavedBundle>,
+    reviewer_health: [Option<VerifiedOrdinarySavedBundle>; OriginalReviewerHealthRole::ALL.len()],
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
     model_search: Option<VerifiedOrdinarySavedBundle>,
@@ -999,6 +1004,7 @@ impl VerifiedRegistryLaunch {
             workflow: VerifiedWorkflowProviderSnapshot::default(),
             workflow_health: VerifiedWorkflowProviderSnapshot::default(),
             conversation_health: None,
+            reviewer_health: [const { None }; OriginalReviewerHealthRole::ALL.len()],
             shell_settings: None,
             model_save: None,
             model_search: None,
@@ -1045,6 +1051,9 @@ impl VerifiedRegistryLaunch {
                 }
                 OriginalProviderSnapshotRole::ConversationCompleteHealth => {
                     &mut source.conversation_health
+                }
+                OriginalProviderSnapshotRole::ReviewerHealth(role) => {
+                    &mut source.reviewer_health[role.index()]
                 }
                 OriginalProviderSnapshotRole::ShellSettings => &mut source.shell_settings,
                 OriginalProviderSnapshotRole::ModelAccessRead => &mut source.model_access_read,
@@ -2016,8 +2025,12 @@ impl LaunchActivationObserver<'_> {
             OriginalWorkflowProviderSnapshotSelection::select_health(active, budget)?;
         let conversation_health_selection =
             OriginalConversationCompleteHealthChoice::select(active, budget)?;
+        let [reviewer_quote, reviewer_generate] = OriginalReviewerHealthRole::ALL
+            .map(|role| OriginalReviewerHealthChoice::select(active, budget, role));
+        let reviewer_health_selections = [reviewer_quote?, reviewer_generate?];
         let has_health_grants = workflow_health_selection.is_some()
             || conversation_health_selection.is_some()
+            || reviewer_health_selections.iter().any(Option::is_some)
             || gateway_health_selections
                 .iter()
                 .flatten()
@@ -2064,9 +2077,25 @@ impl LaunchActivationObserver<'_> {
                         [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2];
                     let mut workflow_health = VerifiedWorkflowProviderSnapshot::default();
                     let mut conversation_health = None;
+                    let mut reviewer_health =
+                        [const { None }; OriginalReviewerHealthRole::ALL.len()];
                     let health_declared = has_health_grants
                         && observe_provider_health_declaration(&pack).map_err(io::Error::other)?;
                     if health_declared {
+                        for (entry, choice) in
+                            reviewer_health.iter_mut().zip(reviewer_health_selections)
+                        {
+                            let Some(choice) = choice else {
+                                continue;
+                            };
+                            let locked = inspection
+                                .with_source(|sources| {
+                                    sources.reviewer_provider_health_bundle(&choice, budget)
+                                })
+                                .map_err(io::Error::other)?
+                                .map_err(io::Error::other)?;
+                            *entry = Some(locked.verify(&checkpoint).map_err(io::Error::other)?);
+                        }
                         if let Some(choice) = &conversation_health_selection {
                             let locked = inspection
                                 .with_source(|sources| {
@@ -2121,6 +2150,7 @@ impl LaunchActivationObserver<'_> {
                             workflow,
                             workflow_health,
                             conversation_health,
+                            reviewer_health,
                             shell_settings,
                             model_save: model_save_snapshot,
                             model_search,
@@ -4621,7 +4651,9 @@ mod tests {
 
     #[test]
     fn gateway_health_launch_proof_keeps_saved_roles_and_snapshot_port_independent() {
-        use OriginalProviderSnapshotRole::{ConversationCompleteHealth, Gateway, GatewayHealth};
+        use OriginalProviderSnapshotRole::{
+            ConversationCompleteHealth, Gateway, GatewayHealth, ReviewerHealth,
+        };
         use OriginalSavedLocalChatRole::Generate;
 
         let identity = ExecutionProfileIdentity {
@@ -4654,6 +4686,23 @@ mod tests {
         assert!(complete.permits_provider_snapshot(ConversationCompleteHealth));
         assert!(complete.raw_provider_snapshot().is_none());
         assert!(!complete.permits_workflow_provider_health());
+        for granted in OriginalReviewerHealthRole::ALL {
+            let review = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                "catalog",
+                ReviewerHealth(granted),
+            );
+            assert!(review.raw_provider_snapshot().is_none());
+            assert!(!review.permits_provider_snapshot(ConversationCompleteHealth));
+            for candidate in OriginalReviewerHealthRole::ALL {
+                assert_eq!(
+                    review.permits_provider_snapshot(ReviewerHealth(candidate)),
+                    granted == candidate
+                );
+                assert!(!older_pack.permits_provider_snapshot(ReviewerHealth(candidate)));
+            }
+            assert!(health_roles().all(|role| !review.permits_provider_snapshot(role)));
+        }
         for health in health_roles() {
             assert!(!older_pack.permits_provider_snapshot(health));
             assert!(!complete.permits_provider_snapshot(health));

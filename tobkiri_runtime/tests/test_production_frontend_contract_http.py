@@ -5336,6 +5336,7 @@ def test_conversation_complete_health_uses_signed_http_broker(
         return health_value
 
     read_health.supports_conversation_complete_health = True
+    read_health.supports_reviewer_health = True
     read_health.supports_raw_snapshot = False
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
@@ -5357,6 +5358,9 @@ def test_conversation_complete_health_uses_signed_http_broker(
     ) as (server, session, authority):
         server.assert_runtime_startup_ready()
         assert not executions
+        with pytest.raises(AuthorityDenied, match="captured Shell caller edge"):
+            session.context_for(*CONVERSATION_GENERATE, "session.approval-review.lookalike")
+        assert not health_reads
         session.assert_operation_ready(*CONVERSATION_COMPLETE)
         before = session.context_for(*CONVERSATION_COMPLETE, "native-conversation-probe")
         native = session.broker._catalog.resolve_pinned(*CONVERSATION_COMPLETE)
@@ -10594,6 +10598,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     read_snapshot.supports_side_chat_gateway_health = side_chat
     read_snapshot.supports_gateway_quote_health = True
     read_snapshot.supports_conversation_complete_health = True
+    read_snapshot.supports_reviewer_health = True
 
     def checked_execute(
         request: ipc.NativeSavedLocalChatRequest,

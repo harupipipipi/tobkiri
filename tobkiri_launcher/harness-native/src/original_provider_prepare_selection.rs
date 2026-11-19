@@ -72,6 +72,15 @@ static COORDINATOR: Route = Route {
     execution: PYTHON_HOST,
 };
 
+const REVIEWER_POLICY_CALLER: &str = "rumi_tool_local_executor_pack.tool-executor.local";
+static REVIEWER_POLICY_ANCHOR: Route = Route {
+    function: "rumi_host_authority_bridge_pack.host-authority.approval-policy",
+    contract: "tobkiri.action.host.approval-policy.v1",
+    operation: "host.action_approval_policy.select",
+    variant: "rumi_host_authority_bridge_pack.host-authority.approval-policy.python",
+    ..COORDINATOR
+};
+
 static PROVIDER_PREPARE: Route = Route {
     pack: "rumi_provider_registry_pack",
     function: "rumi_provider_registry_pack.provider-configure.prepare",
@@ -1491,6 +1500,32 @@ impl OriginalModelResolveRole {
     }
 }
 
+/// Gateway operations used by the independent approval reviewer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalReviewerHealthRole {
+    /// Route Quote for buffered generation.
+    Quote,
+    /// Generate without tools or failover.
+    Generate,
+}
+
+impl OriginalReviewerHealthRole {
+    /// Both independently authorized reviewer operations.
+    pub const ALL: [Self; 2] = [Self::Quote, Self::Generate];
+
+    /// Position in `ALL` and in the corresponding verification results.
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    const fn gateway_route(self) -> &'static Route {
+        match self {
+            Self::Quote => &GATEWAY_QUOTE,
+            Self::Generate => &GATEWAY_GENERATE,
+        }
+    }
+}
+
 /// Exact raw Registry callers in the Workflow attempt dispatch chain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalWorkflowSnapshotCaller {
@@ -1638,6 +1673,8 @@ pub enum OriginalProviderSnapshotRole {
     },
     /// The ordinary Conversation Complete chain's Gateway Generate Health grant.
     ConversationCompleteHealth,
+    /// The independent reviewer's Gateway Health grant for the selected operation.
+    ReviewerHealth(OriginalReviewerHealthRole),
     /// The desktop Shell owns this direct settings read grant.
     ShellSettings,
     /// Model Manage owns a nested read grant on the selected Model Save chain.
@@ -1660,6 +1697,7 @@ impl OriginalProviderSnapshotRole {
             Self::GatewayHealth { .. }
                 | Self::WorkflowHealth { .. }
                 | Self::ConversationCompleteHealth
+                | Self::ReviewerHealth(_)
         )
     }
 }
@@ -1828,6 +1866,43 @@ impl<'a> OriginalGatewayProviderHealthChoice<'a> {
 
     /// Ordered grants to Turn, Saved Orchestration, Gateway, and Registry health.
     pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
+/// The approval reviewer's signed policy identity and independent Health grants.
+pub struct OriginalReviewerHealthChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    policy_anchor: OriginalRoutePin,
+    pins: [OriginalRoutePin; 2],
+}
+
+impl<'a> OriginalReviewerHealthChoice<'a> {
+    /// Select the policy identity and the reviewer Gateway and Health grants.
+    /// Verify the returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalReviewerHealthRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_reviewer_health_records(active.records(), budget, role)?.map(
+                |(policy_anchor, pins)| Self {
+                    _active: active,
+                    policy_anchor,
+                    pins,
+                },
+            ),
+        )
+    }
+
+    /// Evidence of the signed policy principal's identity for Bundle verification only.
+    pub fn policy_anchor(&self) -> &OriginalRoutePin {
+        &self.policy_anchor
+    }
+
+    /// The exact reviewer Gateway and Provider Health grants in call order.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
         &self.pins
     }
 }
@@ -2106,6 +2181,30 @@ struct Records<'a> {
     variant_pins: CoreValue,
     snapshot: CoreValue,
     budget: &'a Arc<dyn AllocationBudget>,
+}
+
+#[derive(Clone, Copy)]
+enum RouteEvidence {
+    ProfileGrant,
+    ReviewerPolicyIdentity,
+    ReviewerGateway(OriginalReviewerHealthRole),
+}
+
+impl RouteEvidence {
+    const fn extra_dimensions(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::ProfileGrant | Self::ReviewerPolicyIdentity => &[],
+            Self::ReviewerGateway(OriginalReviewerHealthRole::Quote) => &[
+                ("request_surface", "approval-review"),
+                ("tool_calling", "false"),
+            ],
+            Self::ReviewerGateway(OriginalReviewerHealthRole::Generate) => &[
+                ("request_surface", "approval-review"),
+                ("tool_calling", "false"),
+                ("allow_failover", "false"),
+            ],
+        }
+    }
 }
 
 fn select_route_chain(
@@ -2615,6 +2714,25 @@ fn select_gateway_provider_health_records(
     )
 }
 
+fn select_reviewer_health_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalReviewerHealthRole,
+) -> Result<Option<(OriginalRoutePin, [OriginalRoutePin; 2])>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(policy_anchor) = records.select_reviewer_policy_anchor()? else {
+        return Ok(None);
+    };
+    let Some(gateway) = records.select_reviewer_gateway(&policy_anchor, role)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(gateway.function_id(), &PROVIDER_HEALTH_GENERATE)?
+        .map(|health| (policy_anchor, [gateway, health])))
+}
+
 fn select_saved_gateway_registry_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
@@ -2869,6 +2987,35 @@ impl Records<'_> {
         caller: &str,
         route: &'static Route,
     ) -> Result<Option<OriginalRoutePin>> {
+        self.select_route_evidence(caller, route, RouteEvidence::ProfileGrant)
+    }
+
+    fn select_reviewer_policy_anchor(&self) -> Result<Option<OriginalRoutePin>> {
+        self.select_route_evidence(
+            REVIEWER_POLICY_CALLER,
+            &REVIEWER_POLICY_ANCHOR,
+            RouteEvidence::ReviewerPolicyIdentity,
+        )
+    }
+
+    fn select_reviewer_gateway(
+        &self,
+        policy_anchor: &OriginalRoutePin,
+        role: OriginalReviewerHealthRole,
+    ) -> Result<Option<OriginalRoutePin>> {
+        self.select_route_evidence(
+            policy_anchor.function_id(),
+            role.gateway_route(),
+            RouteEvidence::ReviewerGateway(role),
+        )
+    }
+
+    fn select_route_evidence(
+        &self,
+        caller: &str,
+        route: &'static Route,
+        evidence: RouteEvidence,
+    ) -> Result<Option<OriginalRoutePin>> {
         let matches_route = |value: &CoreValue| {
             is_text(value, "caller_function_id", caller)
                 && is_text(value, "contract_id", route.contract)
@@ -2973,14 +3120,15 @@ impl Records<'_> {
         }
         let adapters = required(&binding, "adapter_digests")?;
         let adapters = adapters.array().ok_or(Inconsistent("adapter_digests"))?;
-        if !grant
+        let expects_profile_grant = !matches!(evidence, RouteEvidence::ReviewerPolicyIdentity);
+        if grant != expects_profile_grant
             || verified_text(&variant) != route.variant
             || route
                 .execution_fields()
                 .into_iter()
                 .any(|(field, expected)| !is_text(&binding, field, expected))
             || !adapters.is_empty()
-            || !exact_scope(&scope, route, verified_text(&revision))?
+            || !exact_scope(&scope, route, verified_text(&revision), evidence)?
         {
             return Ok(None);
         }
@@ -3068,8 +3216,14 @@ fn require_identifier(caller: &str, budget: &Arc<dyn AllocationBudget>) -> Resul
     }
 }
 
-fn exact_scope(scope: &CoreValue, route: &Route, revision: &str) -> Result<bool> {
+fn exact_scope(
+    scope: &CoreValue,
+    route: &Route,
+    revision: &str,
+    evidence: RouteEvidence,
+) -> Result<bool> {
     let dimensions = required(scope, "dimensions")?;
+    let extra_dimensions = evidence.extra_dimensions();
     let matches_dimension = |field, expected| {
         dimensions
             .get_key(field)
@@ -3082,9 +3236,14 @@ fn exact_scope(scope: &CoreValue, route: &Route, revision: &str) -> Result<bool>
     Ok(scope.object().is_some_and(|object| object.len() == 6)
         && is_text(scope, "capability", "operation.invoke")
         && is_text(scope, "semantics_digest", revision)
-        && dimensions.object().is_some_and(|object| object.len() == 2)
+        && dimensions
+            .object()
+            .is_some_and(|object| object.len() == 2 + extra_dimensions.len())
         && matches_dimension("contract", route.contract)
         && matches_dimension("operation", route.operation)
+        && extra_dimensions
+            .iter()
+            .all(|&(field, expected)| matches_dimension(field, expected))
         && required(scope, "quotas")?
             .object()
             .is_some_and(|quotas| quotas.is_empty())
@@ -3871,6 +4030,165 @@ mod tests {
     fn set_grant_interactive_only(fixture: &mut Value, row: usize) {
         fixture["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
         fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+    }
+
+    fn sync_fixture_scope_digest(
+        fixture: &mut Value,
+        row: usize,
+        budget: &Arc<dyn AllocationBudget>,
+    ) {
+        let scope = &fixture["profile"]["requested_edges"][row]["requested_scope_template"];
+        let bytes = serde_json::to_vec(scope).unwrap();
+        let scope = CoreValue::parse_guest(&bytes, budget).unwrap();
+        fixture["plan"]["bindings"][row]["requested_scope_digest"] =
+            json!(scope.digest_guest(budget).unwrap().as_str());
+    }
+
+    fn reviewer_health_fixture(budget: &Arc<dyn AllocationBudget>) -> (Value, usize, [usize; 2]) {
+        let mut fixture = records();
+        let anchor = fixture["profile"]["requested_edges"]
+            .as_array()
+            .unwrap()
+            .len();
+        add_fixture_grant(
+            &mut fixture,
+            REVIEWER_POLICY_CALLER,
+            &REVIEWER_POLICY_ANCHOR,
+            budget,
+        );
+        set_grant_interactive_only(&mut fixture, anchor);
+        let gateways = OriginalReviewerHealthRole::ALL.map(|role| {
+            let row = fixture["profile"]["requested_edges"].as_array().unwrap().len();
+            add_fixture_grant(&mut fixture, REVIEWER_POLICY_ANCHOR.function, role.gateway_route(), budget);
+            let dimensions = &mut fixture["profile"]["requested_edges"][row]["requested_scope_template"]["dimensions"];
+            dimensions["request_surface"] = json!(["approval-review"]);
+            dimensions["tool_calling"] = json!(["false"]);
+            if role == OriginalReviewerHealthRole::Generate {
+                dimensions["allow_failover"] = json!(["false"]);
+            }
+            sync_fixture_scope_digest(&mut fixture, row, budget);
+            row
+        });
+        (fixture, anchor, gateways)
+    }
+
+    fn select_reviewer_health(
+        fixture: &Value,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalReviewerHealthRole,
+    ) -> Result<Option<(OriginalRoutePin, [OriginalRoutePin; 2])>> {
+        let [profile, lock, plan] = parse_records(fixture, budget);
+        select_reviewer_health_records((&profile, &lock, &plan), budget, role)
+    }
+
+    #[test]
+    fn reviewer_health_requires_the_interactive_identity_and_separate_gateway_grants() {
+        use OriginalReviewerHealthRole::{Generate, Quote};
+
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let (fixture, anchor_row, gateway_rows) = reviewer_health_fixture(&budget);
+        let select = |fixture: &Value, role| select_reviewer_health(fixture, &budget, role);
+        for (role, other, ordinary_role) in [
+            (Quote, Generate, OriginalModelResolveRole::QuoteGenerate),
+            (Generate, Quote, OriginalModelResolveRole::Generate),
+        ] {
+            let (anchor, [gateway, health]) = select(&fixture, role).unwrap().unwrap();
+            assert_eq!(anchor.caller_function_id(), REVIEWER_POLICY_CALLER);
+            assert_eq!(anchor.operation_id(), REVIEWER_POLICY_ANCHOR.operation);
+            assert_eq!(gateway.caller_function_id(), anchor.function_id());
+            assert_eq!(gateway.operation_id(), role.gateway_route().operation);
+            assert_eq!(health.caller_function_id(), gateway.function_id());
+            assert_eq!(health.operation_id(), PROVIDER_HEALTH_GENERATE.operation);
+            assert!(select(&records(), role).unwrap().is_none());
+
+            let mut wrong_mode = fixture.clone();
+            wrong_mode["profile"]["requested_edges"][anchor_row]["authority_mode"] =
+                json!("profile_grant");
+            assert!(matches!(select(&wrong_mode, role), Err(Inconsistent(_))));
+            wrong_mode["plan"]["bindings"][anchor_row]["authority_mode"] = json!("profile_grant");
+            assert!(select(&wrong_mode, role).unwrap().is_none());
+
+            let mut wrong_anchor = fixture.clone();
+            wrong_anchor["profile"]["requested_edges"][anchor_row]["caller_function_id"] =
+                json!(TURN_SHELL_CALLER);
+            wrong_anchor["plan"]["bindings"][anchor_row]["caller_function_id"] =
+                json!(TURN_SHELL_CALLER);
+            assert!(select(&wrong_anchor, role).unwrap().is_none());
+
+            let mut only_other = fixture.clone();
+            set_grant_interactive_only(&mut only_other, gateway_rows[role.index()]);
+            assert!(select(&only_other, role).unwrap().is_none());
+            assert!(select(&only_other, other).unwrap().is_some());
+            let [profile, lock, plan] = parse_records(&only_other, &budget);
+            assert!(
+                select_gateway_provider_health_records(
+                    (&profile, &lock, &plan),
+                    &budget,
+                    ordinary_role,
+                    false
+                )
+                .unwrap()
+                .is_some()
+            );
+
+            let health_row = GATEWAY_PROVIDER_HEALTH_ROWS[ordinary_role.index()];
+            let mut wrong_leaf = fixture.clone();
+            set_grant_interactive_only(&mut wrong_leaf, health_row);
+            assert!(select(&wrong_leaf, role).unwrap().is_none());
+            assert!(select(&wrong_leaf, other).unwrap().is_some());
+        }
+    }
+
+    #[test]
+    fn reviewer_health_requires_exact_scope_dimension_keys_and_singleton_strings() {
+        use OriginalReviewerHealthRole::{Generate, Quote};
+
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let (fixture, _, gateway_rows) = reviewer_health_fixture(&budget);
+        for (role, key, value) in [
+            (Quote, "request_surface", json!(["ordinary-chat"])),
+            (Quote, "tool_calling", json!([false])),
+            (Quote, "allow_failover", json!(["false"])),
+            (
+                Generate,
+                "request_surface",
+                json!(["approval-review", "ordinary-chat"]),
+            ),
+            (Generate, "tool_calling", json!(["true"])),
+            (Generate, "allow_failover", json!(["true"])),
+        ] {
+            let mut invalid = fixture.clone();
+            let row = gateway_rows[role.index()];
+            invalid["profile"]["requested_edges"][row]["requested_scope_template"]["dimensions"]
+                [key] = value;
+            assert!(matches!(
+                select_reviewer_health(&invalid, &budget, role),
+                Err(Inconsistent(_))
+            ));
+            sync_fixture_scope_digest(&mut invalid, row, &budget);
+            assert!(
+                select_reviewer_health(&invalid, &budget, role)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let mut missing = fixture;
+        let row = gateway_rows[Generate.index()];
+        missing["profile"]["requested_edges"][row]["requested_scope_template"]["dimensions"]
+            .as_object_mut()
+            .unwrap()
+            .remove("allow_failover");
+        sync_fixture_scope_digest(&mut missing, row, &budget);
+        assert!(
+            select_reviewer_health(&missing, &budget, Generate)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            select_reviewer_health(&missing, &budget, Quote)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]

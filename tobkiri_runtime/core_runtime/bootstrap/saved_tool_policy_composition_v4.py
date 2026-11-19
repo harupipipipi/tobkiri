@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, TYPE_CHECKING
 
 from core_runtime.authority.v4 import AuthorityDenied, authority_digest
 from core_runtime.native_saved_tool_policy_v4 import NativeSavedToolPolicyV4
@@ -22,6 +22,9 @@ from tobkiri_host.broker import PreparedInvocationSnapshot
 from tobkiri_host.models import RequestContext, OpaqueAuthorityRef
 from tobkiri_host.errors import HostCoreError
 from tobkiri_host.saved_tool_policy_execution import SavedToolApprovalExecution
+
+if TYPE_CHECKING:
+    from .action_review_v4.reviewer_session_binder import ReviewerDispatchRegistry
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,7 @@ def compose_saved_tool_policy_v4(
     assert_current_capture: Callable[[], None],
     authority_records: Mapping,
     dispatch_capture: Mapping[str, Any],
+    reviewer_dispatches: ReviewerDispatchRegistry | None = None,
 ) -> ComposedSavedToolPolicyV4:
     """Connect actual prepared native route, signed reviewer and finite execution."""
     from core_runtime.bootstrap.action_review_v4.reviewer_session_binder import (
@@ -249,6 +253,7 @@ def compose_saved_tool_policy_v4(
             dispatch_capture=dispatch_capture,
             parent_deadline_monotonic=saved_invocation.envelope.deadline_monotonic,
             parent_cancellation=saved_invocation.envelope.cancellation_requested,
+            reviewer_dispatches=reviewer_dispatches if context is not None else None,
         )
 
     def verify_prepared(operation: Any) -> None:
