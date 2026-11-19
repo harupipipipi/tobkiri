@@ -5,6 +5,7 @@ from __future__ import annotations
 from core_runtime.global_contract_dispatch import HostGenerationBudgetError
 import base64
 import binascii
+from functools import partial
 import hashlib
 import http.client
 import json
@@ -182,8 +183,7 @@ def _operation(
     client: GlobalContractClient,
     *,
     streaming: bool,
-    cancellation: threading.Event | None = None,
-    deadline: float | None = None,
+    invocation: HostProviderInvocationContextV4 | None = None,
     diagnostics: RequestFailureDiagnostics | None = None,
 ) -> Callable[[str, Mapping[str, Any]], dict[str, Any]]:
     def execute(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -205,8 +205,8 @@ def _operation(
         )
         # Lifetime authority comes only from the captured Host invocation.
         # Payload fields never supply a cancellation Event or monotonic deadline.
-        local_lifetime = (
-            {"cancellation": cancellation, "deadline": deadline}
+        local_context = (
+            {"invocation": invocation}
             if adapter is _local_openai_compatible else {}
         )
         return adapter(
@@ -217,7 +217,7 @@ def _operation(
             "ai.stream" if streaming else "ai.generate",
             streaming,
             diagnostics=diagnostics,
-            **local_lifetime,
+            **local_context,
         )
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1023,8 +1023,7 @@ def _local_openai_compatible(
     credential_scope: str,
     streaming: bool,
     *,
-    cancellation: threading.Event | None = None,
-    deadline: float | None = None,
+    invocation: HostProviderInvocationContextV4 | None = None,
     diagnostics: RequestFailureDiagnostics | None = None,
 ) -> dict[str, Any]:
     """Call one registry-bound loopback OpenAI chat endpoint without a secret."""
@@ -1043,8 +1042,13 @@ def _local_openai_compatible(
     tools = request.get("tools")
     if isinstance(tools, list) and tools:
         body["tools"] = tools
+    native_post = getattr(invocation, "post_saved_local_chat", None)
+    envelope = invocation.envelope if invocation is not None else None
     value = _local_post(
-        endpoint, body, request, cancellation=cancellation, deadline=deadline,
+        endpoint, body, request,
+        cancellation=envelope.cancellation_requested if envelope is not None else None,
+        deadline=envelope.deadline_monotonic if envelope is not None else None,
+        native_post=partial(native_post, connection) if callable(native_post) else None,
     )
     choices = value.get("choices") if isinstance(value, Mapping) else None
     first = choices[0] if isinstance(choices, list) and choices else {}
@@ -1072,6 +1076,7 @@ def _local_post(
     *,
     cancellation: threading.Event | None = None,
     deadline: float | None = None,
+    native_post: Callable[[bytes, float], bytes | None] | None = None,
 ) -> dict[str, Any]:
     """Send bounded JSON to the finite local chat route without proxy use."""
     parsed = urllib.parse.urlsplit(local_openai_endpoint(endpoint))
@@ -1086,12 +1091,20 @@ def _local_post(
             "invalid_request", "local provider request is too large"
         )
     timeout = _local_timeout(request)
+    deadline_monotonic = time.monotonic() + timeout
+    if deadline is not None:
+        deadline_monotonic = min(deadline_monotonic, deadline)
+    if native_post is not None:
+        raw = native_post(encoded, deadline_monotonic)
+        if raw is not None:
+            return _decode_local_response(raw)
+
     lifetime: HttpRequestLifetime | None = None
     connection: http.client.HTTPConnection | None = None
     response: http.client.HTTPResponse | None = None
     try:
         lifetime = HttpRequestLifetime(
-            timeout=timeout, deadline=deadline, cancellation=cancellation,
+            timeout=timeout, deadline=deadline_monotonic, cancellation=cancellation,
         )
         connection = http.client.HTTPConnection(
             hostname, parsed.port, timeout=lifetime.remaining(),
@@ -1123,10 +1136,6 @@ def _local_post(
             )
         raw = response.read(_MAX_LOCAL_RESPONSE_BYTES + 1)
         lifetime.check()
-        if len(raw) > _MAX_LOCAL_RESPONSE_BYTES:
-            raise GlobalContractInvocationError(
-                "invalid_response", "local provider response is too large"
-            )
     except GlobalContractInvocationError:
         raise
     except (OSError, TimeoutError, http.client.HTTPException):
@@ -1144,6 +1153,14 @@ def _local_post(
             finally:
                 if lifetime is not None:
                     lifetime.close()
+    return _decode_local_response(raw)
+
+
+def _decode_local_response(raw: bytes) -> dict[str, Any]:
+    if len(raw) > _MAX_LOCAL_RESPONSE_BYTES:
+        raise GlobalContractInvocationError(
+            "invalid_response", "local provider response is too large"
+        )
     try:
         value = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -1459,8 +1476,7 @@ class ProviderAdapterHostFactoryV4:
                 operation = _operation(
                     client,
                     streaming=operation_factory is create_stream_operation,
-                    cancellation=invocation.envelope.cancellation_requested,
-                    deadline=invocation.envelope.deadline_monotonic,
+                    invocation=invocation,
                     diagnostics=(RequestFailureDiagnostics(
                         invocation.envelope.context.request_id,
                         parent_request_id=(

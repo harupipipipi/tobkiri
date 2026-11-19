@@ -7500,6 +7500,238 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             assert not legacy_reads and len(provider_requests) == count
 
 
+def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the signed HTTP chain with the real Provider and Model owners."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied, LeaseState
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    root = tmp_path / "user-data"
+    store = ConversationStore("defaults", user_data_root=root)
+    providers = ProviderRegistry("defaults", user_data_root=root)
+    endpoint = "http://127.0.0.1:18080/v1"
+    provider_id = "fixture.saved-local"
+    model_id = "organization/local-model"
+    model_profile_id = "saved-local-model"
+    role = "generate"
+    outcome = "success"
+    content = ""
+    parents: list[RequestEnvelope] = []
+    adapter_calls: list[RequestEnvelope] = []
+    adapter_results: list[Mapping[str, object]] = []
+    registry_reads: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
+    native_calls: list[ipc.NativeSavedLocalChatRequest] = []
+    permitted_posts: list[bytes] = []
+    legacy_connections: list[tuple[str, int | None]] = []
+    legacy_connect = http.client.HTTPConnection
+
+    def connect(
+        host: str, port: int | None = None, **kwargs: object,
+    ) -> http.client.HTTPConnection:
+        if (host, port) == ("127.0.0.1", 18080):
+            legacy_connections.append((host, port))
+            raise AssertionError("the legacy local transport attempted a connection")
+        return legacy_connect(host, port, **kwargs)
+
+    def read_model(request: ipc.NativeModelResolveRequest) -> Mapping[str, object]:
+        if role == "generate" and request.role == "quote-stream":
+            raise ipc.NativeModelResolveFailure("not-found")
+        raise ipc.NativeProviderPrepareUnavailable()
+
+    def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes:
+        native_calls.append(request)
+        adapter, = adapter_calls
+        turn, orchestration, gateway = parents
+        assert turn.operation_id == "rumi_turn_runtime_pack.turn-saved"
+        assert orchestration.operation_id == "saved_complete"
+        assert gateway.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
+        for parent, child in zip(parents, [orchestration, gateway, adapter]):
+            assert child.context.caller_principal == parent.target_principal
+        turn_lease, turn_state = authority.inspect_lease_token(
+            turn.lease.token.decode("ascii")
+        )
+        assert turn_state is LeaseState.DISPATCHED
+        assert turn_lease.caller.function_id == "shell.tauri.default"
+        assert adapter.payload["request_surface"] == "conversation.saved"
+        assert adapter.payload["provider_connection_id"] == provider_id
+        registry, value = registry_reads[-1]
+        assert registry.context.caller_principal == adapter.target_principal
+        assert registry.operation_id == (
+            f"rumi_provider_registry_pack.provider-registry-resource.{role}"
+        )
+        assert value["revision"] == 3
+        assert record in value["providers"]
+        assert request.context is adapter.context
+        assert 0 < request.deadline_monotonic <= adapter.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        lease, state = authority.inspect_lease_token(
+            adapter.lease.token.decode("ascii")
+        )
+        assert state is LeaseState.DISPATCHED
+        assert lease.target.principal_id == adapter.target_principal.value
+        assert lease.request_digest == adapter.request_digest
+        assert request.role == role
+        assert request.connection_id == provider_id
+        assert request.record_revision == 2
+        assert request.endpoint == endpoint
+        assert request.input == json.dumps(
+            {
+                "model": model_id,
+                "messages": [{"role": "user", "content": content}],
+                "stream": False,
+                "max_tokens": 16,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        request.assert_current()
+        if outcome == "denied":
+            raise ipc.NativeSavedLocalChatFailure("denied")
+        request.assert_dispatch()
+        request.mark_dispatch_possible()
+        with pytest.raises((AuthorityDenied, PermissionError)):
+            request.mark_dispatch_possible()
+        permitted_posts.append(request.input)
+        if outcome == "unconfirmed":
+            raise ipc.NativeSavedLocalChatDispatchUnconfirmed("fixture reply lost")
+        return (
+            b'{"choices":[{"message":{"content":"Local reply"},'
+            b'"finish_reason":"stop"}]}'
+        )
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_model_resolve_reader", lambda: read_model,
+    )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_local_chat_executor", lambda: execute,
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as (server, session, authority):
+        provider = {
+            "provider_instance_id": provider_id,
+            "adapter_id": "local-openai-compatible",
+            "endpoint": endpoint,
+            "credential_handle": None,
+            "enabled": True,
+        }
+        providers.save(provider, expected_revision=0)
+        record = providers.save(provider, expected_revision=1)["provider"]
+        providers.save(
+            {**provider, "provider_instance_id": "fixture.unrelated"},
+            expected_revision=2,
+        )
+        ModelRegistry("defaults", user_data_root=root).save({
+            "model_profile_id": model_profile_id,
+            "model_id": model_id,
+            "parameters": {"max_tokens": 16},
+            "metadata": {"provider_connection_id": provider_id},
+        }, expected_revision=0)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            backend: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> Mapping[str, object]:
+            if envelope.operation_id in {
+                "rumi_turn_runtime_pack.turn-saved",
+                "saved_complete",
+                "rumi_ai_gateway_pack.ai-gateway.generate",
+                "rumi_ai_gateway_pack.ai-gateway.stream",
+            }:
+                parents.append(envelope)
+            adapter = envelope.operation_id in {
+                "rumi_provider_adapters_pack.provider-generate",
+                "rumi_provider_adapters_pack.provider-stream",
+            }
+            if adapter:
+                adapter_calls.append(envelope)
+            value = dispatch(backend, envelope, *args, **kwargs)
+            if adapter:
+                adapter_results.append(value)
+            if envelope.contract_id == "tobkiri.resource.ai.provider.registry.v1":
+                registry_reads.append((envelope, value))
+            return value
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        monkeypatch.setattr(http.client, "HTTPConnection", connect)
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(turn: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+            status, result, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": turn}, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, result
+
+        for role, outcome in (
+            ("generate", "success"),
+            ("stream", "success"),
+            ("generate", "denied"),
+            ("stream", "unconfirmed"),
+        ):
+            parents.clear()
+            adapter_calls.clear()
+            adapter_results.clear()
+            registry_reads.clear()
+            native_calls.clear()
+            permitted_posts.clear()
+            conversation_id = f"{role}-{outcome}"
+            content = f"こんにちは {conversation_id}"
+            store.create(
+                {"id": conversation_id, "model_reference": model_profile_id},
+                expected_revision=store.snapshot()["revision"],
+            )
+            turn = {
+                "turn_id": conversation_id,
+                "conversation_id": conversation_id,
+                "conversation_revision": 1,
+                "content": content,
+                "tool_selection": {"mode": "none"},
+            }
+            status, result = post(turn)
+            assert len(native_calls) == len(adapter_calls) == 1, result
+            assert len(permitted_posts) == (0 if outcome == "denied" else 1)
+            assert not legacy_connections
+            with pytest.raises((AuthorityDenied, PermissionError)):
+                native_calls[0].assert_current()
+            if outcome == "success":
+                assert status == 200 and result["data"]["status"] == "completed", result
+                messages = store.get(conversation_id)["messages"]
+                assert [item["content"] for item in messages] == [
+                    content, "Local reply",
+                ]
+                adapter_result, = adapter_results
+                if role == "stream":
+                    assert adapter_result["events"] == [
+                        {"type": "text_delta", "delta": "Local reply"},
+                        {"type": "usage", "usage": {}},
+                        {"type": "finish", "finish_reason": "stop"},
+                    ]
+                else:
+                    assert adapter_result["output"] == "Local reply"
+                    assert adapter_result["finish_reason"] == "stop"
+                status, replay = post(turn)
+                assert status == 200 and replay["data"]["status"] == "existing", replay
+            else:
+                assert status != 200 or result["data"]["status"] != "completed", result
+                assert store.saved_receipt(conversation_id) is None
+                assert not adapter_results
+            assert len(native_calls) == len(adapter_calls) == 1
+            assert not legacy_connections
+
+
 def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     command_vertical_server,
     tmp_path: Path,

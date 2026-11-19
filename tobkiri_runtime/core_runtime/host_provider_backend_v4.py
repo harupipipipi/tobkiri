@@ -100,6 +100,20 @@ class HostProviderInvocationContextV4(Protocol):
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
 
+    def post_saved_local_chat(
+        self,
+        connection: Mapping[str, Any],
+        encoded: bytes,
+        deadline_monotonic: float,
+    ) -> bytes | None:
+        """POST one compiled local chat request under this invocation's authority.
+
+        Return raw response bytes, or None if the route is ineligible or the
+        authenticated launcher declined before requesting the body. Failures
+        raise and must never trigger a second POST.
+        """
+        return None
+
     def dispatch_bounded(
         self,
         *,

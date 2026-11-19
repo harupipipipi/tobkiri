@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from weakref import WeakValueDictionary
 
 from core_runtime.capture_guard_traversal_v4 import (
@@ -153,6 +153,7 @@ from ..credential_transport import (
 from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
 from ..global_contract_dispatch import (
     GlobalContractClient,
+    GlobalContractInvocationError,
 )
 from ..host_provider_backend_v4 import (
     CapturedHostPackDataV4,
@@ -345,6 +346,14 @@ class _CapturedPlanEdge:
     target: FunctionPrincipal
     ceilings: AuthorityCeilings
     authority_mode: str
+
+
+@dataclass(frozen=True)
+class _SavedLocalChatRoute:
+    role: Literal["generate", "stream"]
+    adapter: _CapturedPlanEdge
+    registry: _CapturedPlanEdge
+    parents: tuple[_CapturedPlanEdge, ...]
 
 
 class _UnavailablePackVmBackend:
@@ -1873,6 +1882,7 @@ def capture_production_dispatch(
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
         SAVED_ORCHESTRATION_MINIMUM_MEMORY,
+        SAVED_LOCAL_CHAT_MINIMUM_MEMORY,
         SAVED_TURN_READ_MINIMUM_MEMORY,
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         SAVED_TURN_START_MINIMUM_MEMORY,
@@ -1896,6 +1906,8 @@ def capture_production_dispatch(
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
+        NativeSavedLocalChatFailure,
+        NativeSavedLocalChatRequest,
         NativeSavedTurnReadFailure,
         NativeSavedTurnReadRequest,
         NativeSavedTurnSettlementFailure,
@@ -1914,6 +1926,7 @@ def capture_production_dispatch(
         capture_launcher_provider_prepare_planner,
         capture_launcher_saved_receipt_reader,
         capture_launcher_saved_orchestration_step,
+        capture_launcher_saved_local_chat_executor,
         capture_launcher_saved_turn_reader,
         capture_launcher_saved_turn_settlement_writer,
         capture_launcher_saved_turn_start_writer,
@@ -1938,6 +1951,7 @@ def capture_production_dispatch(
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
+    native_saved_local_chat = capture_launcher_saved_local_chat_executor()
     native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
     if native_saved_step is not None and native_saved_manifest is not None:
         require_digest(native_saved_manifest, "admitted Saved Orchestration manifest")
@@ -2595,6 +2609,44 @@ def capture_production_dispatch(
             EffectClass.PURE,
         ) if ordinary_turn_edge is not None else None
     )
+
+    saved_local_chat_routes: dict[str, _SavedLocalChatRoute] = {}
+    if (
+        native_saved_local_chat is not None
+        and ordinary_turn_edge is not None
+        and ordinary_orchestration_edge is not None
+    ):
+        gateway_pack = "rumi_ai_gateway_pack"
+        adapter_pack = "rumi_provider_adapters_pack"
+        registry_pack = "rumi_provider_registry_pack"
+        local_roles: tuple[Literal["generate", "stream"], ...] = ("generate", "stream")
+        for role in local_roles:
+            gateway_function = f"{gateway_pack}.ai-gateway.{role}"
+            gateway = select_original_chat_edge(
+                {ordinary_orchestration_edge.target.principal_id}, gateway_pack,
+                f"tobkiri.service.ai.{role}.v1", gateway_function, gateway_function,
+                EffectClass.PRIVILEGED,
+            )
+            if gateway is None:
+                continue
+            adapter = select_original_chat_edge(
+                {gateway.target.principal_id}, adapter_pack,
+                f"tobkiri.service.ai.provider.{role}.v1", f"{adapter_pack}.provider-{role}",
+                f"{adapter_pack}.provider.compatibility.{role}", EffectClass.PRIVILEGED,
+            )
+            if adapter is None:
+                continue
+            registry = select_original_chat_edge(
+                {adapter.target.principal_id}, registry_pack, LOCAL_REGISTRY_CONTRACT,
+                f"{registry_pack}.provider-registry-resource.{role}",
+                f"{registry_pack}.provider-registry.resource", EffectClass.PRIVILEGED,
+            )
+            if registry is not None:
+                saved_local_chat_routes[adapter.caller.principal_id] = _SavedLocalChatRoute(
+                    role, adapter, registry,
+                    (gateway, ordinary_orchestration_edge, ordinary_turn_edge),
+                )
+
     turn_start_edge = (
         select_original_chat_edge(
             {ordinary_turn_edge.target.principal_id},
@@ -3521,6 +3573,35 @@ def capture_production_dispatch(
             with caller_session_bindings_lock:
                 parent_invocation_scopes.release(context.caller_session_id)
 
+    def saved_local_chat_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+    ) -> _SavedLocalChatRoute | None:
+        route = saved_local_chat_routes.get(context.caller_principal.value)
+        connection_id = payload.get("provider_connection_id")
+        if (
+            route is None
+            or payload.get("request_surface") != "conversation.saved"
+            or payload.get("profile_id") not in (None, context.profile_id)
+            or payload.get("credential_handle") is not None
+            or not isinstance(connection_id, str)
+            or not connection_id
+        ):
+            return None
+        for edge in route.parents:
+            if parent is None or not matches_captured_edge(parent.envelope, edge):
+                return None
+            parent = parent.parent
+        return route if parent is None else None
+
+    def is_native_saved_local_chat_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        return native_provider_runtime is not None and saved_local_chat_lineage(
+            context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
+        ) is not None
+
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
 
@@ -3529,9 +3610,13 @@ def capture_production_dispatch(
             envelope: Any,
             *,
             presentation_owner: tuple[str, str],
+            observe_local_registry: Callable[
+                [str, str, Mapping[str, Any], Mapping[str, Any]], None
+            ] | None = None,
         ) -> None:
             self._envelope = envelope
             self._presentation_owner = presentation_owner
+            self._observe_local_registry = observe_local_registry
             self.profile_id = str(profile["profile_id"])
             self.plan_digest = str(plan["plan_digest"])
             self.profile_revision = str(plan["profile_revision"])
@@ -3629,6 +3714,8 @@ def capture_production_dispatch(
                     expected_payload_digest=expected_payload_digest,
                 )
                 scope.assert_current()
+                if self._observe_local_registry is not None:
+                    self._observe_local_registry(contract_id, operation_id, payload, result)
                 return result
             except Exception as error:
                 log_nested_dispatch_failure(contract_id, operation_id, error)
@@ -3648,6 +3735,15 @@ def capture_production_dispatch(
             self._scope = capture_invocation_scope(envelope)
             self._client: GlobalContractClient | None = None
             self._client_binding: tuple[frozenset[str], str, bool] | None = None
+            route = saved_local_chat_lineage(
+                envelope.context, envelope.payload, self._scope.parent,
+            )
+            self._local_chat_route = (
+                route if route is not None and matches_captured_edge(envelope, route.adapter)
+                else None
+            )
+            self._local_chat_selection: tuple[str, int, str] | None = None
+            self._local_chat_attempted = False
 
         @property
         def envelope(self) -> Any:
@@ -3772,6 +3868,9 @@ def capture_production_dispatch(
                     self._presentation_owner_principal_id,
                     self._presentation_owner_session_id,
                 ),
+                observe_local_registry=(
+                    self._retain_local_chat_selection if self._local_chat_route else None
+                ),
             )
             local_binding = local_model_bindings.get(provider_principal.principal_id)
             local_transport = create_local_model_transport(
@@ -3797,6 +3896,150 @@ def capture_production_dispatch(
             )
             self._client_binding = binding
             return self._client
+
+        def _retain_local_chat_selection(
+            self,
+            contract_id: str,
+            operation_id: str,
+            query: Mapping[str, Any],
+            result: Mapping[str, Any],
+        ) -> None:
+            route = self._local_chat_route
+            context = self._envelope.context
+            if (
+                route is None
+                or (contract_id, operation_id) != route.registry.binding_key[1:]
+                or query not in ({}, {"profile_id": context.profile_id})
+                or not isinstance(result, Mapping)
+                or result.get("profile_id") != context.profile_id
+                or not isinstance(result.get("providers"), list)
+            ):
+                return
+            expected = self._envelope.payload["provider_connection_id"]
+            records = [
+                item for item in result["providers"]
+                if isinstance(item, Mapping) and item.get("provider_instance_id") == expected
+            ]
+            self._local_chat_selection = None
+            if len(records) != 1:
+                return
+            record = records[0]
+            revision, endpoint = record.get("record_revision"), record.get("endpoint")
+            if (
+                record.get("adapter_id") == "local-openai-compatible"
+                and record.get("enabled") is True
+                and record.get("credential_handle") is None
+                and type(revision) is int and 1 <= revision <= MAX_SAFE_INTEGER
+                and isinstance(endpoint, str) and endpoint
+            ):
+                self._local_chat_selection = expected, revision, endpoint
+
+        def post_saved_local_chat(
+            self,
+            connection: Mapping[str, Any],
+            encoded: bytes,
+            deadline_monotonic: float,
+        ) -> bytes | None:
+            """Borrow the live signed local Adapter invocation for one POST."""
+            route, runtime = self._local_chat_route, native_provider_runtime
+            executor = native_saved_local_chat
+            if route is None or runtime is None or executor is None:
+                return None
+            self.assert_current()
+            envelope = self._envelope
+            selection = self._local_chat_selection
+            if (
+                selection is None
+                or connection.get("adapter_id") != "local-openai-compatible"
+                or connection.get("enabled") is not True
+                or connection.get("credential_handle") is not None
+                or type(connection.get("record_revision")) is not int
+                or selection != (
+                    connection.get("provider_instance_id"),
+                    connection.get("record_revision"),
+                    connection.get("endpoint"),
+                )
+                or self._local_chat_attempted
+            ):
+                raise GlobalContractInvocationError(
+                    "denied", "local provider connection binding changed",
+                )
+            reservation = envelope.resource_reservation_id
+            if production_admission.native_resources(reservation).memory_bytes < (
+                SAVED_LOCAL_CHAT_MINIMUM_MEMORY
+            ):
+                return None
+            deadline = min(envelope.deadline_monotonic, deadline_monotonic)
+            dispatch_possible = False
+
+            def guard() -> None:
+                self.assert_current()
+                if native_provider_runtime is not runtime:
+                    raise AuthorityDenied("local provider runtime generation changed")
+                child = envelope
+                scope = self._scope.parent
+                for edge in route.parents:
+                    retained = parent_invocation_scopes.lookup(child.context.caller_session_id)
+                    if (
+                        scope is None or retained is None
+                        or retained.envelope is not scope.envelope
+                        or not matches_captured_edge(scope.envelope, edge)
+                        or scope.envelope.lease.token == child.lease.token
+                        or scope.envelope.resource_reservation_id == child.resource_reservation_id
+                        or scope.envelope.deadline_monotonic < child.deadline_monotonic
+                    ):
+                        raise AuthorityDenied("local provider retained invocation changed")
+                    child, scope = scope.envelope, scope.parent
+                if scope is not None or parent_invocation_scopes.lookup(
+                    child.context.caller_session_id,
+                ) is not None:
+                    raise AuthorityDenied("local provider saved turn owner changed")
+                runtime[1]()
+                production_admission.native_resources(reservation)
+
+            def mark_dispatch_possible() -> None:
+                nonlocal dispatch_possible
+                guard()
+                if dispatch_possible:
+                    raise AuthorityDenied("local provider dispatch permit was already offered")
+                dispatch_possible = True
+
+            self._local_chat_attempted = True
+            instance, revision, endpoint = selection
+            guard()
+            try:
+                result = executor(NativeSavedLocalChatRequest(
+                    context=envelope.context, runtime_instance=runtime[0],
+                    deadline_monotonic=deadline, assert_current=guard,
+                    role=route.role, connection_id=instance, record_revision=revision,
+                    endpoint=endpoint, input=encoded, assert_dispatch=guard,
+                    mark_dispatch_possible=mark_dispatch_possible,
+                ))
+            except NativeProviderPrepareUnavailable:
+                guard()
+                if not dispatch_possible:
+                    return None
+                raise GlobalContractInvocationError(
+                    "provider_unavailable", "local provider dispatch is unconfirmed",
+                ) from None
+            except NativeSavedLocalChatFailure as error:
+                guard()
+                code, message = {
+                    "denied": ("denied", "local provider authorization changed"),
+                    "invalid": ("invalid_request", "local provider request is invalid"),
+                    "invalid-response": ("invalid_response", "local provider response is too large"),
+                }.get(error.code, ("provider_unavailable", "local provider is unavailable"))
+                raise GlobalContractInvocationError(code, message) from None
+            except PermissionError:
+                raise
+            except (OSError, RuntimeError):
+                raise GlobalContractInvocationError(
+                    "provider_unavailable", "local provider is unavailable",
+                ) from None
+            guard()
+            if not dispatch_possible or type(result) is not bytes:
+                raise AuthorityDenied("local provider result is not confirmed")
+            return result
 
         def dispatch_bounded(
             self,
@@ -6578,6 +6821,14 @@ def capture_production_dispatch(
             SAVED_ORCHESTRATION_MINIMUM_MEMORY,
             lambda context, _: context.target_domain_id == native_saved_execution.domain_id,
         ))
+    native_admission_rules.extend(
+        (
+            route.adapter.resolved_binding,
+            SAVED_LOCAL_CHAT_MINIMUM_MEMORY,
+            is_native_saved_local_chat_route,
+        )
+        for route in saved_local_chat_routes.values()
+    )
     if native_model_save_key is not None and native_model_save_edge is not None:
         native_admission_rules.append((
             native_model_save_edge.resolved_binding,
@@ -7354,7 +7605,8 @@ def capture_production_dispatch(
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
-                or native_saved_append_key is not None or native_saved_execution is not None)
+                or native_saved_append_key is not None or native_saved_execution is not None
+                or saved_local_chat_routes)
             else None
         ),
     )

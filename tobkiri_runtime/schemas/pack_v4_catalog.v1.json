@@ -18402,7 +18402,7 @@
             {
               "entrypoint_id": "provider-audio-speech",
               "id": "rumi_provider_adapters_pack.provider-audio-speech",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -18438,7 +18438,7 @@
             {
               "entrypoint_id": "provider-audio-transcribe",
               "id": "rumi_provider_adapters_pack.provider-audio-transcribe",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -18474,7 +18474,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -18510,7 +18510,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -18546,7 +18546,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -18582,7 +18582,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+              "implementation_digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -18634,7 +18634,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8",
+          "digest": "sha256:141c6a3d443d976e796f82db31927a0e0e0f077550d8c43988e871596855c335",
           "kind": "executable",
           "path": "runtime/adapter.py"
         },
@@ -18668,7 +18668,7 @@
         "owner": "rumi_provider_adapters_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.2",
+      "version": "1.0.3",
       "workspace_boundary": "host_brokered"
     },
     {

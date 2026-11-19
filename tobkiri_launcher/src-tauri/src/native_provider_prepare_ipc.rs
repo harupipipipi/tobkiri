@@ -1190,7 +1190,7 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
-            Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "limit-exceeded"),
+            Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "invalid-response"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
                 (TURN_START_REPLY_LIMIT, "unavailable")
             }
@@ -1217,9 +1217,10 @@ impl ReplyRole {
                 Some(OriginalLocalChatError::Transport(
                     Transport::Deadline | Transport::Revoked,
                 )) => "cancelled",
-                Some(OriginalLocalChatError::Transport(
-                    Transport::ResponseTooLarge | Transport::Capacity,
-                )) => "limit-exceeded",
+                Some(OriginalLocalChatError::Transport(Transport::ResponseTooLarge)) => {
+                    "invalid-response"
+                }
+                Some(OriginalLocalChatError::Transport(Transport::Capacity)) => "limit-exceeded",
                 Some(
                     OriginalLocalChatError::Transport(Transport::Unavailable)
                     | OriginalLocalChatError::RegistryUnavailable,
@@ -2057,7 +2058,7 @@ mod tests {
         result.push(0);
         assert_eq!(
             role.validate_result(dispatched, &result),
-            Err("limit-exceeded")
+            Err("invalid-response")
         );
         for unpermitted in [WireAuthority::AwaitingLive, WireAuthority::Live] {
             assert_eq!(role.validate_result(unpermitted, b"{}"), Err("unavailable"));
@@ -2077,7 +2078,7 @@ mod tests {
             ),
             (
                 OriginalLocalChatError::from(Transport::ResponseTooLarge).into(),
-                "limit-exceeded",
+                "invalid-response",
             ),
             (
                 OriginalLocalChatError::RegistryUnavailable.into(),

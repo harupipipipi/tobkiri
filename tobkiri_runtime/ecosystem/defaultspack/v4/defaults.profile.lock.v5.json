@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:7eaece559ded794eb2213f3e9db5ba55450cca21e1bb9db8803fe50e252455ab",
   "profile_definition_digest": "sha256:913b43a5abda80727d3bc47661fcb24abe7a0f80420acfebb3fbe9718dbda3b7",
-  "catalog_revision": "sha256:7e5e96f95e826fdd6b9d2642753bb78c4ee56b94f23c734f240e31c9d5ddda9c",
-  "bundle_digest": "sha256:b72773d1096e79ea1e52dcb0e0054032118b13d1b61dfdf84e6ba6f56205dd50",
+  "catalog_revision": "sha256:2e368788b33ec9816f3adbe573896a17988924fe8d1ecd2468bf28ebb9a3e9af",
+  "bundle_digest": "sha256:b8a99beaf2df22c2eeea8a8e2a1fe4aa871de1ecd4c53b1d0299d540c4d9c32e",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -113,7 +113,7 @@
     {
       "role": "pack",
       "identity": "rumi_provider_adapters_pack",
-      "artifact_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598"
+      "artifact_digest": "sha256:72be8c374f5c9aa7a516d455cacc48f75b55075fbb266a8b3049d73e35bd9768"
     },
     {
       "role": "pack",
@@ -1020,8 +1020,8 @@
     },
     {
       "pack_id": "rumi_provider_adapters_pack",
-      "artifact_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598",
-      "executable_catalog_digest": "sha256:f4a1fc7b78e127eba8ba1ca4f2503784093a36ab6ae29fe68e7d63f24139fc98",
+      "artifact_digest": "sha256:72be8c374f5c9aa7a516d455cacc48f75b55075fbb266a8b3049d73e35bd9768",
+      "executable_catalog_digest": "sha256:caf1258e72c0463c79cc8aea5ecb61b0e9d5f452644445e148cd7b75916bcdca",
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_speech.python",
       "platform": "any",
       "architecture": "any",
@@ -1032,8 +1032,8 @@
     },
     {
       "pack_id": "rumi_provider_adapters_pack",
-      "artifact_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598",
-      "executable_catalog_digest": "sha256:f4a1fc7b78e127eba8ba1ca4f2503784093a36ab6ae29fe68e7d63f24139fc98",
+      "artifact_digest": "sha256:72be8c374f5c9aa7a516d455cacc48f75b55075fbb266a8b3049d73e35bd9768",
+      "executable_catalog_digest": "sha256:caf1258e72c0463c79cc8aea5ecb61b0e9d5f452644445e148cd7b75916bcdca",
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe.python",
       "platform": "any",
       "architecture": "any",
@@ -1044,8 +1044,8 @@
     },
     {
       "pack_id": "rumi_provider_adapters_pack",
-      "artifact_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598",
-      "executable_catalog_digest": "sha256:f4a1fc7b78e127eba8ba1ca4f2503784093a36ab6ae29fe68e7d63f24139fc98",
+      "artifact_digest": "sha256:72be8c374f5c9aa7a516d455cacc48f75b55075fbb266a8b3049d73e35bd9768",
+      "executable_catalog_digest": "sha256:caf1258e72c0463c79cc8aea5ecb61b0e9d5f452644445e148cd7b75916bcdca",
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.generate.python",
       "platform": "any",
       "architecture": "any",
@@ -1056,8 +1056,8 @@
     },
     {
       "pack_id": "rumi_provider_adapters_pack",
-      "artifact_digest": "sha256:87b46b92d8f2330ca1d747061b764819063ec0935ef1b3d0f6a91429018d7598",
-      "executable_catalog_digest": "sha256:f4a1fc7b78e127eba8ba1ca4f2503784093a36ab6ae29fe68e7d63f24139fc98",
+      "artifact_digest": "sha256:72be8c374f5c9aa7a516d455cacc48f75b55075fbb266a8b3049d73e35bd9768",
+      "executable_catalog_digest": "sha256:caf1258e72c0463c79cc8aea5ecb61b0e9d5f452644445e148cd7b75916bcdca",
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python",
       "platform": "any",
       "architecture": "any",
@@ -1753,7 +1753,7 @@
   ],
   "requested_edges_digest": "sha256:4542158e15158f6ca91a84040bb45fd069dd6aaaa9e653c1a1e1a0eef9c0a10c",
   "constraints_digest": "sha256:1e883ee47c8d39d17eb13884f34b1d9fe2c86f788071449a67cbe78d551d98b0",
-  "closure_digest": "sha256:a1cd47b2d21f5f193aac78eff735021a349d998f404733638e4608feaf70ea16",
+  "closure_digest": "sha256:27050e9cd5732fc8bd2d71acd2717104f065ac2ce5d37259b946b11f1bafa176",
   "provenance_digest": "sha256:0fec5131e74f54cc25e4d2c477b487038c6ad90a9ece5c5415c9a3e7baac839f",
-  "lock_digest": "sha256:3b2a169b1c7d835afbaee212acead78c8f10568dcd6c0f91aa53e3c60b78aa1c"
+  "lock_digest": "sha256:a980c176478493b7a5ef76d8028e83d6e3ca5e49e87ff3cae57147ec937628a5"
 }

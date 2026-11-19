@@ -1248,6 +1248,8 @@ class _Exchange:
             else _LEGACY_READ_FAILURE
         )
         self.failure_codes = _FAILURES
+        if permits_dispatch:
+            self.failure_codes |= {b"invalid-response"}
         if not requires_body_ready:
             self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
