@@ -1939,6 +1939,9 @@ mod tests {
         assert!(chat.project_response);
         assert!(chat.compile_request);
         assert_eq!(chat.validate(), Ok(()));
+        let mut missing_projection = chat;
+        missing_projection.project_response = false;
+        assert_eq!(missing_projection.validate(), Err("invalid"));
         for (key, value) in [
             ("role", json!("shell")),
             ("record_revision", json!(true)),
@@ -2101,6 +2104,12 @@ mod tests {
         for unpermitted in [WireAuthority::AwaitingLive, WireAuthority::Live] {
             assert_eq!(role.validate_result(unpermitted, b"{}"), Err("unavailable"));
         }
+        let declined = anyhow::Error::new(SavedLocalChatRequiresLegacyRequest);
+        assert_eq!(
+            role.failure_code(WireAuthority::Live, &declined),
+            "legacy-request"
+        );
+        assert_eq!(role.failure_code(dispatched, &declined), "unavailable");
         for (error, code) in [
             (
                 OriginalLocalChatError::from(Source::SelectionChanged).into(),

@@ -3748,6 +3748,7 @@ def capture_production_dispatch(
                 else None
             )
             self._local_chat_selection: tuple[str, int | None, str] | None = None
+            self._local_chat_source_attempted = False
             self._local_chat_attempted = False
 
         @property
@@ -3999,10 +4000,13 @@ def capture_production_dispatch(
                 or connection.get("provider_instance_id") != selection[0]
                 or connection.get("endpoint") != selection[2]
                 or self._local_chat_attempted
+                or (compile_request and self._local_chat_source_attempted)
             ):
                 raise GlobalContractInvocationError(
                     "denied", "local provider connection binding changed",
                 )
+            if compile_request:
+                self._local_chat_source_attempted = True
             instance, revision, endpoint = selection
             if revision is None:
                 # Some older Registry documents predate record revisions.
@@ -4071,10 +4075,10 @@ def capture_production_dispatch(
                         source, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
                     ).encode("utf-8")
                 except (TypeError, ValueError, RecursionError):
+                    encoded = None
+                if encoded is None or len(encoded) > SAVED_LOCAL_CHAT_MAX_INPUT_BYTES:
                     guard()
-                    return None
-                if len(encoded) > SAVED_LOCAL_CHAT_MAX_INPUT_BYTES:
-                    guard()
+                    self._local_chat_attempted = False
                     return None
             try:
                 result = executor(NativeSavedLocalChatRequest(
@@ -4088,6 +4092,10 @@ def capture_production_dispatch(
             except NativeProviderPrepareUnavailable:
                 guard()
                 if not dispatch_possible:
+                    if compile_request:
+                        # The authenticated exchange declined before a permit,
+                        # so offer the compatibility body to the same authority.
+                        self._local_chat_attempted = False
                     return None
                 raise GlobalContractInvocationError(
                     "provider_unavailable", "local provider dispatch is unconfirmed",

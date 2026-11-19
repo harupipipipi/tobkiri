@@ -1058,7 +1058,6 @@ def _local_openai_compatible(
             value = _decode_native_local_response(
                 native_source_post(connection, request, budget[1]),
             )
-        native_post = None
     if value is None:
         body = {
             "model": _provider_model_id(request),

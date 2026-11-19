@@ -7581,8 +7581,11 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         assert request.connection_id == provider_id
         assert request.record_revision == 2
         assert request.endpoint == endpoint
-        assert request.compile_request is native_source
-        if native_source:
+        expecting_source = native_source and (
+            outcome != "legacy-denied" or len(native_calls) == 1
+        )
+        assert request.compile_request is expecting_source
+        if expecting_source:
             keys = {"model_id", "provider_id", "messages", "parameters", "tools"}
             expected_input = {
                 key: value for key, value in _thaw_payload(adapter.payload).items()
@@ -7599,7 +7602,9 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             expected_input, ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")
         request.assert_current()
-        if outcome == "denied":
+        if outcome == "legacy-denied" and request.compile_request:
+            raise ipc.NativeProviderPrepareUnavailable("fixture compiler declined before dispatch")
+        if outcome in {"denied", "legacy-denied"}:
             raise ipc.NativeSavedLocalChatFailure("denied")
         request.assert_dispatch()
         request.mark_dispatch_possible()
@@ -7699,14 +7704,17 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             )
             return status, result
 
-        for role, outcome in (
+        cases = [
             ("generate", "success"),
             ("stream", "success"),
             ("generate", "projected"),
             ("stream", "projected"),
             ("generate", "denied"),
             ("stream", "unconfirmed"),
-        ):
+        ]
+        if native_source:
+            cases.append(("generate", "legacy-denied"))
+        for role, outcome in cases:
             parents.clear()
             adapter_calls.clear()
             adapter_results.clear()
@@ -7727,8 +7735,10 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 "tool_selection": {"mode": "none"},
             }
             status, result = post(turn)
-            assert len(native_calls) == len(adapter_calls) == 1, result
-            assert len(permitted_posts) == (0 if outcome == "denied" else 1)
+            expected_native_calls = 2 if outcome == "legacy-denied" else 1
+            assert len(native_calls) == expected_native_calls, result
+            assert len(adapter_calls) == 1, result
+            assert len(permitted_posts) == (0 if outcome in {"denied", "legacy-denied"} else 1)
             assert not legacy_connections
             with pytest.raises((AuthorityDenied, PermissionError)):
                 native_calls[0].assert_current()
@@ -7759,7 +7769,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                     for item in store.get(conversation_id)["messages"]
                 ] == [("user", content)]
                 assert not adapter_results
-            assert len(native_calls) == len(adapter_calls) == 1
+            assert len(native_calls) == expected_native_calls
+            assert len(adapter_calls) == 1
             assert not legacy_connections
 
 

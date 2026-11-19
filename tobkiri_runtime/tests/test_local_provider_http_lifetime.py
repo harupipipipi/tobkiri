@@ -394,10 +394,12 @@ def test_local_adapter_uses_the_native_result_without_another_post(
         )
 
 
-def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("raw_native", [False, True])
+def test_local_adapter_source_decline_offers_original_body_to_native(
+    monkeypatch: pytest.MonkeyPatch, raw_native: bool,
 ) -> None:
     deadlines: list[float] = []
+    raw_posts: list[bytes] = []
     posts: list[bytes] = []
 
     class NativeInvocation(_Invocation):
@@ -410,13 +412,21 @@ def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
             assert source["model_id"] == "provider.local/gemma"
             deadlines.append(deadline)
 
-        def post_saved_local_chat(self, *_args: Any) -> None:
-            pytest.fail("source decline offered a second request to the Launcher")
+        def post_saved_local_chat(
+            self, connection: dict[str, Any], body: bytes, deadline: float,
+        ) -> bytes | None:
+            assert connection["endpoint"] == self.endpoint
+            assert deadlines == [deadline]
+            deadlines.append(deadline)
+            raw_posts.append(body)
+            if raw_native:
+                return b'{"choices":[{"message":{"content":"native raw"}}]}'
+            return None
 
     original_lifetime = adapter.HttpRequestLifetime
 
     def observe_lifetime(*, deadline: float, **kwargs: Any) -> Any:
-        assert deadlines == [deadline]
+        assert deadlines == [deadline, deadline]
         return original_lifetime(deadline=deadline, **kwargs)
 
     class Connection(http.client.HTTPConnection):
@@ -424,6 +434,7 @@ def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
             self, method: str, url: str, body: bytes = b"",
             headers: dict[str, str] | None = None,
         ) -> None:
+            assert not raw_native
             posts.append(body)
             super().request(method, url, body, headers or {})
 
@@ -433,7 +444,7 @@ def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
         invocation = NativeInvocation(
             endpoint, cancellation=threading.Event(), deadline=time.monotonic() + 5,
         )
-        _captured_invoke()(
+        result = _captured_invoke()(
             "fixture.operation",
             _request(
                 model_id="provider.local/gemma", provider_id="provider.local",
@@ -442,32 +453,41 @@ def test_local_adapter_source_decline_uses_one_original_post_and_deadline(
             ),
             invocation,
         )
-    assert len(deadlines) == 1
-    assert posts == [
-        ('{"model":"gemma","messages":[{"role":"user","content":"日本語"}],'
-         '"stream":false,"max_tokens":16}').encode(),
-    ]
+    assert len(deadlines) == 2
+    expected_body = (
+        '{"model":"gemma","messages":[{"role":"user","content":"日本語"}],'
+        '"stream":false,"max_tokens":16}'
+    ).encode()
+    assert raw_posts == [expected_body]
+    assert posts == ([] if raw_native else [expected_body])
+    assert result["output"] == ("native raw" if raw_native else "")
 
 
-@pytest.mark.parametrize("failure", ["deadline", "body", "native", "bad-response"])
+@pytest.mark.parametrize(
+    "failure", ["deadline", "body", "native", "bad-response", "raw-denied"],
+)
 def test_local_adapter_source_errors_never_start_python_transport(
     monkeypatch: pytest.MonkeyPatch, failure: str,
 ) -> None:
-    posts: list[bool] = []
+    posts: list[str] = []
 
     class NativeInvocation(_Invocation):
         supports_saved_local_chat_request_compilation = True
 
         def post_saved_local_chat_source(
             self, connection: dict[str, Any], source: dict[str, Any], deadline: float,
-        ) -> bytes:
-            posts.append(True)
+        ) -> bytes | None:
+            posts.append("source")
             if failure == "native":
                 raise GlobalContractInvocationError("denied", "native denied")
+            if failure == "raw-denied":
+                return None
             return b"not JSON"
 
         def post_saved_local_chat(self, *_args: Any) -> None:
-            pytest.fail("source failure reached raw native path")
+            assert failure == "raw-denied"
+            posts.append("raw")
+            raise GlobalContractInvocationError("denied", "Registry changed")
 
     def unexpected_connection(*_args: Any, **_kwargs: Any) -> None:
         pytest.fail("source failure reached Python HTTP")
@@ -491,8 +511,15 @@ def test_local_adapter_source_errors_never_start_python_transport(
             "deadline": "invalid_request",
             "native": "denied",
             "bad-response": "invalid_response",
+            "raw-denied": "denied",
         }[failure]
-    assert bool(posts) is (failure in ("native", "bad-response"))
+    assert posts == {
+        "deadline": [],
+        "body": [],
+        "native": ["source"],
+        "bad-response": ["source"],
+        "raw-denied": ["source", "raw"],
+    }[failure]
 
 
 def test_local_timeout_cap_is_one_budget_across_headers_and_body(
