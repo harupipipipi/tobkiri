@@ -209,11 +209,11 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             .context("instantiate verified native read-only component")?;
         ensure_active(store.data_mut())?;
         let function = instance
-            .get_func(&mut *store, &export)
+            .get_func(&mut *store, export)
             .context("native read-only function export is missing")?;
         let next = if let Some((export, signature)) = next_export.zip(next_signature) {
             let function = instance
-                .get_func(&mut *store, &export)
+                .get_func(&mut *store, export)
                 .context("native read-only function export is missing")?;
             Some(ReadOnlyOperation {
                 function,
