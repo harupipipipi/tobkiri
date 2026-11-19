@@ -2817,6 +2817,14 @@ mod tests {
         let reply = decode_conversation_read_reply(output, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
         assert!(reply.document.is_none());
+        let linked = serde_json::json!({
+            "owner_result": owner,
+            "parent_read": r#"{"conversation":{"messages":["private parent history"]}}"#,
+        });
+        let output =
+            CoreValue::parse_guest(&serde_json::to_vec(&linked).unwrap(), &budget).unwrap();
+        let reply = decode_conversation_read_reply(output, &budget).unwrap();
+        assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
     }
 
     #[test]

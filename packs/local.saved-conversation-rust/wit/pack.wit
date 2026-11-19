@@ -24,8 +24,9 @@ interface legacy-read {
 interface legacy-linked-context {
   use tobkiri:core/types@1.2.0.{json, error};
 
-  /// Read a conversation and the context of its stored parent from one
-  /// snapshot of the authenticated Profile. Parent history is excluded.
+  /// Read a conversation and its inherited context from one snapshot of the
+  /// authenticated Profile. The parent owner reply is private Host data for
+  /// its separately authorized read.
   get: func(document: option<string>, conversation-id: string) -> result<json, error>;
 }
 

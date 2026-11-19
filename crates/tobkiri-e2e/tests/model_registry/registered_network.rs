@@ -306,6 +306,7 @@ struct LiveConversationFixture<'a> {
 enum OriginalConversationLookup {
     Conversation,
     LinkedContext,
+    LinkedParentRead,
     SavedReceipt,
 }
 
@@ -367,6 +368,10 @@ impl<'a> LiveConversationFixture<'a> {
         ensure!(pack.hash == self.pin.sha256);
         let outcome: Result<String> = async {
             let profile_id = self.profile.as_str();
+            let result_key = match lookup {
+                OriginalConversationLookup::LinkedParentRead => "parent_read",
+                _ => "owner_result",
+            };
             let result = match lookup {
                 OriginalConversationLookup::Conversation => {
                     tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
@@ -374,7 +379,8 @@ impl<'a> LiveConversationFixture<'a> {
                         .get_legacy_conversation(&pack, &self.data, profile_id, id)
                         .await?
                 }
-                OriginalConversationLookup::LinkedContext => {
+                OriginalConversationLookup::LinkedContext
+                | OriginalConversationLookup::LinkedParentRead => {
                     tobkiri_wasm::verify_legacy_conversation_linked_context_declaration(&pack)?;
                     inspection
                         .get_legacy_linked_conversation_context(&pack, &self.data, profile_id, id)
@@ -388,7 +394,7 @@ impl<'a> LiveConversationFixture<'a> {
                 }
             };
             let wire = result
-                .get_key("owner_result")
+                .get_key(result_key)
                 .context("missing Conversation owner result")?;
             let wire = wire
                 .as_str()
@@ -445,6 +451,13 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
                 .await?,
         )?;
         ensure!(result["conversation"] == live.get("child").await?["conversation"]);
+        ensure!(
+            live.lookup("child", OriginalConversationLookup::LinkedParentRead)
+                .await?
+                == live
+                    .lookup("parent", OriginalConversationLookup::Conversation)
+                    .await?
+        );
         ensure!(
             result["parent_context"]
                 == json!({

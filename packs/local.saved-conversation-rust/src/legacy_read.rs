@@ -34,8 +34,8 @@ pub(super) fn get(
     owner_reply("conversation", conversation)
 }
 
-/// Return the child and just the context fields of its persisted parent from
-/// one owner snapshot. The parent ID never comes from the caller.
+/// Project the child's persisted context and prepare the original parent reply
+/// for a separately authorized owner read of the same snapshot.
 pub(super) fn get_linked(
     profile: &str,
     document: Option<&str>,
@@ -48,23 +48,20 @@ pub(super) fn get_linked(
         return Err(ReadError::InvalidDocument);
     }
     let link = context_parent_id(&child).map_err(|_| ReadError::InvalidDocument)?;
-    let parent = if let Some(parent_id) = link {
-        let parent = field(&mut conversations, parent_id)
-            .filter(|row| row.as_object().is_some())
-            .ok_or(ReadError::NotFound)?;
+    let (parent, parent_read) = if let Some(parent_id) = link {
+        let parent = take_conversation(&mut conversations, parent_id)?;
         if parent.get("id").and_then(PyValue::as_str) != Some(parent_id)
-            || context_parent_id(parent)
+            || context_parent_id(&parent)
                 .map_err(|_| ReadError::InvalidDocument)?
                 .is_some()
         {
             return Err(ReadError::InvalidDocument);
         }
-        // A normal get normalizes non-object metadata to an empty object.
         let metadata = parent
             .get("metadata")
             .and_then(PyValue::as_object)
             .unwrap_or_default();
-        let mut projection = inherited_fields(parent, metadata);
+        let mut projection = inherited_fields(&parent, metadata);
         projection.push(("id".into(), PyValue::String(parent_id.into())));
         projection.push((
             "conversation_revision".into(),
@@ -73,15 +70,23 @@ pub(super) fn get_linked(
                 .cloned()
                 .unwrap_or(PyValue::Null),
         ));
-        PyValue::Object(projection)
+        let parent_read = match dumps_bounded(&owner_fields("conversation", parent), MAX_BYTES) {
+            Ok(bytes) => Some(bytes),
+            Err(CodecError::ByteLimit | CodecError::NodeLimit) => None,
+            Err(error) => return Err(output_error(error)),
+        };
+        (PyValue::Object(projection), parent_read)
     } else {
-        PyValue::Null
+        (PyValue::Null, None)
     };
     drop(conversations);
-    encode_owner_reply(PyValue::Object(vec![
-        ("conversation".into(), child),
-        ("parent_context".into(), parent),
-    ]))
+    encode_owner_reply(
+        PyValue::Object(vec![
+            ("conversation".into(), child),
+            ("parent_context".into(), parent),
+        ]),
+        parent_read,
+    )
 }
 
 fn read_conversations(
@@ -147,13 +152,31 @@ pub(super) fn saved_receipt(
 }
 
 fn owner_reply(field: &str, value: PyValue) -> Result<String, ReadError> {
-    encode_owner_reply(PyValue::Object(vec![(field.into(), value)]))
+    encode_owner_reply(owner_fields(field, value), None)
 }
 
-fn encode_owner_reply(owner: PyValue) -> Result<String, ReadError> {
+fn owner_fields(field: &str, value: PyValue) -> PyValue {
+    PyValue::Object(vec![(field.into(), value)])
+}
+
+fn encode_owner_reply(owner: PyValue, parent_read: Option<String>) -> Result<String, ReadError> {
     let owner = dumps_bounded(&owner, MAX_BYTES).map_err(output_error)?;
-    let reply = PyValue::Object(vec![("owner_result".into(), PyValue::String(owner))]);
-    dumps_bounded(&reply, MAX_BYTES).map_err(output_error)
+    let mut fields = vec![("owner_result".into(), PyValue::String(owner))];
+    if let Some(parent_read) = parent_read {
+        // The fixed envelope is larger than a stand-alone parent GET, so
+        // fitting it also proves the parent's escaped output fits that GET.
+        fields.push(("parent_read".into(), PyValue::String(parent_read)));
+        let reply = PyValue::Object(fields);
+        match dumps_bounded(&reply, MAX_BYTES) {
+            Ok(bytes) => return Ok(bytes),
+            Err(CodecError::ByteLimit | CodecError::NodeLimit) => {
+                fields = reply.into_object().ok_or(ReadError::Internal)?;
+                fields.pop();
+            }
+            Err(error) => return Err(output_error(error)),
+        }
+    }
+    dumps_bounded(&PyValue::Object(fields), MAX_BYTES).map_err(output_error)
 }
 
 /// Serialize an old owner document with CPython's recursively sorted keys

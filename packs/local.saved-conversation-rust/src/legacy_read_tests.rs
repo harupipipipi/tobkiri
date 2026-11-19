@@ -58,9 +58,14 @@ fn linked_rows() -> Value {
 #[test]
 fn linked_read_preserves_the_child_and_projects_only_inherited_parent_fields() {
     let raw = document(&linked_rows().to_string());
-    let paired = owner(&get_linked(PROFILE, Some(&raw), " child ").unwrap());
+    let candidate = loads(&get_linked(PROFILE, Some(&raw), " child ").unwrap()).unwrap();
+    assert_eq!(
+        candidate.get("parent_read").and_then(PyValue::as_str),
+        Some(owner(&get(PROFILE, Some(&raw), "parent").unwrap()).as_str()),
+    );
+    let paired = candidate.get("owner_result").unwrap().as_str().unwrap();
     let single = owner(&get(PROFILE, Some(&raw), "child").unwrap());
-    let paired: Value = serde_json::from_str(&paired).unwrap();
+    let paired: Value = serde_json::from_str(paired).unwrap();
     let single: Value = serde_json::from_str(&single).unwrap();
     assert_eq!(paired["conversation"], single["conversation"]);
     assert_eq!(
@@ -139,6 +144,19 @@ fn linked_read_checks_profile_and_both_reply_limits() {
         get_linked(PROFILE, Some(&raw), "child"),
         Err(ReadError::LegacyCodec)
     );
+
+    let mut rows = linked_rows();
+    rows["parent"]["content"] = json!("\"".repeat(MAX_BYTES / 4));
+    let raw = document(&rows.to_string());
+    assert!(raw.len() < MAX_BYTES);
+    assert_eq!(
+        get(PROFILE, Some(&raw), "parent"),
+        Err(ReadError::LegacyCodec)
+    );
+    let reply = get_linked(PROFILE, Some(&raw), "child").unwrap();
+    assert!(loads(&reply).unwrap().get("parent_read").is_none());
+    let projection: Value = serde_json::from_str(&owner(&reply)).unwrap();
+    assert_eq!(projection["parent_context"]["id"], "parent");
 }
 
 #[test]

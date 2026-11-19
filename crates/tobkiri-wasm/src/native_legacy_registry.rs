@@ -686,10 +686,15 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             let owner = reply
                 .get_key("owner_result")
                 .context("missing legacy owner result")?;
+            let CoreRef::Obj(fields) = reply.inspect() else {
+                bail!("legacy owner result differs");
+            };
+            let valid_fields = fields.len() == 1
+                || (export.shape == CONVERSATION_LINKED_CONTEXT.shape
+                    && fields.len() == 2
+                    && fields.get("parent_read").is_some_and(owner_json));
             ensure!(
-                matches!(reply.inspect(), CoreRef::Obj(fields) if fields.len() == 1)
-                    && matches!(owner.inspect(), CoreRef::Str(value)
-                        if value.starts_with('{') && value.ends_with('}')),
+                valid_fields && owner_json(owner),
                 "legacy owner result differs"
             );
         }
@@ -870,6 +875,10 @@ fn returns_owner_result(export: &RegistryExport) -> bool {
         MODEL_RESOLVE.shape,
     ]
     .contains(&export.shape)
+}
+
+fn owner_json(value: CoreValue) -> bool {
+    matches!(value.inspect(), CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}'))
 }
 
 fn optional_document(document: Option<&str>, owners: &crate::AllocationOwners) -> Result<Val> {
