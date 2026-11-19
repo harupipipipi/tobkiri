@@ -98,6 +98,16 @@ const PROVIDER_SNAPSHOT: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const PROVIDER_HEALTH: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
+    shape: "local.provider-registry.legacy-health@1.0",
+    interface: "local:provider-registry/legacy-health@1.0.0",
+    function: "health",
+    error_subject: "legacy Provider Registry health",
+    parameters: &["document"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const MODEL_ACCESS_PROJECTION: RegistryExport = RegistryExport {
     pack: PROVIDER_PACK,
     shape: "local.provider-registry.model-access-projection@1.0",
@@ -209,7 +219,7 @@ enum RegistryInput<'a> {
         document: Option<&'a str>,
         request: &'a str,
     },
-    ModelList(Option<&'a str>),
+    DocumentOnly(Option<&'a str>),
     DocumentLookup {
         document: Option<&'a str>,
         identifier: &'a str,
@@ -438,6 +448,22 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         .await
     }
 
+    /// Project health from the original Provider Registry without guest I/O.
+    pub async fn read_legacy_provider_health(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &PROVIDER_HEALTH,
+            RegistryInput::DocumentOnly(document),
+        )
+        .await
+    }
+
     /// Apply one Model Access phase to the native caller's physical Registry observation.
     pub async fn project_legacy_provider_model_access(
         &mut self,
@@ -467,7 +493,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             pack,
             profile_id,
             &MODEL_LIST,
-            RegistryInput::ModelList(document),
+            RegistryInput::DocumentOnly(document),
         )
         .await
     }
@@ -650,7 +676,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .last()
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
-            RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
+            RegistryInput::DocumentOnly(_) => optional_string(&function.params[0].1),
             RegistryInput::ModelSave { .. }
             | RegistryInput::ProviderSnapshot { .. }
             | RegistryInput::ModelAccessProjection { .. }
@@ -694,7 +720,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             verify_registry_export(engine, &component, &original.params, &CONVERSATION_GET)?;
         }
         let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
-        let model_parameters;
+        let document_parameters;
         let two_parameters;
         let without_plan;
         let with_plan;
@@ -719,9 +745,9 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 };
                 (values, Some(read))
             }
-            RegistryInput::ModelList(document) => {
-                model_parameters = [optional_document(document, &owners)?];
-                (&model_parameters, None)
+            RegistryInput::DocumentOnly(document) => {
+                document_parameters = [optional_document(document, &owners)?];
+                (&document_parameters, None)
             }
             RegistryInput::ProviderSnapshot {
                 document,

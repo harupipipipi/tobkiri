@@ -689,6 +689,18 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
     const SETTINGS: &str = include_str!(
         "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-evidence-and-ui-time-projection/actions/host-ui-projection.result.json"
     );
+    const HEALTH: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-evidence-and-ui-time-projection/actions/health-verified.result.json"
+    );
+    const UNVERIFIED_DOCUMENT: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-unverified-and-invalid-time/actions/health-unverified.store-before.json"
+    );
+    const UNVERIFIED_HEALTH: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-unverified-and-invalid-time/actions/health-unverified.result.json"
+    );
+    const INVALID_HEALTH_DOCUMENT: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-verified-invalid-time/actions/health-verified-invalid-time.store-before.json"
+    );
     const RELATIVE: &str =
         "packs/rumi_provider_registry_pack/profiles/defaults/provider_registry.store.json";
     let directory = physical_temp()?;
@@ -704,7 +716,13 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
         .source
         .strip_prefix("file:")
         .context("Pack file")?;
-    let read = |profile: &'static str, settings| {
+    #[derive(Clone, Copy)]
+    enum View {
+        Raw,
+        Settings,
+        Health,
+    }
+    let read = |profile: &'static str, view: View| {
         let (core, data, pin, source_root) = (&core, &data, &expected.pin, directory.path());
         async move {
             let mut inspection =
@@ -714,10 +732,24 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
                 let length = file.metadata()?.len();
                 let pack = inspection.verify_pack_archive(&mut file, length)?;
                 ensure!(pack.hash == pin.sha256);
-                tobkiri_wasm::verify_legacy_provider_snapshot_declaration(&pack)?;
-                Ok(inspection
-                    .read_legacy_provider_snapshot(&pack, data, profile, settings)
-                    .await?)
+                Ok(match view {
+                    View::Raw | View::Settings => {
+                        tobkiri_wasm::verify_legacy_provider_snapshot_declaration(&pack)?;
+                        inspection
+                            .read_legacy_provider_snapshot(
+                                &pack,
+                                data,
+                                profile,
+                                matches!(view, View::Settings),
+                            )
+                            .await?
+                    }
+                    View::Health => {
+                        inspection
+                            .read_legacy_provider_health(&pack, data, profile)
+                            .await?
+                    }
+                })
             }
             .await;
             inspection.finish().await?;
@@ -734,11 +766,12 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
         }
     };
 
-    ensure!(read("defaults", true).await? == r#"{"revision":0,"providers":[]}"#);
+    ensure!(read("defaults", View::Settings).await? == r#"{"revision":0,"providers":[]}"#);
+    ensure!(read("defaults", View::Health).await? == r#"{"providers":[]}"#);
     ensure!(!data.join("packs").exists());
     original.write_atomic(RELATIVE, DOCUMENT.as_bytes())?;
     let input: Value = serde_json::from_str(DOCUMENT)?;
-    let raw: Value = serde_json::from_str(&read("defaults", false).await?)?;
+    let raw: Value = serde_json::from_str(&read("defaults", View::Raw).await?)?;
     let records: Vec<_> = input["providers"]
         .as_object()
         .context("fixture records")?
@@ -751,24 +784,45 @@ async fn original_provider_snapshot_reads_physical_owner_with_exact_projection()
             "providers": records,
         })
     );
-    let projected: Value = serde_json::from_str(&read("defaults", true).await?)?;
+    let projected: Value = serde_json::from_str(&read("defaults", View::Settings).await?)?;
     let expected_projection: Value = serde_json::from_str(SETTINGS)?;
     ensure!(projected == expected_projection);
+    let health: Value = serde_json::from_str(&read("defaults", View::Health).await?)?;
+    let expected_health: Value = serde_json::from_str(HEALTH)?;
+    ensure!(health == expected_health);
     ensure!(std::fs::read(data.join(RELATIVE))? == DOCUMENT.as_bytes());
 
-    let other = read("other", false).await?;
+    let other = read("other", View::Raw).await?;
     ensure!(serde_json::from_str::<Value>(&other)?["providers"] == json!([]));
+    ensure!(read("other", View::Health).await? == r#"{"providers":[]}"#);
+
+    original.write_atomic(RELATIVE, UNVERIFIED_DOCUMENT.as_bytes())?;
+    let unverified: Value = serde_json::from_str(&read("defaults", View::Health).await?)?;
+    ensure!(unverified == serde_json::from_str::<Value>(UNVERIFIED_HEALTH)?);
+    original.write_atomic(RELATIVE, INVALID_HEALTH_DOCUMENT.as_bytes())?;
+    let invalid = read("defaults", View::Health)
+        .await
+        .expect_err("verified invalid observation time");
+    ensure!(matches!(
+        invalid.downcast_ref::<NativeArtifactError>(),
+        Some(NativeArtifactError::ProviderRejected(error)) if error.code() == "invalid"
+    ));
+    ensure!(std::fs::read(data.join(RELATIVE))? == INVALID_HEALTH_DOCUMENT.as_bytes());
+
+    original.write_atomic(RELATIVE, DOCUMENT.as_bytes())?;
     let owner_file = data.join(RELATIVE);
     let replaced = owner_file.with_file_name("provider-registry-fixture.json");
     std::fs::rename(&owner_file, &replaced)?;
     std::os::unix::fs::symlink(&replaced, &owner_file)?;
-    let error = read("defaults", false).await.expect_err("owner symlink");
-    ensure!(matches!(
-        error.downcast_ref::<NativeArtifactError>(),
-        Some(NativeArtifactError::Core(CoreError::Store(
-            StoreError::Denied(_)
-        )))
-    ));
+    for view in [View::Raw, View::Health] {
+        let error = read("defaults", view).await.expect_err("owner symlink");
+        ensure!(matches!(
+            error.downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::Core(CoreError::Store(
+                StoreError::Denied(_)
+            )))
+        ));
+    }
     ensure!(std::fs::read(&replaced)? == DOCUMENT.as_bytes());
     Ok(())
 }

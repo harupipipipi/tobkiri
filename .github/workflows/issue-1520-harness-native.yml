@@ -864,6 +864,14 @@ jobs:
             --output "$RUNNER_TEMP/native-registry-packs"
           receipt_sha256="$(shasum -a 256 "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
+      - name: Replay original Provider snapshots and health against the physical Registry
+        env:
+          TOBKIRI_TEST_REGISTRY_PACKS: ${{ runner.temp }}/native-registry-packs
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-read.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test provider_registry \
+              original_provider_snapshot_reads_physical_owner_with_exact_projection -- --ignored --exact
       - name: Replay saved Conversation operations against the physical owner
         env:
           TOBKIRI_TEST_REGISTRY_PACKS: ${{ runner.temp }}/native-registry-packs
@@ -938,6 +946,13 @@ jobs:
           name: native-registry-packs
           path: ${{ runner.temp }}/native-registry-packs/
           if-no-files-found: error
+      - name: Retain native Provider Registry read evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-provider-registry-read
+          path: ${{ runner.temp }}/provider-registry-read.log*
+          if-no-files-found: warn
 
   package-native-setup-dmg:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg }}

@@ -78,13 +78,28 @@ fn legacy_snapshot(
     document: Option<&str>,
     settings_projection: bool,
 ) -> Result<String, Error> {
-    let snapshot = observed_snapshot(profile, document)?;
+    let snapshot = observed_registry(profile, document)?
+        .snapshot()
+        .map_err(source_error)?;
     let reply = if settings_projection {
         provider_connection_snapshot(&snapshot).map_err(source_error)?
     } else {
         snapshot
     };
     encode_owner_reply(&reply)
+}
+
+impl exports::local::provider_registry::legacy_health::Guest for Pack {
+    fn health(document: Option<String>) -> Result<String, Error> {
+        legacy_health(&current_profile()?, document.as_deref())
+    }
+}
+
+fn legacy_health(profile: &str, document: Option<&str>) -> Result<String, Error> {
+    let health = observed_registry(profile, document)?
+        .health()
+        .map_err(source_error)?;
+    encode_owner_reply(&health)
 }
 
 impl exports::local::provider_registry::model_access_projection::Guest for Pack {
@@ -105,7 +120,9 @@ fn project_model_access(
         ));
     }
     let request = loads(request).map_err(codec_error)?;
-    let snapshot = observed_snapshot(profile, document)?;
+    let snapshot = observed_registry(profile, document)?
+        .snapshot()
+        .map_err(source_error)?;
     let result = model_access_projection::project(&snapshot, &request).map_err(source_error)?;
     let reply = match request.get("phase").and_then(PyValue::as_str) {
         Some("policy") => result,
@@ -122,14 +139,16 @@ fn project_model_access(
     encode_owner_reply(&reply)
 }
 
-fn observed_snapshot(profile: &str, document: Option<&str>) -> Result<PyValue, Error> {
-    let mut registry = Registry::new(
+fn observed_registry<'a>(
+    profile: &str,
+    document: Option<&'a str>,
+) -> Result<Registry<ObservedRegistry<'a, 1>, ObservationClock>, Error> {
+    Registry::new(
         &text(profile),
         ObservedRegistry([document].into_iter()),
         ObservationClock,
     )
-    .map_err(source_error)?;
-    registry.snapshot().map_err(source_error)
+    .map_err(source_error)
 }
 
 fn encode_owner_reply(reply: &PyValue) -> Result<String, Error> {

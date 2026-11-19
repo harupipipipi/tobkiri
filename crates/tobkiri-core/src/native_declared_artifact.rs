@@ -95,6 +95,8 @@ pub enum NativeArtifactError {
     ProviderRejected(#[from] LegacyRegistryError),
     #[error("native Provider Registry snapshot failed")]
     ProviderSnapshot(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Provider Registry health read failed")]
+    ProviderHealth(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Model Registry projection failed")]
     ModelSettings(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Model Registry resolution failed")]
@@ -653,6 +655,36 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         snapshot.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
             Err(error) => NativeArtifactError::ProviderSnapshot(error.into()),
+        })
+    }
+
+    /// Project health from the original Profile's physical Provider Registry.
+    /// The trusted caller selects the Profile and verified Pack for this read.
+    pub async fn read_legacy_provider_health(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        if pack.manifest.id.as_str() != "local.provider-registry" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::Provider)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ProviderHealth(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let health = store
+            .read_legacy_provider_health(pack, profile_id, document)
+            .await;
+        self.require_live()?;
+        health.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderHealth(error.into()),
         })
     }
 
