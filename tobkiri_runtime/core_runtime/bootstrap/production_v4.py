@@ -2775,7 +2775,7 @@ def capture_production_dispatch(
     ] = {}
     gateway_health_routes: dict[
         tuple[str, str],
-        tuple[GatewayProviderHealthRole, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]],
+        list[tuple[GatewayProviderHealthRole, bool, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]]],
     ] = {}
     supports_gateway_snapshot = (
         getattr(native_provider_snapshot_reader, "supports_gateway", False) is True
@@ -2783,12 +2783,20 @@ def capture_production_dispatch(
     supports_gateway_health = (
         getattr(native_provider_snapshot_reader, "supports_gateway_health", False) is True
     )
+    supports_side_chat_gateway_health = (
+        getattr(native_provider_snapshot_reader, "supports_side_chat_gateway_health", False)
+        is True
+    )
 
     def capture_gateway_snapshot_routes(
         turn: _CapturedPlanEdge,
         orchestration: _CapturedPlanEdge,
         side_chat: _CapturedPlanEdge | None = None,
     ) -> None:
+        is_side_chat = side_chat is not None
+        supports_health = (
+            supports_side_chat_gateway_health if is_side_chat else supports_gateway_health
+        )
         for role, contract, gateway_kind, call_kind in gateway_roles:
             gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
             gateway = select_original_chat_edge(
@@ -2797,7 +2805,9 @@ def capture_production_dispatch(
             )
             if gateway is None:
                 continue
-            parents = (gateway, orchestration, turn)
+            parents: tuple[_CapturedPlanEdge, ...] = (gateway, orchestration, turn)
+            if side_chat is not None:
+                parents = (*parents, side_chat)
             gateway_callers = {gateway.target.principal_id}
             if supports_gateway_snapshot:
                 operation = f"{_MODEL_PROVIDER_OPERATION}.{call_kind}"
@@ -2806,31 +2816,35 @@ def capture_production_dispatch(
                     gateway_snapshot_routes.setdefault(
                         (gateway.target.principal_id, operation), [],
                     ).append((
-                        role, side_chat is not None, owner,
-                        (*parents, side_chat) if side_chat is not None else parents,
+                        role, is_side_chat, owner, parents,
                     ))
-            if supports_gateway_health and side_chat is None and role in ("generate", "stream"):
+            if supports_health and role in ("generate", "stream"):
                 operation = f"{_PROVIDER_HEALTH_OPERATION}.{call_kind}"
                 health_owner = select_original_chat_edge(
                     gateway_callers, "rumi_provider_registry_pack", _PROVIDER_HEALTH_CONTRACT,
                     operation, _PROVIDER_HEALTH_FUNCTION, EffectClass.PRIVILEGED,
                 )
                 if health_owner is not None:
-                    gateway_health_routes[gateway.target.principal_id, operation] = (
-                        GATEWAY_PROVIDER_HEALTH_ROLES[role], health_owner, parents,
-                    )
+                    gateway_health_routes.setdefault(
+                        (gateway.target.principal_id, operation), [],
+                    ).append((
+                        GATEWAY_PROVIDER_HEALTH_ROLES[is_side_chat, role],
+                        is_side_chat, health_owner, parents,
+                    ))
 
-    if supports_gateway_snapshot or supports_gateway_health:
-        if ordinary_turn_edge is not None and ordinary_orchestration_edge is not None:
-            capture_gateway_snapshot_routes(ordinary_turn_edge, ordinary_orchestration_edge)
-        if (
-            supports_gateway_snapshot and side_chat_edge is not None
-            and side_chat_turn_edge is not None
-            and side_chat_orchestration_edge is not None
-        ):
-            capture_gateway_snapshot_routes(
-                side_chat_turn_edge, side_chat_orchestration_edge, side_chat_edge,
-            )
+    if (
+        (supports_gateway_snapshot or supports_gateway_health)
+        and ordinary_turn_edge is not None and ordinary_orchestration_edge is not None
+    ):
+        capture_gateway_snapshot_routes(ordinary_turn_edge, ordinary_orchestration_edge)
+    if (
+        (supports_gateway_snapshot or supports_side_chat_gateway_health)
+        and side_chat_edge is not None and side_chat_turn_edge is not None
+        and side_chat_orchestration_edge is not None
+    ):
+        capture_gateway_snapshot_routes(
+            side_chat_turn_edge, side_chat_orchestration_edge, side_chat_edge,
+        )
 
     saved_local_chat_routes: dict[str, list[_SavedLocalChatRoute]] = {}
     saved_local_chat_bindings: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
@@ -5471,6 +5485,24 @@ def capture_production_dispatch(
             and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
         )
 
+    def gateway_health_lineage(
+        context: RequestContext,
+        parent: CapturedInvocationScopeV4 | None,
+        operation_id: str,
+    ) -> tuple[GatewayProviderHealthRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
+        for role, side_chat, edge, parents in gateway_health_routes.get(
+            (context.caller_principal.value, operation_id), (),
+        ):
+            ancestors = match_captured_ancestors(parent, parents)
+            if ancestors is None:
+                continue
+            if side_chat and not is_original_side_chat_send(
+                ancestors[-2], ancestors[-1], context.profile_id,
+            ):
+                continue
+            return role, edge, ancestors
+        return None
+
     def native_provider_snapshot_source(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -5509,14 +5541,11 @@ def capture_production_dispatch(
             or caller.context.profile_id != context.profile_id
         ):
             return None
-        health = gateway_health_routes.get((
-            context.caller_principal.value, operation_id,
-        ))
-        if health is not None:
-            health_role, health_edge, parents = health
-            if payload or match_captured_ancestors(parent, parents) is None:
-                return None
-            return health_role, health_edge, parent, None
+        if not payload:
+            health = gateway_health_lineage(context, parent, operation_id)
+            if health is not None:
+                health_role, health_edge, _ = health
+                return health_role, health_edge, parent, None
 
         for role, side_chat, edge, parents in gateway_snapshot_routes.get(
             (context.caller_principal.value, operation_id), (),
@@ -5599,17 +5628,11 @@ def capture_production_dispatch(
 
         ancestors = None
         if role in GATEWAY_PROVIDER_HEALTH_ROLES.values():
-            health = gateway_health_routes.get((
-                context.caller_principal.value, envelope.operation_id,
-            ))
-            if health is None:
+            health = gateway_health_lineage(context, parent, envelope.operation_id)
+            if health is None or envelope.payload:
                 raise AuthorityDenied("native Provider health lineage changed")
-            health_role, health_edge, parents = health
-            ancestors = match_captured_ancestors(parent, parents)
-            if (
-                role != health_role or edge is not health_edge or envelope.payload
-                or ancestors is None
-            ):
+            health_role, health_edge, ancestors = health
+            if role != health_role or edge is not health_edge:
                 raise AuthorityDenied("native Provider health lineage changed")
             chain = (envelope, *ancestors)
             if (
@@ -8192,7 +8215,8 @@ def capture_production_dispatch(
                   for route in routes),
                 *(edge for routes in gateway_snapshot_routes.values()
                   for _, _, edge, _ in routes),
-                *(edge for _, edge, _ in gateway_health_routes.values()),
+                *(edge for routes in gateway_health_routes.values()
+                  for _, _, edge, _ in routes),
                 *(edge for _, edge, _ in projected_snapshot_routes.values()),
                 *(edge for routes in workflow_snapshot_routes.values()
                   for _, edge, _ in routes),

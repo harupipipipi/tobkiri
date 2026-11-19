@@ -134,6 +134,9 @@ pub(crate) struct LockedSavedProviderBundle<'pin, const ROLES: usize, const PINS
     budget: Arc<dyn AllocationBudget>,
 }
 
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+type SavedGatewayRegistryPins<'pin> = (Option<&'pin OriginalRoutePin>, &'pin [OriginalRoutePin; 4]);
+
 /// Locked Pack documents for each Registry read entered from the desktop Shell.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedShellProviderSnapshotBundle<'pin> {
@@ -359,14 +362,18 @@ impl NativeApplicationSources {
         self.ordinary_ai_bundle([Some(choice.pins())], budget)
     }
 
-    /// Capture the signed Bundle documents behind an ordinary Gateway health grant.
+    /// Capture the signed Bundle documents behind one saved Gateway health grant.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn gateway_provider_health_bundle<'pin>(
         &self,
         choice: &'pin OriginalGatewayProviderHealthChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
-        self.ordinary_ai_bundle([Some(choice.pins())], budget)
+    ) -> Result<LockedSavedProviderBundle<'pin, 1, 4>> {
+        self.gateway_registry_bundle(
+            [Some((choice.side_chat(), choice.pins()))],
+            choice.role().is_side_chat(),
+            budget,
+        )
     }
 
     /// Capture one tool-intent normalization chain using the original signed Bundle document pins.
@@ -525,17 +532,29 @@ impl NativeApplicationSources {
         via_side_chat: bool,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedSavedProviderBundle<'pin, 4, 4>> {
-        let mut side_chat = [None, None, None, None];
-        let mut routes = [None, None, None, None];
+        self.gateway_registry_bundle(
+            selections.map(|selection| selection.map(|choice| (choice.side_chat(), choice.pins()))),
+            via_side_chat,
+            budget,
+        )
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn gateway_registry_bundle<'pin, const ROLES: usize>(
+        &self,
+        selections: [Option<SavedGatewayRegistryPins<'pin>>; ROLES],
+        via_side_chat: bool,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedSavedProviderBundle<'pin, ROLES, 4>> {
+        let mut side_chat = [const { None }; ROLES];
+        let mut routes = [const { None }; ROLES];
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
         for ((locked, locked_side), selection) in
             routes.iter_mut().zip(&mut side_chat).zip(selections)
         {
-            let Some(selection) = selection else {
+            let Some((side, pins)) = selection else {
                 continue;
             };
-            let pins = selection.pins();
-            let side = selection.side_chat();
             self.require_saved_provider_callers(side, pins, via_side_chat)?;
             let [turn, orchestration, gateway, registry] = pins;
             *locked = Some([

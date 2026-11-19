@@ -487,12 +487,20 @@ GatewayProviderSnapshotRole = Literal[
     "side-chat-gateway-generate", "side-chat-gateway-stream",
     "side-chat-gateway-quote-generate", "side-chat-gateway-quote-stream",
 ]
-GatewayProviderHealthRole = Literal["gateway-health-generate", "gateway-health-stream"]
+GatewayProviderHealthRole = Literal[
+    "gateway-health-generate", "gateway-health-stream",
+    "side-chat-gateway-health-generate", "side-chat-gateway-health-stream",
+]
+_SIDE_CHAT_GATEWAY_HEALTH_ROLES = (
+    "side-chat-gateway-health-generate", "side-chat-gateway-health-stream",
+)
 GATEWAY_PROVIDER_HEALTH_ROLES: Mapping[
-    Literal["generate", "stream"], GatewayProviderHealthRole
+    tuple[bool, Literal["generate", "stream"]], GatewayProviderHealthRole
 ] = MappingProxyType({
-    "generate": "gateway-health-generate",
-    "stream": "gateway-health-stream",
+    (False, "generate"): "gateway-health-generate",
+    (False, "stream"): "gateway-health-stream",
+    (True, "generate"): "side-chat-gateway-health-generate",
+    (True, "stream"): "side-chat-gateway-health-stream",
 })
 ProjectedProviderSnapshotRole = Literal[
     "shell-settings", "model-save", "model-search", "command-datasource",
@@ -780,6 +788,7 @@ class _LauncherProviderSnapshot:
     supports_model_access: bool
     supports_model_access_projection: bool
     supports_gateway_health: bool = False
+    supports_side_chat_gateway_health: bool = False
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -787,6 +796,8 @@ class _LauncherProviderSnapshot:
              and request.role in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values())
             or (not self.supports_gateway_health
                 and request.role in GATEWAY_PROVIDER_HEALTH_ROLES.values())
+            or (not self.supports_side_chat_gateway_health
+                and request.role in _SIDE_CHAT_GATEWAY_HEALTH_ROLES)
             or (not self.supports_projected
                 and request.role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_query
@@ -807,7 +818,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV, "")
-    if re.fullmatch(r"[1-9]", version) is None:
+    if re.fullmatch(r"[1-9]|10", version) is None:
         return None
     level = int(version)
     launcher = _capture_launcher()
@@ -823,6 +834,7 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
         supports_model_access=level >= 7,
         supports_model_access_projection=level >= 8,
         supports_gateway_health=level >= 9,
+        supports_side_chat_gateway_health=level == 10,
     )
 
 

@@ -223,7 +223,7 @@ impl VerifiedRegistryLaunch {
         let source = self.provider_snapshot.as_ref()?;
         let bundle = match role {
             OriginalProviderSnapshotRole::GatewayHealth(role) => {
-                source.gateway_health[ordinary_gateway_health_slot(role)?].as_ref()?
+                source.gateway_health[role.index()].as_ref()?
             }
             _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
@@ -799,7 +799,7 @@ struct VerifiedProviderAdapterSource {
 struct VerifiedProviderSnapshotSource {
     raw_snapshot_declared: bool,
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
-    gateway_health: [Option<VerifiedOrdinarySavedBundle>; 2],
+    gateway_health: [Option<VerifiedOrdinarySavedBundle>; OriginalSavedLocalChatRole::ALL.len()],
     workflow: VerifiedWorkflowProviderSnapshot,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
@@ -811,15 +811,6 @@ struct VerifiedProviderSnapshotSource {
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
-}
-
-fn ordinary_gateway_health_slot(role: OriginalSavedLocalChatRole) -> Option<usize> {
-    match role {
-        OriginalSavedLocalChatRole::Generate => Some(0),
-        OriginalSavedLocalChatRole::Stream => Some(1),
-        OriginalSavedLocalChatRole::SideChatGenerate
-        | OriginalSavedLocalChatRole::SideChatStream => None,
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -955,7 +946,7 @@ impl VerifiedRegistryLaunch {
         let mut source = VerifiedProviderSnapshotSource {
             raw_snapshot_declared: false,
             gateway: [None, None],
-            gateway_health: [None, None],
+            gateway_health: [const { None }; OriginalSavedLocalChatRole::ALL.len()],
             workflow: VerifiedWorkflowProviderSnapshot::default(),
             shell_settings: None,
             model_save: None,
@@ -973,10 +964,7 @@ impl VerifiedRegistryLaunch {
                 !matches!(role, OriginalProviderSnapshotRole::GatewayHealth(_));
             let bundle = match role {
                 OriginalProviderSnapshotRole::GatewayHealth(role) => {
-                    let Some(slot) = ordinary_gateway_health_slot(role) else {
-                        continue;
-                    };
-                    &mut source.gateway_health[slot]
+                    &mut source.gateway_health[role.index()]
                 }
                 OriginalProviderSnapshotRole::Adapter(role) => {
                     proof.add_test_saved_local_chat_role(role);
@@ -1966,12 +1954,11 @@ impl LaunchActivationObserver<'_> {
             verify_gateway_provider_snapshot_entry(inspection, active, via_side_chat, checkpoint)
         });
         let gateway = [gateway_direct?, gateway_side_chat?];
-        let [health_generate, health_stream] = [
-            OriginalSavedLocalChatRole::Generate,
-            OriginalSavedLocalChatRole::Stream,
-        ]
-        .map(|role| OriginalGatewayProviderHealthChoice::select(active, budget, role));
-        let gateway_health_selections = [health_generate?, health_stream?];
+        let mut gateway_health_selections = [const { None }; OriginalSavedLocalChatRole::ALL.len()];
+        for role in OriginalSavedLocalChatRole::ALL {
+            gateway_health_selections[role.index()] =
+                OriginalGatewayProviderHealthChoice::select(active, budget, role)?;
+        }
         let has_health_grants = gateway_health_selections.iter().any(Option::is_some);
         let has_snapshot_grants = local_chat.is_some()
             || gateway.iter().any(Option::is_some)
@@ -2011,7 +1998,8 @@ impl LaunchActivationObserver<'_> {
                     let raw_snapshot_declared = has_snapshot_grants
                         && observe_provider_snapshot_declaration(&pack)
                             .map_err(io::Error::other)?;
-                    let mut gateway_health = [None, None];
+                    let mut gateway_health =
+                        [const { None }; OriginalSavedLocalChatRole::ALL.len()];
                     if has_health_grants
                         && observe_provider_health_declaration(&pack).map_err(io::Error::other)?
                     {
@@ -4541,7 +4529,7 @@ mod tests {
     #[test]
     fn gateway_health_launch_proof_keeps_saved_roles_and_snapshot_port_independent() {
         use OriginalProviderSnapshotRole::{Gateway, GatewayHealth};
-        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
+        use OriginalSavedLocalChatRole::Generate;
 
         let identity = ExecutionProfileIdentity {
             profile_id: "defaults".into(),
@@ -4558,17 +4546,17 @@ mod tests {
             "catalog",
             gateway,
         );
-        assert!(!older_pack.permits_provider_snapshot(GatewayHealth(Generate)));
         assert!(older_pack.permits_provider_snapshot(gateway));
 
-        for role in [Generate, Stream] {
+        for role in OriginalSavedLocalChatRole::ALL {
+            assert!(!older_pack.permits_provider_snapshot(GatewayHealth(role)));
             let health = GatewayHealth(role);
             let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
                 identity.clone(),
                 "catalog",
                 [health, gateway, Generate.into()],
             );
-            for candidate in [Generate, Stream, SideChatGenerate, SideChatStream] {
+            for candidate in OriginalSavedLocalChatRole::ALL {
                 assert_eq!(
                     proof.permits_provider_snapshot(GatewayHealth(candidate)),
                     candidate == role,

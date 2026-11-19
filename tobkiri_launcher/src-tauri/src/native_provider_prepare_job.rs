@@ -2828,10 +2828,7 @@ mod tests {
                 }),
             )
             .chain([ModelAccessRead, ModelAccessCatalog])
-            .chain([
-                GatewayHealth(OriginalSavedLocalChatRole::Generate),
-                GatewayHealth(OriginalSavedLocalChatRole::Stream),
-            ])
+            .chain(adapter_roles.map(GatewayHealth))
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

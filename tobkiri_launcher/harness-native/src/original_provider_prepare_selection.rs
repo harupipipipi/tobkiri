@@ -1212,6 +1212,24 @@ pub enum OriginalSavedLocalChatRole {
 }
 
 impl OriginalSavedLocalChatRole {
+    /// The ordinary and Side Chat roles in their proof-slot order.
+    pub const ALL: [Self; 4] = [
+        Self::Generate,
+        Self::Stream,
+        Self::SideChatGenerate,
+        Self::SideChatStream,
+    ];
+
+    /// The proof slot associated with this saved entry and operation.
+    pub fn index(self) -> usize {
+        match self {
+            Self::Generate => 0,
+            Self::Stream => 1,
+            Self::SideChatGenerate => 2,
+            Self::SideChatStream => 3,
+        }
+    }
+
     /// Whether the selected Gateway and Provider operations stream their results.
     pub fn is_stream(self) -> bool {
         matches!(self, Self::Stream | Self::SideChatStream)
@@ -1555,7 +1573,7 @@ pub enum OriginalProviderSnapshotRole {
         /// Whether the selected Shell enters Saved Turn through Side Chat.
         side_chat: bool,
     },
-    /// The ordinary saved Gateway's own Provider Registry health grant.
+    /// The saved Gateway's own Provider Registry health grant for this entry.
     GatewayHealth(OriginalSavedLocalChatRole),
     /// The Workflow attempt entry and its exact raw Registry caller.
     Workflow {
@@ -1672,14 +1690,16 @@ impl<'a> OriginalGatewayProviderSnapshotChoice<'a> {
     }
 }
 
-/// The signed ordinary saved chain and the Gateway's separate health grant.
+/// The signed saved entry and the Gateway's separate health grant.
 pub struct OriginalGatewayProviderHealthChoice<'a> {
     _active: &'a OriginalActiveProfile,
+    role: OriginalSavedLocalChatRole,
+    side_chat: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 4],
 }
 
 impl<'a> OriginalGatewayProviderHealthChoice<'a> {
-    /// Select the ordinary Generate or Stream chain and its exact health operation.
+    /// Select the saved Generate or Stream chain and its exact health operation.
     /// Verify all returned pins against the signed Bundle before use.
     pub fn select(
         active: &'a OriginalActiveProfile,
@@ -1687,13 +1707,25 @@ impl<'a> OriginalGatewayProviderHealthChoice<'a> {
         role: OriginalSavedLocalChatRole,
     ) -> Result<Option<Self>> {
         Ok(
-            select_gateway_provider_health_records(active.records(), budget, role)?.map(|pins| {
-                Self {
+            select_gateway_provider_health_records(active.records(), budget, role)?.map(
+                |(side_chat, pins)| Self {
                     _active: active,
+                    role,
+                    side_chat,
                     pins,
-                }
-            }),
+                },
+            ),
         )
+    }
+
+    /// The saved entry and Gateway operation selected by the authenticated Profile.
+    pub fn role(&self) -> OriginalSavedLocalChatRole {
+        self.role
+    }
+
+    /// The original Shell-to-Side Chat grant when entering via Side Chat.
+    pub fn side_chat(&self) -> Option<&OriginalRoutePin> {
+        self.side_chat.as_ref()
     }
 
     /// Ordered grants to Turn, Saved Orchestration, Gateway, and Registry health.
@@ -2365,7 +2397,7 @@ fn select_model_resolve_records(
     Ok(pins)
 }
 
-type GatewayProviderSnapshotPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
+type SavedGatewayChildPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
 
 type WorkflowProviderSnapshotSelection = (
     [Option<OriginalRoutePin>; OriginalWorkflowSnapshotEntry::ALL.len()],
@@ -2426,7 +2458,44 @@ fn select_gateway_provider_snapshot_records(
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalModelResolveRole,
     via_side_chat: bool,
-) -> Result<Option<GatewayProviderSnapshotPins>> {
+) -> Result<Option<SavedGatewayChildPins>> {
+    let registry = match role {
+        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+            &PROVIDER_READ_GENERATE
+        }
+        OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+            &PROVIDER_READ_STREAM
+        }
+    };
+    select_saved_gateway_registry_records(
+        active,
+        budget,
+        via_side_chat,
+        role.gateway_route(),
+        registry,
+    )
+}
+
+fn select_gateway_provider_health_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalSavedLocalChatRole,
+) -> Result<Option<SavedGatewayChildPins>> {
+    let (gateway, health) = if role.is_stream() {
+        (&GATEWAY_STREAM, &PROVIDER_HEALTH_STREAM)
+    } else {
+        (&GATEWAY_GENERATE, &PROVIDER_HEALTH_GENERATE)
+    };
+    select_saved_gateway_registry_records(active, budget, role.is_side_chat(), gateway, health)
+}
+
+fn select_saved_gateway_registry_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    via_side_chat: bool,
+    gateway: &'static Route,
+    registry: &'static Route,
+) -> Result<Option<SavedGatewayChildPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
@@ -2437,42 +2506,10 @@ fn select_gateway_provider_snapshot_records(
     else {
         return Ok(None);
     };
-    let registry = match role {
-        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
-            &PROVIDER_READ_GENERATE
-        }
-        OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
-            &PROVIDER_READ_STREAM
-        }
-    };
-    Ok(select_saved_gateway_child(
-        &records,
-        [turn, orchestration],
-        role.gateway_route(),
-        registry,
-    )?
-    .map(|pins| (side_chat, pins)))
-}
-
-fn select_gateway_provider_health_records(
-    active: (&CoreValue, &CoreValue, &CoreValue),
-    budget: &Arc<dyn AllocationBudget>,
-    role: OriginalSavedLocalChatRole,
-) -> Result<Option<[OriginalRoutePin; 4]>> {
-    let (gateway, health) = match role {
-        OriginalSavedLocalChatRole::Generate => (
-            OriginalModelResolveRole::Generate,
-            &PROVIDER_HEALTH_GENERATE,
-        ),
-        OriginalSavedLocalChatRole::Stream => {
-            (OriginalModelResolveRole::Stream, &PROVIDER_HEALTH_STREAM)
-        }
-        OriginalSavedLocalChatRole::SideChatGenerate
-        | OriginalSavedLocalChatRole::SideChatStream => {
-            return Ok(None);
-        }
-    };
-    select_ordinary_gateway_child(active, budget, gateway, health)
+    Ok(
+        select_saved_gateway_child(&records, [turn, orchestration], gateway, registry)?
+            .map(|pins| (side_chat, pins)),
+    )
 }
 
 fn select_ai_routing_records(
@@ -4452,39 +4489,38 @@ mod tests {
     }
 
     #[test]
-    fn gateway_health_requires_its_exact_ordinary_saved_grant() {
-        use OriginalSavedLocalChatRole::{Generate, SideChatGenerate, SideChatStream, Stream};
-
+    fn gateway_health_requires_each_saved_entry_and_its_exact_grant() {
         let select = |fixture: &Value, role| {
             let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
             let [profile, lock, plan] = parse_records(fixture, &budget);
             select_gateway_provider_health_records((&profile, &lock, &plan), &budget, role)
         };
         let fixture = records();
-        assert!(select(&fixture, SideChatGenerate).unwrap().is_none());
-        assert!(select(&fixture, SideChatStream).unwrap().is_none());
-
-        for (role, other, gateway, gateway_row, health, health_row) in [
-            (
-                Generate,
-                Stream,
-                &GATEWAY_GENERATE,
-                LOCAL_CHAT_GENERATE_ROWS[0],
-                &PROVIDER_HEALTH_GENERATE,
-                GATEWAY_PROVIDER_HEALTH_ROWS[0],
-            ),
-            (
-                Stream,
-                Generate,
-                &GATEWAY_STREAM,
-                LOCAL_CHAT_STREAM_ROWS[0],
-                &PROVIDER_HEALTH_STREAM,
-                GATEWAY_PROVIDER_HEALTH_ROWS[1],
-            ),
-        ] {
-            let [turn, orchestration, gateway_pin, child] =
+        for role in OriginalSavedLocalChatRole::ALL {
+            let (gateway, gateway_row, health) = if role.is_stream() {
+                (
+                    &GATEWAY_STREAM,
+                    LOCAL_CHAT_STREAM_ROWS[0],
+                    &PROVIDER_HEALTH_STREAM,
+                )
+            } else {
+                (
+                    &GATEWAY_GENERATE,
+                    LOCAL_CHAT_GENERATE_ROWS[0],
+                    &PROVIDER_HEALTH_GENERATE,
+                )
+            };
+            let health_row = GATEWAY_PROVIDER_HEALTH_ROWS[usize::from(role.is_stream())];
+            let (side_chat, [turn, orchestration, gateway_pin, child]) =
                 select(&fixture, role).unwrap().unwrap();
-            assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(side_chat.is_some(), role.is_side_chat());
+            let turn_caller = side_chat.as_ref().map_or(TURN_SHELL_CALLER, |pin| {
+                assert_eq!(pin.caller_function_id(), TURN_SHELL_CALLER);
+                assert_eq!(pin.function_id(), SIDE_CHAT_TURN.function);
+                assert_eq!(pin.operation_id(), SIDE_CHAT_TURN.operation);
+                pin.function_id()
+            });
+            assert_eq!(turn.caller_function_id(), turn_caller);
             assert_eq!(turn.function_id(), SAVED_TURN.function);
             assert_eq!(orchestration.caller_function_id(), turn.function_id());
             assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
@@ -4498,20 +4534,29 @@ mod tests {
             assert_eq!(child.contract_id(), health.contract);
             assert_eq!(child.operation_id(), health.operation);
 
-            for row in [
-                SAVED_TURN_SETTLEMENT_ROW,
-                SAVED_ORCHESTRATION_ROW,
-                gateway_row,
-                health_row,
-            ] {
+            let entry_rows = if role.is_side_chat() {
+                &[SIDE_CHAT_TURN_ROW, SIDE_CHAT_SAVED_TURN_ROW][..]
+            } else {
+                &[SAVED_TURN_SETTLEMENT_ROW][..]
+            };
+            for row in
+                entry_rows
+                    .iter()
+                    .copied()
+                    .chain([SAVED_ORCHESTRATION_ROW, gateway_row, health_row])
+            {
                 let mut denied = fixture.clone();
                 denied["profile"]["requested_edges"][row]["authority_mode"] =
                     json!("interactive_only");
                 assert!(matches!(select(&denied, role), Err(Inconsistent(_))));
                 denied["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
-                assert!(select(&denied, role).unwrap().is_none());
-                if row == gateway_row || row == health_row {
-                    assert!(select(&denied, other).unwrap().is_some());
+                for candidate in OriginalSavedLocalChatRole::ALL {
+                    let denied_by_row = if entry_rows.contains(&row) {
+                        candidate.is_side_chat() == role.is_side_chat()
+                    } else {
+                        row == SAVED_ORCHESTRATION_ROW || candidate.is_stream() == role.is_stream()
+                    };
+                    assert_eq!(select(&denied, candidate).unwrap().is_none(), denied_by_row);
                 }
             }
         }
@@ -4522,8 +4567,9 @@ mod tests {
                 json!("interactive_only");
             no_raw_snapshot["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
         }
-        assert!(select(&no_raw_snapshot, Generate).unwrap().is_some());
-        assert!(select(&no_raw_snapshot, Stream).unwrap().is_some());
+        for role in OriginalSavedLocalChatRole::ALL {
+            assert!(select(&no_raw_snapshot, role).unwrap().is_some());
+        }
     }
 
     #[test]

@@ -10370,7 +10370,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         ):
             return {"ready": False, "model_profile_id": model_profile_id}
         if (
-            native_policy and not side_chat and contract == HEALTH_CONTRACT
+            native_policy and contract == HEALTH_CONTRACT
             and gateway_calls[-1].operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
         ):
             wrong = (
@@ -10399,17 +10399,28 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
         try:
             if request.role in ipc.GATEWAY_PROVIDER_HEALTH_ROLES.values():
                 owner, caller = health_dispatches[-1]
-                assert not side_chat
                 assert owner.contract_id == HEALTH_CONTRACT and owner.payload == {}
                 assert owner.operation_id == {
                     "generate": HEALTH_GENERATE_OPERATION, "stream": HEALTH_STREAM_OPERATION,
                 }[role]
                 assert caller.operation_id == f"rumi_ai_gateway_pack.ai-gateway.{role}"
-                assert request.role == ipc.GATEWAY_PROVIDER_HEALTH_ROLES[role]
+                assert request.role == ipc.GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, role]
                 assert request.context is owner.context
                 assert request.runtime_instance == server._native_provider_prepare_instance
                 assert request.deadline_monotonic == owner.deadline_monotonic
-                chain = (*parents[-3:], owner)
+                turn, orchestration, gateway = parents[-3:]
+                assert turn.operation_id == "rumi_turn_runtime_pack.turn-saved"
+                assert orchestration.operation_id == "saved_complete"
+                assert gateway is caller
+                if side_chat:
+                    side, *_ = parents
+                    assert side.operation_id == "tobkiri_side_chat_pack.side-chat-turn"
+                    assert side.payload["operation"] == "send"
+                    assert side.payload["turn_id"] == turn.payload["request"]["turn_id"]
+                    assert side.payload["conversation_id"] == turn.payload["request"]["conversation_id"]
+                    chain = (side, turn, orchestration, gateway, owner)
+                else:
+                    chain = (turn, orchestration, gateway, owner)
                 assert chain[-2] is caller
                 assert len({item.lease.token for item in chain}) == len(chain)
                 assert owner.resource_reservation_id is not None
@@ -10422,6 +10433,10 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                         envelope.lease.token.decode("ascii"),
                     )
                     assert state is LeaseState.DISPATCHED
+                    if envelope is turn:
+                        assert lease.caller.function_id == (
+                            "tobkiri_side_chat_pack.turn" if side_chat else "shell.tauri.default"
+                        )
                     if index > 0:
                         parent = chain[index - 1]
                         assert parent.target_principal == envelope.context.caller_principal
@@ -10471,6 +10486,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
 
     read_snapshot.supports_gateway = True
     read_snapshot.supports_gateway_health = True
+    read_snapshot.supports_side_chat_gateway_health = side_chat
 
     def checked_execute(
         request: ipc.NativeSavedLocalChatRequest,
@@ -10790,7 +10806,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 owner for owner, caller in health_dispatches if caller.operation_id == QUOTE
             ]
             assert len(matching_health) == 1 and quote_health, result
-            if native_policy and not side_chat:
+            if native_policy:
                 borrowed, = health_reads
                 assert borrowed.context is matching_health[0].context
                 assert rejected_health_roles == [
@@ -10800,15 +10816,14 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                     borrowed.assert_current()
             else:
                 assert not health_reads and not rejected_health_roles
-            native_enabled = native_policy and not side_chat
             legacy_health = providers.health()
-            if native_enabled and outcome == "denied":
+            if native_policy and outcome == "denied":
                 assert health_results == [(owner, legacy_health) for owner in quote_health]
             else:
                 assert health_results == [
                     *((owner, legacy_health) for owner in quote_health),
                     (matching_health[0], native_health_result
-                     if native_enabled and outcome != "legacy-denied" else legacy_health),
+                     if native_policy and outcome != "legacy-denied" else legacy_health),
                 ]
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result

@@ -1205,6 +1205,12 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             "gateway-health-stream" => {
                 return snapshot(GatewayHealth(OriginalSavedLocalChatRole::Stream))
             }
+            "side-chat-gateway-health-generate" => {
+                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::SideChatGenerate))
+            }
+            "side-chat-gateway-health-stream" => {
+                return snapshot(GatewayHealth(OriginalSavedLocalChatRole::SideChatStream))
+            }
             "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
             "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
             "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
@@ -3312,6 +3318,14 @@ mod tests {
             "gateway-health-stream",
             GatewayHealth(OriginalSavedLocalChatRole::Stream),
         );
+        assert_role(
+            "side-chat-gateway-health-generate",
+            GatewayHealth(OriginalSavedLocalChatRole::SideChatGenerate),
+        );
+        assert_role(
+            "side-chat-gateway-health-stream",
+            GatewayHealth(OriginalSavedLocalChatRole::SideChatStream),
+        );
     }
 
     #[test]
@@ -3415,10 +3429,13 @@ mod tests {
             r#", "provider_snapshot":{"role":"quote-generate"}"#,
             r#", "provider_snapshot":{"role":"side-chat-quote-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-side-chat-stream"}"#,
-            r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-health-quote-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-quote-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"side-chat-gateway-health-stream","role":"gateway-health-stream"}"#,
             r#", "provider_snapshot":{"role":{"role":"generate","side_chat":true}}"#,
             r#", "provider_snapshot":{"role":"gateway-quote-stream","side_chat":true}"#,
             r#", "provider_snapshot":{"role":"stream","role":"generate"}"#,

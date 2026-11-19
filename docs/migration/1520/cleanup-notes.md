@@ -6282,6 +6282,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Rustの署名済み経路の回帰52件と、PythonのIPC回帰623件が通過した。署名済みHTTPの通常
   Generate・Streamで、Healthの戻り値、別の操作権限の拒否、Borrow終了後の拒否を照合した。
   Launcher側のバンドルと起動時証明を含む試験も配布CIに追加した。
+- Side ChatのGenerateとStreamも同じWasmのHealthポートにつないだ。別々の起動時証明に
+  Shell→Side Chat→Turnの署名済み経路を含める。Hostは `send` で使ったターンID、会話ID、
+  リビジョンと各親の呼び出しを照合し、ヘルス読み取り専用のLeaseと使用量予約を確認する。
+  Side Chatの証明がある起動はIPCレベル10を通知する。Workflowとroute quoteは既存の読み取りを使う。
+  Rustの経路選択52件、PythonのIPC 627件、署名済みHTTPの通常チャットとSide Chatが通過した。
+  HTTPではネイティブ呼び出しを差し替え、両方の配信方式、権限拒否、親の終了後の拒否と
+  互換処理を比較した。インストールしたLauncherでの実呼び出しは配布物で確認する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
