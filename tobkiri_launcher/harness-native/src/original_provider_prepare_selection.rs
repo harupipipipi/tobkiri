@@ -102,6 +102,7 @@ static CONVERSATION_READ: Route = Route {
 };
 
 const SAVED_TURN_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.saved";
+const SAVED_RECONCILE_CALLER: &str = "rumi_turn_runtime_pack.turn-runtime.reconcile";
 const SAVED_ORCHESTRATION_CALLER: &str = "tobkiri_conversation_orchestration_pack.saved";
 const GATEWAY_QUOTE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.route-quote";
 const GATEWAY_GENERATE_CALLER: &str = "rumi_ai_gateway_pack.ai-gateway.generate";
@@ -351,6 +352,62 @@ impl<'a> OriginalConversationReadSelection<'a> {
     }
 }
 
+/// Turn Runtime caller of the private Conversation saved receipt read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalSavedReceiptRole {
+    /// The original Saved Turn function.
+    SavedTurn,
+    /// The original Saved Reconcile function.
+    SavedReconcile,
+}
+
+impl OriginalSavedReceiptRole {
+    /// The roles that may use the saved receipt read.
+    pub const ALL: [Self; 2] = [Self::SavedTurn, Self::SavedReconcile];
+
+    /// The function identity required on the original Profile grant.
+    pub const fn caller_function_id(self) -> &'static str {
+        match self {
+            Self::SavedTurn => SAVED_TURN_CALLER,
+            Self::SavedReconcile => SAVED_RECONCILE_CALLER,
+        }
+    }
+
+    const fn index(self) -> usize {
+        match self {
+            Self::SavedTurn => 0,
+            Self::SavedReconcile => 1,
+        }
+    }
+}
+
+/// The signed Conversation owner edges usable for the private saved receipt read.
+pub struct OriginalSavedReceiptSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [Option<OriginalRoutePin>; 2],
+}
+
+impl<'a> OriginalSavedReceiptSelection<'a> {
+    /// Select each exact signed Python caller edge from the active Profile.
+    /// The legacy owner packs GET and saved receipt into the same operation.
+    /// Verify the selected pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        let pins = select_saved_receipt_records(active.records(), budget)?;
+        Ok(pins.iter().any(Option::is_some).then_some(Self {
+            _active: active,
+            pins,
+        }))
+    }
+
+    /// The grant from this exact Turn Runtime caller to the Conversation owner.
+    pub fn pin(&self, role: OriginalSavedReceiptRole) -> Option<&OriginalRoutePin> {
+        self.pins[role.index()].as_ref()
+    }
+}
+
 /// A Gateway caller and Model Registry Resolve child operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalModelResolveRole {
@@ -494,6 +551,20 @@ fn select_conversation_read_records(
         records.select_route(SAVED_TURN_CALLER, &CONVERSATION_READ)?,
         records.select_route(SAVED_ORCHESTRATION_CALLER, &CONVERSATION_READ)?,
     ])
+}
+
+fn select_saved_receipt_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<[Option<OriginalRoutePin>; 2]> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok([None, None]);
+    };
+    let mut pins = [None, None];
+    for role in OriginalSavedReceiptRole::ALL {
+        pins[role.index()] = records.select_route(role.caller_function_id(), &CONVERSATION_READ)?;
+    }
+    Ok(pins)
 }
 
 fn select_model_resolve_records(
@@ -976,6 +1047,13 @@ mod tests {
                 "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
                 "sha256:f5746a0621a144db146e8e05bd24564378fb7c72fd8d3b4d07ecf7d9a4369472",
             ),
+            (
+                &CONVERSATION_READ,
+                SAVED_RECONCILE_CALLER,
+                "authority-ref:5af46c5d5d3b05cb0e6d48164c33d648e2ac815188cc9c06914b0a3672825ef0",
+                "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+                "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -1095,12 +1173,76 @@ mod tests {
         select_model_resolve_records((&profile, &lock, &plan), &budget)
     }
 
+    fn select_saved_receipt(records: &Value) -> Result<[Option<OriginalRoutePin>; 2]> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(records, &budget);
+        select_saved_receipt_records((&profile, &lock, &plan), &budget)
+    }
+
     const MODEL_MANAGE_ROW: usize = 3;
     const MODEL_PROVIDER_READ_ROW: usize = 4;
     const CONVERSATION_SHELL_ROW: usize = 6;
     const CONVERSATION_SAVED_TURN_ROW: usize = 7;
     const CONVERSATION_SAVED_ORCHESTRATION_ROW: usize = 8;
     const MODEL_RESOLVE_ROWS: std::ops::Range<usize> = 9..13;
+    const CONVERSATION_SAVED_RECONCILE_ROW: usize = 13;
+
+    #[test]
+    fn saved_receipt_selects_only_the_two_exact_turn_runtime_grants() {
+        let mut fixture = records();
+        let pins = select_saved_receipt(&fixture).unwrap();
+        for role in OriginalSavedReceiptRole::ALL {
+            let pin = pins[role.index()].as_ref().unwrap();
+            assert_eq!(pin.caller_function_id(), role.caller_function_id());
+            assert_eq!(pin.operation_id(), CONVERSATION_READ.operation);
+        }
+        for row in [
+            CONVERSATION_SAVED_RECONCILE_ROW,
+            CONVERSATION_SAVED_TURN_ROW,
+        ] {
+            fixture["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(
+                select_saved_receipt(&fixture),
+                Err(Inconsistent(_))
+            ));
+            fixture["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select_conversation_read(&fixture).unwrap()[0].is_some());
+            assert!(select_conversation_read(&fixture).unwrap()[2].is_some());
+        }
+        assert!(
+            select_saved_receipt(&fixture)
+                .unwrap()
+                .iter()
+                .all(Option::is_none)
+        );
+    }
+
+    #[test]
+    fn saved_receipt_rejects_an_interactive_mode_or_a_borrowed_grant() {
+        let mut fixture = records();
+        let row = CONVERSATION_SAVED_RECONCILE_ROW;
+        fixture["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
+        fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+        let [saved_turn, reconcile] = select_saved_receipt(&fixture).unwrap();
+        assert!(saved_turn.is_some());
+        assert!(reconcile.is_none());
+
+        let mut fixture = records();
+        let reference =
+            fixture["plan"]["bindings"][CONVERSATION_SAVED_TURN_ROW]["authority_reference"].clone();
+        fixture["profile"]["requested_edges"][row]["authority_reference"] = reference.clone();
+        fixture["plan"]["bindings"][row]["authority_reference"] = reference;
+        assert!(matches!(
+            select_saved_receipt(&fixture),
+            Err(Inconsistent(_))
+        ));
+    }
 
     #[test]
     fn model_resolve_requires_each_exact_caller_and_child_operation() {

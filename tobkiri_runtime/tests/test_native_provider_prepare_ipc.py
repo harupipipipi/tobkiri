@@ -743,9 +743,9 @@ def test_deadline_keeps_original_failure_after_cancel_cleanup(
             planner.plan(borrow)
 
 
-@pytest.mark.parametrize("model_resolve", [False, True])
+@pytest.mark.parametrize("operation", ["provider", "model-resolve", "saved-receipt"])
 def test_real_child_rejects_socket_owned_by_a_different_same_uid_process(
-    model_resolve: bool,
+    operation: str,
 ) -> None:
     runtime = Path(__file__).resolve().parents[1]
     child_code = """
@@ -756,11 +756,17 @@ from core_runtime import native_provider_prepare_ipc
 borrow = SimpleNamespace(
     deadline_monotonic=time.monotonic() + 4, assert_current=lambda: None,
 )
-if sys.argv[1] == "True":
+if sys.argv[1] == "model-resolve":
     invoke = native_provider_prepare_ipc.capture_launcher_model_resolve_reader()
     borrow = native_provider_prepare_ipc.NativeModelResolveRequest(
         None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
         "generate", "fixture",
+    )
+elif sys.argv[1] == "saved-receipt":
+    invoke = native_provider_prepare_ipc.capture_launcher_saved_receipt_reader()
+    borrow = native_provider_prepare_ipc.NativeSavedReceiptRequest(
+        None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
+        "saved-turn", "fixture",
     )
 else:
     planner = native_provider_prepare_ipc.capture_launcher_provider_prepare_planner()
@@ -797,7 +803,7 @@ with socket.socket(socket.AF_UNIX) as listener:
                 assert server.stdout is not None
                 assert server.stdout.readline() == b"ready\n"
                 subprocess.run(
-                    [sys.executable, "-B", "-c", child_code, str(model_resolve)],
+                    [sys.executable, "-B", "-c", child_code, operation],
                     env=environment, cwd=runtime, timeout=6, check=True,
                 )
                 assert server.wait(timeout=6) == 0
@@ -941,6 +947,195 @@ def test_conversation_get_rejects_malformed_results_and_publication(
         pytest.raises(ipc._ProtocolError, match=message),
     ):
         reader(_conversation_get_request(_Borrow()))
+
+
+def _saved_receipt_request(
+    borrow: _Borrow,
+    caller: ipc.SavedReceiptCaller = "saved-turn",
+    turn_id: str = "turn-1",
+) -> ipc.NativeSavedReceiptRequest:
+    return ipc.NativeSavedReceiptRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        caller=caller,
+        turn_id=turn_id,
+    )
+
+
+@contextmanager
+def _served_saved_receipt(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedReceiptRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_saved_receipt_reader()
+        assert reader is not None
+        yield reader
+
+
+@pytest.mark.parametrize(
+    ("caller", "turn_id", "receipt"),
+    [
+        ("saved-turn", "", None),
+        ("saved-reconcile", " ../もの \n ", {}),
+        (
+            "saved-turn", "\0" * ipc.SAVED_RECEIPT_MAX_ID_CHARS,
+            {"extra": ["会話", {"zero": -0.0, "wide": 1 << 145}]},
+        ),
+    ],
+)
+def test_saved_receipt_preserves_raw_turn_id_and_original_owner_values(
+    monkeypatch: pytest.MonkeyPatch,
+    caller: ipc.SavedReceiptCaller,
+    turn_id: str,
+    receipt: dict[str, Any] | None,
+) -> None:
+    borrow = _Borrow()
+    request = _saved_receipt_request(borrow, caller, turn_id)
+    expected = {"receipt": receipt}
+    response = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert len(payload) <= 16 * 1024
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "conversation_receipt": {"caller": caller, "turn_id": turn_id},
+        }
+        for _ in range(2):
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, response.ljust(1024 * 1024, b" "))
+        assert peer.recv(1) == b""
+
+    with _served_saved_receipt(monkeypatch, serve) as reader:
+        monkeypatch.setenv(ipc._SOCKET_ENV, "/invalidated-after-capture")
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        actual = reader(request)
+        assert actual == expected
+        assert json.dumps(actual, ensure_ascii=False).encode("utf-8") == response
+
+
+@pytest.mark.parametrize(
+    ("caller", "turn_id"),
+    [
+        ("shell", "turn-1"),
+        ("saved-orchestration", "turn-1"),
+        ("saved-turn", "a" * (ipc.SAVED_RECEIPT_MAX_ID_CHARS + 1)),
+        ("saved-reconcile", 42),
+    ],
+)
+def test_saved_receipt_rejects_open_callers_and_unbounded_inputs(
+    monkeypatch: pytest.MonkeyPatch, caller: ipc.SavedReceiptCaller, turn_id: str,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_receipt(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match="Saved Receipt lookup inputs are invalid"),
+    ):
+        reader(_saved_receipt_request(_Borrow(), caller, turn_id))
+
+
+def test_saved_receipt_reader_requires_the_correct_request_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        reader = ipc.capture_launcher_saved_receipt_reader()
+        planner = ipc.capture_launcher_provider_prepare_planner()
+        assert reader is not None
+        assert planner is not None
+        with pytest.raises(ipc._ProtocolError, match="request role is invalid"):
+            reader(_conversation_get_request(_Borrow()))
+        with pytest.raises(ipc._ProtocolError, match="request role is invalid"):
+            planner.plan(_saved_receipt_request(_Borrow()))
+
+
+@pytest.mark.parametrize(
+    ("live", "tag", "payload", "expected"),
+    [
+        (False, 7, b'{"receipt":null}', ipc._ProtocolError),
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"legacy-read-required", ipc._ProtocolError),
+        (False, 8, b"not-found", ipc._ProtocolError),
+        (True, 8, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+        (True, 8, b"not-found", ipc.NativeSavedReceiptFailure),
+        (True, 8, b"invalid", ipc.NativeSavedReceiptFailure),
+        (True, 8, b"denied", ipc.NativeSavedReceiptFailure),
+        (True, 8, b"internal", ipc._ProtocolError),
+        (True, 10, b"", ipc._ProtocolError),
+    ],
+)
+def test_saved_receipt_distinguishes_compatibility_and_owner_failure(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, payload)
+        if (tag == 7 and not live) or (tag == 10 and live):
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_receipt(monkeypatch, serve) as reader,
+        pytest.raises(expected) as failure,
+    ):
+        reader(_saved_receipt_request(_Borrow()))
+    if isinstance(failure.value, ipc.NativeSavedReceiptFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+@pytest.mark.parametrize(
+    ("tag", "size", "payload"),
+    [
+        (7, 1024 * 1024 + 1, b""),
+        (7, None, b'{"receipt":{"bad_utf8":"\xff"}}'),
+        (7, None, b'{"receipt":{"non_finite":1e999}}'),
+        (7, None, b'{"receipt":{"duplicate":0,"duplicate":1}}'),
+        (7, None, b'{"receipt":null,"extra":true}'),
+        (7, None, b'{"receipt":[]}'),
+        (7, None, b'{"receipt":false}'),
+        (7, None, b'{"owner_result":"{}"}'),
+        (11, 0, b""),
+    ],
+)
+def test_saved_receipt_rejects_malformed_results_and_publication(
+    monkeypatch: pytest.MonkeyPatch, tag: int, size: int | None, payload: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        length = len(payload) if size is None else size
+        peer.sendall(_HEADER.pack(tag, length) + payload)
+        assert _receive(peer) == (9, b"")
+        if size is None:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    message = "owner result is invalid" if size is None else "cleanup was unconfirmed"
+    with (
+        _served_saved_receipt(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match=message),
+    ):
+        reader(_saved_receipt_request(_Borrow()))
 
 
 def _model_resolve_request(
@@ -1138,8 +1333,9 @@ def test_model_resolve_rejects_malformed_results_and_publication(
 
 
 @pytest.mark.parametrize("revoked", [False, True])
-def test_model_resolve_requires_a_live_guard_during_result_delivery(
-    monkeypatch: pytest.MonkeyPatch, revoked: bool,
+@pytest.mark.parametrize("saved_receipt", [False, True])
+def test_owner_read_requires_a_live_guard_during_result_delivery(
+    monkeypatch: pytest.MonkeyPatch, revoked: bool, saved_receipt: bool,
 ) -> None:
     borrow = _Borrow(lifetime=3 if revoked else 0.5)
 
@@ -1155,8 +1351,13 @@ def test_model_resolve_requires_a_live_guard_during_result_delivery(
         peer.sendall(failure[1:])
         assert peer.recv(1) == b""
 
-    with (
-        _served_model_resolve(monkeypatch, serve) as reader,
-        pytest.raises(PermissionError if revoked else TimeoutError),
-    ):
-        reader(_model_resolve_request(borrow))
+    expected = PermissionError if revoked else TimeoutError
+    with _served(monkeypatch, serve), pytest.raises(expected):
+        if saved_receipt:
+            reader = ipc.capture_launcher_saved_receipt_reader()
+            assert reader is not None
+            reader(_saved_receipt_request(borrow))
+        else:
+            model_reader = ipc.capture_launcher_model_resolve_reader()
+            assert model_reader is not None
+            model_reader(_model_resolve_request(borrow))

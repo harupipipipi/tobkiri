@@ -1795,6 +1795,10 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
         "reply_lost",
         "stop_after_commit",
         "native_conversation_get",
+        "native_receipt_reply_lost",
+        "native_receipt_stop_after_commit",
+        "native_receipt_compatibility",
+        "native_receipt_unfunded",
     ],
 )
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
@@ -1804,15 +1808,29 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
     from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
     from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
     from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+        COMPLETION_CONTRACT, COMPLETION_OPERATION,
+    )
     from tobkiri_host.credential_store import host_credential_store_factory
     from tobkiri_host.runtime import V4DispatchSession
     from tobkiri_protocol.saved_context import PROMPT_TARGET
     from tobkiri_protocol.turn_progress_v1 import AI_STREAM, ACTION, ACTION_OPERATION
 
     original = V4DispatchSession.invoke
+    receipt_scenario = completion.removeprefix("native_receipt_")
+    native_receipts_enabled = receipt_scenario != completion
+    if native_receipts_enabled:
+        completion = (
+            "stop_after_commit" if receipt_scenario == "stop_after_commit"
+            else "reply_lost"
+        )
+    native_get_enabled = (
+        completion == "native_conversation_get" or native_receipts_enabled
+    )
     ai_calls = []
     stop_receipts = []
     stop_receipt_ready = threading.Event()
@@ -1831,9 +1849,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     native_window = None
     native_reads: list[ipc.NativeConversationGetRequest] = []
     native_envelopes: list[RequestEnvelope] = []
+    native_receipts: list[ipc.NativeSavedReceiptRequest] = []
+    receipt_envelopes: list[RequestEnvelope] = []
+    confirmation_envelopes: list[RequestEnvelope] = []
+    turn_parents: list[RequestEnvelope] = []
+    legacy_receipts: list[str] = []
     native_read_mode = "native"
+    receipt_mode = "native"
 
-    if completion == "native_conversation_get":
+    if native_get_enabled:
         from core_runtime.provider_prepare_native_v4 import (
             NativeProviderRegistryRequiresLegacyRead,
         )
@@ -1853,6 +1877,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 and amount.memory_bytes >= ipc.CONVERSATION_GET_MINIMUM_MEMORY
             ):
                 raise ResourceExhaustedError("test Profile capacity")
+            if (
+                receipt_mode == "unfunded"
+                and amount.memory_bytes >= ipc.SAVED_RECEIPT_MINIMUM_MEMORY
+            ):
+                raise ResourceExhaustedError("test saved receipt capacity")
             return reserve(ledger, profile_id, amount, detached=detached)
 
         def native_read(
@@ -1893,6 +1922,96 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         monkeypatch.setattr(
             ipc, "capture_launcher_conversation_get_reader", lambda: native_read,
         )
+        monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
+
+        if native_receipts_enabled:
+            from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+
+            backend_invoke = ExactHostProviderBackendV4.invoke
+            read_text = Path.read_text
+            active_receipt = threading.local()
+
+            def observe_backend_receipt(
+                backend: ExactHostProviderBackendV4, envelope: object,
+            ) -> ProviderOutcome:
+                if (
+                    not isinstance(envelope, RequestEnvelope)
+                    or (envelope.contract_id, envelope.operation_id) != TARGETS[0]
+                    or envelope.payload.get("operation") != "saved_receipt"
+                ):
+                    return backend_invoke(backend, envelope)
+                active_receipt.turn_id = envelope.payload["turn_id"]
+                try:
+                    return backend_invoke(backend, envelope)
+                finally:
+                    del active_receipt.turn_id
+
+            def observe_legacy_receipt(path: Path, *args: object, **kwargs: object) -> str:
+                turn_id = getattr(active_receipt, "turn_id", None)
+                if turn_id is not None and path.name == "conversations.json":
+                    legacy_receipts.append(turn_id)
+                return read_text(path, *args, **kwargs)
+
+            def native_receipt(
+                request: ipc.NativeSavedReceiptRequest,
+            ) -> Mapping[str, object]:
+                request.assert_current()
+                child = next(
+                    envelope for envelope in receipt_envelopes
+                    if envelope.context.request_id == request.context.request_id
+                )
+                parent = turn_parents[-1]
+                kind = "saved" if request.caller == "saved-turn" else "reconcile"
+                assert parent.contract_id == f"tobkiri.action.turn.{kind}.v1"
+                assert parent.operation_id == f"rumi_turn_runtime_pack.turn-{kind}"
+                assert parent.target_principal == request.context.caller_principal
+                assert request.context == child.context
+                instance = server._native_provider_prepare_instance
+                assert request.runtime_instance == instance
+                assert request.turn_id == child.payload["turn_id"] == "turn-1"
+                assert request.deadline_monotonic == child.deadline_monotonic
+                assert request.deadline_monotonic <= parent.deadline_monotonic
+                assert child.lease.token != parent.lease.token
+                assert child.resource_reservation_id is not None
+                assert child.resource_reservation_id != parent.resource_reservation_id
+                for envelope in (child, parent):
+                    _, state, _, _ = _authority.inspect_dispatch_authority(
+                        envelope.lease.token.decode("ascii"),
+                    )
+                    assert state is LeaseState.DISPATCHED
+                native_receipts.append(request)
+                if receipt_mode == "compatibility":
+                    raise NativeProviderRegistryRequiresLegacyRead()
+                if receipt_mode in {"invalid", "denied"}:
+                    raise ipc.NativeSavedReceiptFailure(receipt_mode)
+                if receipt_mode == "transport":
+                    raise RuntimeError("test owner reply was unavailable")
+                if receipt_mode == "stale":
+                    with server._lifecycle_lock:
+                        server._native_provider_prepare_instance = "0" * 32
+                    raise NativeProviderRegistryRequiresLegacyRead()
+                if receipt_mode == "corrupt":
+                    return {"receipt": {"result_reference": {}}}
+                document = json.loads(store.path.read_bytes())
+                if receipt_mode == "race":
+                    status, stopped, _ = _request(
+                        server, "POST", _contract("POST", "/api/chat/turn/stop"),
+                        body={"turn_id": request.turn_id},
+                        headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                    )
+                    assert status == 200 and stopped["data"] == {
+                        "status": "cancellation_requested", "turn_id": request.turn_id,
+                        "stopped": False,
+                    }, stopped
+                return {"receipt": document["saved_receipts"].get(request.turn_id)}
+
+            monkeypatch.setattr(
+                ExactHostProviderBackendV4, "invoke", observe_backend_receipt,
+            )
+            monkeypatch.setattr(Path, "read_text", observe_legacy_receipt)
+            monkeypatch.setattr(
+                ipc, "capture_launcher_saved_receipt_reader", lambda: native_receipt,
+            )
 
     if completion == "calculator":
         from core_runtime.authority.ui_operator import sign_ui_operator
@@ -2143,15 +2262,23 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     )
     server, _session, _authority = next(servers)
     try:
-        if completion == "native_conversation_get":
+        if native_get_enabled:
             original_dispatch = _session.broker._dispatch
 
             def observe_owner_dispatch(backend, envelope, *args, **kwargs):
-                if (
-                    (envelope.contract_id, envelope.operation_id) == TARGETS[0]
-                    and envelope.payload.get("operation") == "get"
+                if (envelope.contract_id, envelope.operation_id) == TARGETS[0]:
+                    if envelope.payload.get("operation") == "get":
+                        native_envelopes.append(envelope)
+                    if envelope.payload.get("operation") == "saved_receipt":
+                        receipt_envelopes.append(envelope)
+                if envelope.contract_id in {
+                    "tobkiri.action.turn.saved.v1", "tobkiri.action.turn.reconcile.v1",
+                }:
+                    turn_parents.append(envelope)
+                if (envelope.contract_id, envelope.operation_id) == (
+                    COMPLETION_CONTRACT, COMPLETION_OPERATION,
                 ):
-                    native_envelopes.append(envelope)
+                    confirmation_envelopes.append(envelope)
                 return original_dispatch(backend, envelope, *args, **kwargs)
 
             monkeypatch.setattr(_session.broker, "_dispatch", observe_owner_dispatch)
@@ -2286,14 +2413,74 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             request.request_id
             for request in _authority.list_interactive_approval_requests()
         ) if completion == "calculator" else ()
+        if native_receipts_enabled:
+            before_recovery = store.path.read_bytes()
+            receipt_document = json.loads(before_recovery)["saved_receipts"]
+            assert receipt_document["turn-1"].get("result_reference")
+            if receipt_scenario == "reply_lost":
+                rejected_modes = ("invalid", "denied", "transport", "corrupt", "stale")
+                for receipt_mode in rejected_modes:
+                    instance = server._native_provider_prepare_instance
+                    request_headers = {
+                        **headers, "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                    }
+                    try:
+                        status, rejected, _ = _request(
+                            server, "POST", reconcile_route, body={"turn_id": "turn-1"},
+                            headers=request_headers,
+                        )
+                    finally:
+                        with server._lifecycle_lock:
+                            server._native_provider_prepare_instance = instance
+                    assert status >= 400, (receipt_mode, rejected)
+                    assert store.path.read_bytes() == before_recovery
+                    assert not legacy_receipts
+                assert [item.caller for item in native_receipts] == (
+                    ["saved-reconcile"] * len(rejected_modes)
+                )
+                receipt_mode = "race"
+                status, conflicted, _ = _request(
+                    server, "POST", reconcile_route, body={"turn_id": "turn-1"},
+                    headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                )
+                assert status == 200, conflicted
+                assert conflicted["data"]["status"] == "reconciliation_required"
+                assert conflicted["data"]["turn"]["events"][-1]["name"] == (
+                    "turn.cancellation_requested"
+                )
+                assert native_receipts[-1].caller == "saved-reconcile"
+                assert not legacy_receipts
+                assert store.path.read_bytes() == before_recovery
+                native_receipts.clear()
+            receipt_mode = receipt_scenario
+        replay_saved = native_receipts_enabled and receipt_scenario == "reply_lost"
+        reconcile = lose_owner_reply and not replay_saved
         status, repeated, _ = _request(
             server,
             "POST",
-            reconcile_route if lose_owner_reply else route,
-            body={"turn_id": "turn-1"} if lose_owner_reply else body,
+            reconcile_route if reconcile else route,
+            body={"turn_id": "turn-1"} if reconcile else body,
             headers=headers,
         )
         assert status == 200, repeated
+        if native_receipts_enabled:
+            assert store.path.read_bytes() == before_recovery
+            (confirmation,) = confirmation_envelopes
+            assert dict(confirmation.payload) == {
+                "profile_id": "defaults", "operation": "confirm", "turn_id": "turn-1",
+            }
+            assert confirmation.lease.token != receipt_envelopes[-1].lease.token
+            assert [item.caller for item in native_receipts] == (
+                [] if receipt_scenario == "unfunded"
+                else ["saved-turn" if replay_saved else "saved-reconcile"]
+            )
+            assert legacy_receipts == (
+                ["turn-1"] if receipt_scenario in {"compatibility", "unfunded"} else []
+            )
+            for read in native_receipts:
+                with pytest.raises(PermissionError):
+                    read.assert_current()
+            receipt_mode = "native"
         if lose_owner_reply:
             assert repeated["data"]["status"] == "completed", repeated
         else:
@@ -2417,6 +2604,37 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             and message["metadata"]["turn_id"] == "turn-1"
             for message in snapshot["data"]["messages"]
         )
+        if native_receipts_enabled:
+            assert {item.caller for item in native_reads} == {
+                "shell", "saved-turn", "saved-orchestration",
+            }
+            assert "receipt" not in snapshot["data"]
+            assert "receipt" not in repeated["data"]
+            # Replay with the same authenticated Turn caller after its parent
+            # drains, and call the original resource directly from Shell.
+            child = receipt_envelopes[-1]
+            shell_context = next(
+                item.context for item in native_reads if item.caller == "shell"
+            )
+            native_count = len(native_receipts)
+            previous_legacy_count = len(legacy_receipts)
+            for original_context in (child.context, shell_context):
+                context = replace(
+                    original_context, request_id=f"request.{uuid.uuid4().hex}",
+                )
+                frame = InvocationFrame(
+                    contract_id=child.contract_id, version_range=None,
+                    operation_id=child.operation_id, payload=child.payload,
+                )
+                scope = _session.effect_scope_for(
+                    child.contract_id, child.operation_id, child.payload, context,
+                )
+                assert _session.broker.invoke(frame, context, effect_scope=scope) == {
+                    "receipt": receipt_document["turn-1"],
+                }
+            assert len(native_receipts) == native_count
+            assert legacy_receipts[previous_legacy_count:] == ["turn-1", "turn-1"]
+            assert store.path.read_bytes() == before_recovery
         if completion == "native_conversation_get":
             assert {request.caller for request in native_reads} == {
                 "shell", "saved-turn", "saved-orchestration",
@@ -2453,6 +2671,24 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert store.path.read_bytes() == store_before
         ledger = next((tmp_path / "user-data").rglob("turns.sqlite3"))
         ledger_before = ledger.read_bytes()
+        if native_receipts_enabled:
+            for path, replay_body in (
+                (route, body), (reconcile_route, {"turn_id": "turn-1"}),
+            ):
+                status, duplicate, _ = _request(
+                    server, "POST", path, body=replay_body,
+                    headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                )
+                assert status == 200 and duplicate["data"]["status"] == "existing"
+                assert duplicate["data"]["turn"] == completed_turn
+            assert len(native_receipts) == native_count
+            assert store.path.read_bytes() == before_recovery
+            assert ledger.read_bytes() == ledger_before
+            status, rejected, _ = _request(
+                server, "GET", _contract("GET", "/api/chat/conversation")
+                + "?operation=saved_receipt&turn_id=turn-1", headers=headers,
+            )
+            assert status == 400 and "receipt" not in rejected.get("data", {})
         for query in ("turn_id=turn-1&profile_id=other", "turn_id=turn-1&operation=begin_saved"):
             headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
             status, rejected, _ = _request(
@@ -3867,6 +4103,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_model_read)
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
@@ -4045,6 +4282,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
 
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
@@ -5474,6 +5712,11 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             lambda: None,
         )
         monkeypatch.setattr(
+            native_provider_prepare_ipc,
+            "capture_launcher_saved_receipt_reader",
+            lambda: None,
+        )
+        monkeypatch.setattr(
             native_provider_prepare_ipc, "capture_launcher_model_save_writer", lambda: None,
         )
         monkeypatch.setattr(
@@ -5880,6 +6123,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     )
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_receipt_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: read)

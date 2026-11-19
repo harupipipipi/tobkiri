@@ -21,8 +21,8 @@ use crate::{
     native_harness_bootstrap::{
         start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
-        PendingProviderPrepare, ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT,
-        MODEL_RESOLVE_REPLY_LIMIT,
+        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -38,6 +38,7 @@ const PUBLISH_CHECK: u8 = 11;
 const PUBLISH_PERMIT: u8 = 12;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
+const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CLEANUP_WAIT: Duration = Duration::from_secs(10);
@@ -61,6 +62,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_get: Option<ConversationGet>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    conversation_receipt: Option<ConversationReceipt>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     model_resolve: Option<ModelResolve>,
 }
 
@@ -71,10 +74,11 @@ impl Start<'_> {
             &self.model_list,
             &self.model_save,
             &self.conversation_get,
+            &self.conversation_receipt,
             &self.model_resolve,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -84,18 +88,26 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None, None) => Ok(NativeRegistryRequest::ModelList),
-            (None, None, Some(save), None, None, None) => Ok(NativeRegistryRequest::ModelSave {
-                request: save.request.get().as_bytes().to_vec(),
-                provider: save.provider.get().as_bytes().to_vec(),
-            }),
-            (None, None, None, Some(get), None, None) => {
+            (None, Some(_), None, None, None, None, None) => Ok(NativeRegistryRequest::ModelList),
+            (None, None, Some(save), None, None, None, None) => {
+                Ok(NativeRegistryRequest::ModelSave {
+                    request: save.request.get().as_bytes().to_vec(),
+                    provider: save.provider.get().as_bytes().to_vec(),
+                })
+            }
+            (None, None, None, Some(get), None, None, None) => {
                 Ok(NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
                 })
             }
-            (None, None, None, None, Some(resolve), None) => {
+            (None, None, None, None, Some(receipt), None, None) => {
+                Ok(NativeRegistryRequest::ConversationReceipt {
+                    caller: receipt.caller,
+                    turn_id: receipt.turn_id.clone(),
+                })
+            }
+            (None, None, None, None, None, Some(resolve), None) => {
                 Ok(NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
@@ -125,6 +137,15 @@ struct ConversationGet {
     #[serde(deserialize_with = "deserialize_conversation_caller")]
     caller: ConversationReadCaller,
     conversation_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConversationReceipt {
+    #[serde(deserialize_with = "deserialize_saved_receipt_caller")]
+    caller: OriginalSavedReceiptRole,
+    #[serde(deserialize_with = "deserialize_saved_receipt_turn_id")]
+    turn_id: String,
 }
 
 #[derive(Deserialize)]
@@ -194,6 +215,35 @@ where
         "saved-orchestration" => Ok(ConversationReadCaller::SavedOrchestration),
         _ => Err(de::Error::custom("unknown Conversation caller")),
     }
+}
+
+fn deserialize_saved_receipt_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<OriginalSavedReceiptRole, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "saved-turn" => Ok(OriginalSavedReceiptRole::SavedTurn),
+        "saved-reconcile" => Ok(OriginalSavedReceiptRole::SavedReconcile),
+        _ => Err(de::Error::custom("unknown saved receipt caller")),
+    }
+}
+
+fn deserialize_saved_receipt_turn_id<'de, D>(
+    deserializer: D,
+) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let turn_id = String::deserialize(deserializer)?;
+    if turn_id.chars().count() > SAVED_RECEIPT_TURN_ID_MAX_CHARS {
+        return Err(de::Error::custom(
+            "saved receipt turn ID exceeds its envelope",
+        ));
+    }
+    // The legacy owner validates the original identifier after reading the document.
+    Ok(turn_id)
 }
 
 fn deserialize_present<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
@@ -345,7 +395,8 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
         NativeRegistryRequest::ModelList => ReplyRole::ModelList,
         NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
-        NativeRegistryRequest::ConversationGet { .. } => ReplyRole::ConversationGet,
+        NativeRegistryRequest::ConversationGet { .. }
+        | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
     };
     drop(bytes);
@@ -384,7 +435,7 @@ enum ReplyRole {
     Provider,
     ModelList,
     ModelSave,
-    ConversationGet,
+    ConversationRead,
     ModelResolve,
 }
 
@@ -520,7 +571,7 @@ impl Connection {
             ReplyRole::Provider => (JSON_LIMIT, "limit-exceeded"),
             ReplyRole::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
             ReplyRole::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
-            ReplyRole::ConversationGet => (CONVERSATION_GET_REPLY_LIMIT, "legacy-read-required"),
+            ReplyRole::ConversationRead => (CONVERSATION_READ_REPLY_LIMIT, "legacy-read-required"),
             ReplyRole::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
         };
         match result {
@@ -1000,6 +1051,81 @@ mod tests {
         assert_eq!(
             failure_code(&ConversationRegistryRequiresLegacyRead.into()),
             "legacy-read-required"
+        );
+    }
+
+    #[test]
+    fn saved_receipt_preserves_the_raw_bounded_turn_id_for_either_caller() {
+        for (wire_caller, expected_caller, id) in [
+            ("saved-turn", OriginalSavedReceiptRole::SavedTurn, ""),
+            (
+                "saved-reconcile",
+                OriginalSavedReceiptRole::SavedReconcile,
+                "\u{001c}  保存🧾-turn\t",
+            ),
+            (
+                "saved-turn",
+                OriginalSavedReceiptRole::SavedTurn,
+                &"🧾".repeat(SAVED_RECEIPT_TURN_ID_MAX_CHARS),
+            ),
+        ] {
+            let encoded_id = serde_json::to_string(id).unwrap();
+            let frame = start_frame(&format!(
+                r#", "conversation_receipt":{{"caller":"{wire_caller}","turn_id":{encoded_id}}}"#
+            ));
+            assert!(frame.len() <= JSON_LIMIT);
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            let NativeRegistryRequest::ConversationReceipt { caller, turn_id } =
+                start.operation().unwrap()
+            else {
+                panic!("expected saved receipt lookup");
+            };
+            assert_eq!(caller, expected_caller);
+            assert_eq!(turn_id, id);
+        }
+
+        let oversized = "🧾".repeat(SAVED_RECEIPT_TURN_ID_MAX_CHARS + 1);
+        let frame = start_frame(&format!(
+            r#", "conversation_receipt":{{"caller":"saved-turn","turn_id":"{oversized}"}}"#
+        ));
+        assert!(frame.len() <= JSON_LIMIT);
+        assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
+    }
+
+    #[test]
+    fn saved_receipt_rejects_other_operations_and_unrecognized_fields() {
+        for body in [
+            r#"null"#,
+            r#"["saved-turn","turn-id"]"#,
+            r#"{"caller":"shell","turn_id":"stored"}"#,
+            r#"{"caller":"saved-orchestration","turn_id":"stored"}"#,
+            r#"{"caller":"saved-turn"}"#,
+            r#"{"caller":"saved-turn","turn_id":42}"#,
+            r#"{"caller":"saved-turn","turn_id":"stored","profile_id":"elsewhere"}"#,
+            r#"{"caller":"saved-turn","turn_id":"stored","publish":true}"#,
+            r#"{"caller":"saved-turn","caller":"saved-reconcile","turn_id":"stored"}"#,
+            r#"{"caller":"saved-turn","turn_id":"stored","turn_id":"elsewhere"}"#,
+        ] {
+            let frame = start_frame(&format!(r#", "conversation_receipt":{body}"#));
+            assert!(serde_json::from_str::<Start<'_>>(&frame).is_err(), "{body}");
+        }
+
+        let receipt = r#", "conversation_receipt":{"caller":"saved-turn","turn_id":"stored"}"#;
+        for other in [
+            PROVIDER_REQUEST,
+            r#", "apply": {}"#,
+            r#", "model_list": {}"#,
+            r#", "model_save": {"request":{},"provider":{}}"#,
+            r#", "conversation_get": {"caller":"saved-turn","conversation_id":"stored"}"#,
+            r#", "model_resolve": {"role":"generate","identifier":"local"}"#,
+        ] {
+            let frame = start_frame(&format!("{receipt}{other}"));
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            assert!(start.operation().is_err(), "{other}");
+        }
+        assert!(
+            serde_json::from_str::<Start<'_>>(&start_frame(&format!("{receipt}{receipt}")))
+                .is_err()
         );
     }
 

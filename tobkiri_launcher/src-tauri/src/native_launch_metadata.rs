@@ -19,10 +19,11 @@ use tobkiri_harness_native::{
     OriginalActivationInspection, OriginalActiveProfile, OriginalConversationReadSelection,
     OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
 };
 use tobkiri_wasm::{
-    verify_legacy_conversation_read_declaration, verify_legacy_model_resolve_declaration,
-    verify_legacy_model_save_declaration,
+    verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
+    verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
 };
 
 use super::{
@@ -57,7 +58,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
     model_resolve: Option<VerifiedModelResolveSource>,
-    conversation_read: Option<VerifiedConversationReadSource>,
+    conversation: Option<VerifiedConversationSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -81,9 +82,16 @@ impl VerifiedRegistryLaunch {
 
     /// Require the caller's own legacy read edge against the verified replacement.
     pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
-        self.conversation_read
+        self.conversation
             .as_ref()
-            .is_some_and(|source| source.permits(caller))
+            .is_some_and(|source| source.permits_read(caller))
+    }
+
+    /// Require the receipt caller's own legacy edge and verified receipt declaration.
+    pub(crate) fn permits_saved_receipt(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.conversation
+            .as_ref()
+            .is_some_and(|source| source.permits_saved_receipt(role))
     }
 }
 
@@ -136,22 +144,30 @@ impl VerifiedModelResolveSource {
 
 /// Separate signed conversation-owner edges and the receipt identity they share.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct VerifiedConversationReadSource {
+struct VerifiedConversationSource {
     shell: Option<VerifiedLegacyRoutePin>,
     saved_turn: Option<VerifiedLegacyRoutePin>,
     saved_orchestration: Option<VerifiedLegacyRoutePin>,
+    saved_receipt: [Option<(OriginalSavedReceiptRole, VerifiedLegacyRoutePin)>; 2],
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
 }
 
-impl VerifiedConversationReadSource {
-    fn permits(&self, caller: ConversationReadCaller) -> bool {
+impl VerifiedConversationSource {
+    fn permits_read(&self, caller: ConversationReadCaller) -> bool {
         match caller {
             ConversationReadCaller::Shell => self.shell.is_some(),
             ConversationReadCaller::SavedTurn => self.saved_turn.is_some(),
             ConversationReadCaller::SavedOrchestration => self.saved_orchestration.is_some(),
         }
+    }
+
+    fn permits_saved_receipt(&self, role: OriginalSavedReceiptRole) -> bool {
+        self.saved_receipt
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
     }
 }
 
@@ -196,7 +212,7 @@ impl VerifiedRegistryLaunch {
             model_settings: None,
             model_save: None,
             model_resolve: None,
-            conversation_read: None,
+            conversation: None,
         }
     }
 
@@ -217,7 +233,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_save: None,
             model_resolve: None,
-            conversation_read: None,
+            conversation: None,
         }
     }
 
@@ -239,7 +255,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             model_resolve: None,
-            conversation_read: None,
+            conversation: None,
         }
     }
 
@@ -266,7 +282,32 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
-            conversation_read: None,
+            conversation: None,
+        }
+    }
+
+    pub(crate) fn test_saved_receipt_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalSavedReceiptRole,
+    ) -> Self {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: None,
+            model_settings: None,
+            model_save: None,
+            model_resolve: None,
+            conversation: Some(VerifiedConversationSource {
+                shell: None,
+                saved_turn: None,
+                saved_orchestration: None,
+                saved_receipt: [Some((role, VerifiedLegacyRoutePin::fixture())), None],
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
         }
     }
 }
@@ -530,6 +571,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalConversationReadSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let saved_receipt_selection = active
+            .map(|active| OriginalSavedReceiptSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let (app_root, activation) = inspection.with_source(|sources| {
             let catalog_revision = &sources.authority().catalog_revision;
             let activation = active
@@ -540,6 +585,7 @@ impl LaunchActivationObserver<'_> {
                         && model_save_selection.is_none()
                         && model_resolve_selection.is_none()
                         && conversation_read_selection.is_none()
+                        && saved_receipt_selection.is_none()
                     {
                         return Ok(None);
                     }
@@ -555,7 +601,10 @@ impl LaunchActivationObserver<'_> {
                             model_selection.as_ref(),
                             model_save_selection.as_ref(),
                             model_resolve_selection.as_ref(),
-                            conversation_read_selection.as_ref(),
+                            (
+                                conversation_read_selection.as_ref(),
+                                saved_receipt_selection.as_ref(),
+                            ),
                             budget,
                         )?,
                         security_epoch,
@@ -577,7 +626,7 @@ impl LaunchActivationObserver<'_> {
             return Ok(None);
         };
         locked.verify(checkpoint)?;
-        let (provider_prepare, (model_settings, model_save, model_resolve), conversation_read) =
+        let (provider_prepare, (model_settings, model_save, model_resolve), conversation) =
             registry_pack_receipt::verify_installed_with_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
@@ -649,22 +698,37 @@ impl LaunchActivationObserver<'_> {
                     Ok((list, save, resolve))
                 },
                 |receipt, input| {
-                    conversation_read_selection
-                        .as_ref()
-                        .map(|selection| {
-                            verify_conversation_read_archive(inspection, receipt, input)?;
-                            Ok(VerifiedConversationReadSource {
-                                shell: selection.shell().map(Into::into),
-                                saved_turn: selection.saved_turn().map(Into::into),
-                                saved_orchestration: selection
-                                    .saved_orchestration()
-                                    .map(Into::into),
-                                archive_sha256: receipt.archive_sha256().to_owned(),
-                                archive_bytes: receipt.archive_bytes(),
-                                manifest_sha256: receipt.manifest_sha256().to_owned(),
-                            })
-                        })
-                        .transpose()
+                    let read = conversation_read_selection.as_ref();
+                    let saved_receipt = saved_receipt_selection.as_ref();
+                    if read.is_none() && saved_receipt.is_none() {
+                        return Ok(None);
+                    }
+                    let pack = verify_registry_archive(inspection, receipt, input)?;
+                    if read.is_some() {
+                        verify_legacy_conversation_read_declaration(&pack)
+                            .map_err(io::Error::other)?;
+                    }
+                    if saved_receipt.is_some() {
+                        verify_legacy_conversation_receipt_declaration(&pack)
+                            .map_err(io::Error::other)?;
+                    }
+                    Ok(Some(VerifiedConversationSource {
+                        shell: read.and_then(|selection| selection.shell()).map(Into::into),
+                        saved_turn: read
+                            .and_then(|selection| selection.saved_turn())
+                            .map(Into::into),
+                        saved_orchestration: read
+                            .and_then(|selection| selection.saved_orchestration())
+                            .map(Into::into),
+                        saved_receipt: OriginalSavedReceiptRole::ALL.map(|role| {
+                            saved_receipt
+                                .and_then(|selection| selection.pin(role))
+                                .map(|pin| (role, pin.into()))
+                        }),
+                        archive_sha256: receipt.archive_sha256().to_owned(),
+                        archive_bytes: receipt.archive_bytes(),
+                        manifest_sha256: receipt.manifest_sha256().to_owned(),
+                    }))
                 },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
@@ -680,8 +744,11 @@ impl LaunchActivationObserver<'_> {
         if model_resolve.is_some() {
             log::info!("verified selected old Model Resolve grants and their bundled Wasm replacement for this activation");
         }
-        if conversation_read.is_some() {
+        if conversation_read_selection.is_some() {
             log::info!("verified selected old Conversation read grants and their bundled Wasm replacement for this activation");
+        }
+        if saved_receipt_selection.is_some() {
+            log::info!("verified selected old Conversation saved receipt grants and their bundled Wasm replacement for this activation");
         }
         Ok(Some(VerifiedRegistryLaunch {
             identity: self.identity.clone(),
@@ -691,7 +758,7 @@ impl LaunchActivationObserver<'_> {
             model_settings,
             model_save,
             model_resolve,
-            conversation_read,
+            conversation,
         }))
     }
 }
@@ -822,10 +889,51 @@ pub(crate) fn reacquire_conversation_read_pack(
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
     let source = proof
-        .conversation_read
+        .conversation
         .as_ref()
-        .filter(|source| source.permits(caller))
+        .filter(|source| source.permits_read(caller))
         .context("admitted launch has no verified Conversation read source for the caller")?;
+    reacquire_conversation_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        verify_legacy_conversation_read_declaration,
+    )
+    .context("bundled Conversation read archive verification failed")
+}
+
+/// Reacquire the Conversation Pack using the Turn Runtime caller's receipt grant.
+pub(super) fn reacquire_saved_receipt_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalSavedReceiptRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .conversation
+        .as_ref()
+        .filter(|source| source.permits_saved_receipt(role))
+        .context(
+            "admitted launch has no verified Conversation saved receipt source for the caller",
+        )?;
+    reacquire_conversation_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        verify_legacy_conversation_receipt_declaration,
+    )
+    .context("bundled Conversation saved receipt archive verification failed")
+}
+
+fn reacquire_conversation_archive(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    source: &VerifiedConversationSource,
+    checkpoint: impl Fn() -> Result<()>,
+    verify_declaration: fn(&VerifiedPack) -> Result<()>,
+) -> Result<VerifiedPack> {
     let app_root = registry_pack_root(inspection, proof)?;
     registry_pack_receipt::verify_installed_with_conversation(
         &app_root,
@@ -838,10 +946,12 @@ pub(crate) fn reacquire_conversation_read_pack(
                 source.archive_bytes,
                 &source.manifest_sha256,
             )?;
-            verify_conversation_read_archive(inspection, receipt, input)
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            verify_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
         },
     )
-    .context("bundled Conversation read archive verification failed")
+    .map_err(Into::into)
 }
 
 fn registry_pack_root(
@@ -909,16 +1019,6 @@ fn verify_model_settings_archive(
 ) -> io::Result<VerifiedPack> {
     let pack = verify_registry_archive(inspection, receipt, input)?;
     require_model_list_port(&pack)?;
-    Ok(pack)
-}
-
-fn verify_conversation_read_archive(
-    inspection: &NativeArtifactInspection<NativeApplicationSources>,
-    receipt: &registry_pack_receipt::Pack,
-    input: &mut dyn io::Read,
-) -> io::Result<VerifiedPack> {
-    let pack = verify_registry_archive(inspection, receipt, input)?;
-    verify_legacy_conversation_read_declaration(&pack).map_err(io::Error::other)?;
     Ok(pack)
 }
 
@@ -1094,7 +1194,8 @@ mod tests {
         };
         let provider = VerifiedRegistryLaunch::test_proof(identity.clone(), "catalog:fixture");
         let model = VerifiedRegistryLaunch::test_model_proof(identity.clone(), "catalog:fixture");
-        let save = VerifiedRegistryLaunch::test_model_save_proof(identity, "catalog:fixture");
+        let save =
+            VerifiedRegistryLaunch::test_model_save_proof(identity.clone(), "catalog:fixture");
         for caller in callers {
             for proof in [&provider, &model, &save] {
                 assert!(!request(caller).has_launch_proof(proof));
@@ -1103,10 +1204,11 @@ mod tests {
         let mut proof = save;
         proof.model_save = None;
         for selected_caller in callers {
-            let mut source = VerifiedConversationReadSource {
+            let mut source = VerifiedConversationSource {
                 shell: None,
                 saved_turn: None,
                 saved_orchestration: None,
+                saved_receipt: [None, None],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -1117,14 +1219,30 @@ mod tests {
                 ConversationReadCaller::SavedOrchestration => &mut source.saved_orchestration,
             };
             *role = Some(VerifiedLegacyRoutePin::fixture());
-            proof.conversation_read = Some(source);
+            proof.conversation = Some(source);
             for caller in callers {
                 assert_eq!(
                     request(caller).has_launch_proof(&proof),
                     caller == selected_caller
                 );
             }
+            for role in OriginalSavedReceiptRole::ALL {
+                assert!(!proof.permits_saved_receipt(role));
+            }
             assert!(!NativeRegistryRequest::ModelList.has_launch_proof(&proof));
+        }
+        for granted in OriginalSavedReceiptRole::ALL {
+            let proof = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            for role in OriginalSavedReceiptRole::ALL {
+                assert_eq!(proof.permits_saved_receipt(role), role == granted);
+            }
+            for caller in callers {
+                assert!(!proof.permits_conversation_read(caller));
+            }
         }
     }
 }

@@ -11,7 +11,7 @@ use tobkiri_core::{
 use tobkiri_harness_native::{
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin,
+    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -22,6 +22,7 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_resolve: [Option<LockedRegistryRoute<'pin>>; 4],
     conversation_read: [Option<LockedRegistryRoute<'pin>>; 3],
+    saved_receipt: [Option<LockedRegistryRoute<'pin>>; 2],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -34,7 +35,10 @@ impl NativeApplicationSources {
         model: Option<&'pin OriginalModelSettingsSelection<'_>>,
         model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
         model_resolve: Option<&'pin OriginalModelResolveSelection<'_>>,
-        conversation_read: Option<&'pin OriginalConversationReadSelection<'_>>,
+        (conversation_read, saved_receipt): (
+            Option<&'pin OriginalConversationReadSelection<'_>>,
+            Option<&'pin OriginalSavedReceiptSelection<'_>>,
+        ),
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedRegistryBundle<'pin>> {
         let provider_prepare = provider
@@ -118,6 +122,15 @@ impl NativeApplicationSources {
                     .transpose()?;
             }
         }
+        let mut receipt_routes = [None, None];
+        if let Some(selection) = saved_receipt {
+            for (locked, role) in receipt_routes.iter_mut().zip(OriginalSavedReceiptRole::ALL) {
+                *locked = selection
+                    .pin(role)
+                    .map(|pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget))
+                    .transpose()?;
+            }
+        }
         Ok(LockedRegistryBundle {
             root: CoreBuffer::copy_from(self.bundle_root.as_os_str().as_bytes(), budget)?,
             provider_prepare,
@@ -125,6 +138,7 @@ impl NativeApplicationSources {
             model_save,
             model_resolve: model_resolve_routes,
             conversation_read: conversation_routes,
+            saved_receipt: receipt_routes,
             budget: Arc::clone(budget),
         })
     }
@@ -156,8 +170,23 @@ impl LockedRegistryBundle<'_> {
                 route.verify_documents(&pack, &catalog, Some("read"))?;
             }
         }
-        for conversation_read in self.conversation_read.iter().flatten() {
-            conversation_read.verify(root, &self.budget, &mut checkpoint)?;
+        let mut conversation = self
+            .conversation_read
+            .iter()
+            .chain(self.saved_receipt.iter())
+            .flatten();
+        if let Some(first) = conversation.next() {
+            let pack = first.pack.read(root, &self.budget, &mut checkpoint)?;
+            let catalog = first.catalog.read(root, &self.budget, &mut checkpoint)?;
+            for route in std::iter::once(first).chain(conversation) {
+                checkpoint()?;
+                ensure!(
+                    route.pack.digest == first.pack.digest
+                        && route.catalog.digest == first.catalog.digest,
+                    "legacy Conversation routes select different Bundle documents"
+                );
+                route.verify_documents(&pack, &catalog, Some("privileged"))?;
+            }
         }
         checkpoint()
     }

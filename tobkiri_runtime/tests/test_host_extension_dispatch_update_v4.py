@@ -27,6 +27,7 @@ from core_runtime.bootstrap.profile_capture import (
     prepare_default_profile_confirmation,
     runtime_user_data_root,
 )
+from core_runtime.bundled_artifact_retention_v4 import BundledArtifactOrigin
 from core_runtime.host_provider_backend_v4 import HostProviderContributionV4
 from core_runtime.native_generation_budget import (
     NativeGenerationBudgetTemplate,
@@ -81,9 +82,11 @@ def selected_host_revision(
         pack_id: str,
         *,
         artifact_digest: str | None = None,
+        origin: BundledArtifactOrigin | None = None,
     ) -> Path:
         assert pack_id == PACK_ID
         assert artifact_digest == selected_digest
+        assert origin is None
         return root
 
     monkeypatch.setattr(pack_control_v4, "load_pack_catalog", load_records)

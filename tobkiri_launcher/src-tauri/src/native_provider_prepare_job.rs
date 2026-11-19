@@ -23,10 +23,11 @@ use super::{
     caught,
     launch_metadata::{
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack, ConversationReadCaller,
-        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
+        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
+        reacquire_saved_receipt_pack, ConversationReadCaller, VerifiedRegistryLaunch,
+        REGISTRY_VERIFICATION_BYTES,
     },
-    NativeRuntimeState, OriginalModelResolveRole,
+    NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
 use crate::{
     defaultspack_authority::{require_current_launch_identity, SignedApplicationResolver},
@@ -37,8 +38,8 @@ use crate::{
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
-/// Maximum encoded CPython conversation result accepted by the Host.
-pub(crate) const CONVERSATION_GET_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum encoded CPython Conversation read result accepted by the Host.
+pub(crate) const CONVERSATION_READ_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded CPython Model Resolve result accepted by the Host.
 pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
 
@@ -56,6 +57,10 @@ pub(crate) enum NativeRegistryRequest {
         caller: ConversationReadCaller,
         conversation_id: String,
     },
+    ConversationReceipt {
+        caller: OriginalSavedReceiptRole,
+        turn_id: String,
+    },
     ModelResolve {
         role: OriginalModelResolveRole,
         identifier: String,
@@ -69,6 +74,7 @@ impl NativeRegistryRequest {
             Self::ModelList => proof.model_settings.is_some(),
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
+            Self::ConversationReceipt { caller, .. } => proof.permits_saved_receipt(*caller),
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
         }
     }
@@ -80,6 +86,10 @@ impl NativeRegistryRequest {
             Self::ModelSave { request, provider } => (request, Some(provider)),
             Self::ConversationGet {
                 conversation_id: identifier,
+                ..
+            }
+            | Self::ConversationReceipt {
+                turn_id: identifier,
                 ..
             }
             | Self::ModelResolve { identifier, .. } => {
@@ -473,7 +483,26 @@ async fn run(
                         )
                         .await
                         .map_err(conversation_registry_error)?;
-                    return decode_conversation_get_reply(output, &graph);
+                    return decode_conversation_read_reply(output, &graph);
+                }
+                NativeRegistryRequest::ConversationReceipt { caller, turn_id } => {
+                    let pack = reacquire_saved_receipt_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        caller,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .get_legacy_saved_receipt(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            &turn_id,
+                        )
+                        .await
+                        .map_err(conversation_registry_error)?;
+                    return decode_conversation_read_reply(output, &graph);
                 }
                 NativeRegistryRequest::ModelResolve { role, identifier } => {
                     let pack = reacquire_model_resolve_pack(
@@ -690,14 +719,14 @@ fn decode_model_save_reply(
     })
 }
 
-fn decode_conversation_get_reply(
+fn decode_conversation_read_reply(
     output: CoreValue,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<PreparedReply> {
     decode_owner_read_reply(
         output,
         budget,
-        CONVERSATION_GET_REPLY_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT,
         ConversationRegistryRequiresLegacyRead,
     )
 }
@@ -929,9 +958,57 @@ mod tests {
         let output = serde_json::json!({"owner_result": owner});
         let output =
             CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
-        let reply = decode_conversation_get_reply(output, &budget).unwrap();
+        let reply = decode_conversation_read_reply(output, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
         assert!(reply.document.is_none());
+    }
+
+    #[test]
+    fn saved_receipt_keeps_null_and_opaque_original_evidence_without_a_document() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        for owner in [
+            r#"{"receipt": null}"#,
+            r#"{"receipt": {"message_id": "保存", "precise": 9007199254740993, "cost": -0.0}}"#,
+        ] {
+            let output = serde_json::json!({"owner_result": owner});
+            let output =
+                CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
+            let reply = decode_conversation_read_reply(output, &budget).unwrap();
+            assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
+            assert!(reply.document.is_none());
+        }
+    }
+
+    #[test]
+    fn saved_receipt_request_requires_its_own_caller_proof() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let conversation = NativeRegistryRequest::ConversationGet {
+            caller: ConversationReadCaller::SavedTurn,
+            conversation_id: "stored".into(),
+        };
+        for granted in [SavedTurn, SavedReconcile] {
+            let proof = VerifiedRegistryLaunch::test_saved_receipt_proof(
+                identity.clone(),
+                "catalog:fixture",
+                granted,
+            );
+            assert!(!conversation.has_launch_proof(&proof));
+            for caller in [SavedTurn, SavedReconcile] {
+                let request = NativeRegistryRequest::ConversationReceipt {
+                    caller,
+                    turn_id: "turn".into(),
+                };
+                assert_eq!(request.has_launch_proof(&proof), caller == granted);
+            }
+        }
     }
 
     #[test]
@@ -945,7 +1022,7 @@ mod tests {
         ] {
             let invalid =
                 CoreValue::parse_guest(&serde_json::to_vec(&invalid).unwrap(), &budget).unwrap();
-            let Err(error) = decode_conversation_get_reply(invalid, &budget) else {
+            let Err(error) = decode_conversation_read_reply(invalid, &budget) else {
                 panic!("accepted an invalid owner result");
             };
             assert!(!error.is::<ConversationRegistryRequiresLegacyRead>());
@@ -955,14 +1032,14 @@ mod tests {
         let suffix = r#""}}"#;
         for extra in [0, 1] {
             let padding =
-                "a".repeat(CONVERSATION_GET_REPLY_LIMIT - prefix.len() - suffix.len() + extra);
+                "a".repeat(CONVERSATION_READ_REPLY_LIMIT - prefix.len() - suffix.len() + extra);
             let owner = format!("{prefix}{padding}{suffix}");
             let output = serde_json::json!({"owner_result": owner});
             let output =
                 CoreValue::parse_guest(&serde_json::to_vec(&output).unwrap(), &budget).unwrap();
-            let result = decode_conversation_get_reply(output, &budget);
+            let result = decode_conversation_read_reply(output, &budget);
             if extra == 0 {
-                assert_eq!(result.unwrap().wire.len(), CONVERSATION_GET_REPLY_LIMIT);
+                assert_eq!(result.unwrap().wire.len(), CONVERSATION_READ_REPLY_LIMIT);
             } else {
                 let Err(error) = result else {
                     panic!("accepted an oversized owner result");

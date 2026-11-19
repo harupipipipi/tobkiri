@@ -264,6 +264,7 @@ async fn commits_confirmed_initial_publication_to_the_host_pointer() {
             );
             check_model_save_grants(&observed, budget);
             check_conversation_read_grants(&observed, budget);
+            check_saved_receipt_grants(&observed, budget);
             check_model_resolve_grants(&observed, budget);
             assert_eq!(
                 observed
@@ -505,6 +506,42 @@ fn check_conversation_read_grants(
             pin.requested_scope_digest(),
             "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c"
         );
+    }
+}
+
+fn check_saved_receipt_grants(
+    observed: &crate::OriginalActiveProfile,
+    budget: &Arc<dyn AllocationBudget>,
+) {
+    use crate::OriginalSavedReceiptRole::{SavedReconcile, SavedTurn};
+
+    let receipt = crate::OriginalSavedReceiptSelection::select(observed, budget)
+        .expect("authenticate the original Saved Receipt grants")
+        .expect("confirmed Profile selects the Conversation owner for Turn Runtime");
+    let mut authorities = std::collections::BTreeSet::new();
+    for (role, caller) in [
+        (SavedTurn, "rumi_turn_runtime_pack.turn-runtime.saved"),
+        (
+            SavedReconcile,
+            "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        ),
+    ] {
+        let pin = receipt.pin(role).expect("each role has a signed grant");
+        assert_eq!(pin.caller_function_id(), caller);
+        assert_eq!(pin.contract_id(), "tobkiri.resource.conversation.v1");
+        assert_eq!(
+            pin.function_id(),
+            "rumi_conversation_store_pack.conversation-store.resource"
+        );
+        assert_eq!(
+            pin.operation_id(),
+            "rumi_conversation_store_pack.conversation-resource"
+        );
+        assert_eq!(
+            pin.requested_scope_digest(),
+            "sha256:d0069dfedd4def12d6921155433e7f280b2e2fb4842b9c32d07062f913dfaa8c"
+        );
+        assert!(authorities.insert(pin.authority_reference()));
     }
 }
 

@@ -35,7 +35,8 @@ pub use original_provider_prepare_selection::{
     OriginalRouteSelectionError as OriginalModelResolveSelectionError,
     OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
-    OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
+    OriginalRouteSelectionError as OriginalProviderPrepareSelectionError, OriginalSavedReceiptRole,
+    OriginalSavedReceiptSelection,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

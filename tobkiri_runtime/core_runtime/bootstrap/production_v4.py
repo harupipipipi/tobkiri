@@ -442,9 +442,13 @@ class _PlanAdmission(RequestAdmissionPort):
     ) -> None:
         self._profile_id = profile_id
         self._plan_digest = str(plan["plan_digest"])
-        self._native_bindings = {
-            _admission_binding_id(rule[0]): rule for rule in native_bindings
-        }
+        self._native_bindings: dict[str, list[tuple[
+            ResolvedOperationBinding, int,
+            Callable[[RequestContext, Mapping[str, Any]], bool],
+        ]]] = {}
+        for rule in native_bindings:
+            binding_id = _admission_binding_id(rule[0])
+            self._native_bindings.setdefault(binding_id, []).append(rule)
         self._native_reservations: dict[str, ResourceReservation] = {}
         self._native_lock = threading.RLock()
         policy = _admission_mapping(plan.get("admission_policy"))
@@ -530,10 +534,11 @@ class _PlanAdmission(RequestAdmissionPort):
         backend_overhead = _nonnegative_int(
             policy.get("backend_overhead_bytes"), default=0,
         )
-        native_floor_bytes = 0
-        native = self._native_bindings.get(_admission_binding_id(binding))
-        if native is not None and binding == native[0] and native[2](context, payload):
-            native_floor_bytes = native[1]
+        native_floor_bytes = max((
+            memory for native, memory, matches in self._native_bindings.get(
+                _admission_binding_id(binding), ()
+            ) if native == binding and matches(context, payload)
+        ), default=0)
         return _PlanAdmissionEstimate(
             measured_p95_bytes=measured,
             declared_minimum_bytes=_nonnegative_int(
@@ -1830,6 +1835,8 @@ def capture_production_dispatch(
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
         MODEL_RESOLVE_MINIMUM_MEMORY,
+        SAVED_RECEIPT_MAX_ID_CHARS,
+        SAVED_RECEIPT_MINIMUM_MEMORY,
         ConversationGetCaller,
         ModelResolveRole,
         NativeConversationGetFailure,
@@ -1841,11 +1848,15 @@ def capture_production_dispatch(
         NativeModelSaveRequest,
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
+        NativeSavedReceiptFailure,
+        NativeSavedReceiptRequest,
+        SavedReceiptCaller,
         capture_launcher_conversation_get_reader,
         capture_launcher_model_resolve_reader,
         capture_launcher_model_save_writer,
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
+        capture_launcher_saved_receipt_reader,
         is_canonical_model_resolve_identifier,
     )
     from ..provider_prepare_native_v4 import (
@@ -1861,6 +1872,7 @@ def capture_production_dispatch(
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
+    native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -4178,6 +4190,178 @@ def capture_production_dispatch(
 
         return replace(contribution, invoke=invoke)
 
+    def matches_captured_edge(
+        envelope: RequestEnvelope, edge: _CapturedPlanEdge,
+    ) -> bool:
+        return (
+            envelope.context.caller_principal.value == edge.caller.principal_id
+            and envelope.target_principal == edge.resolved_binding.principal_ref
+            and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
+        )
+
+    saved_receipt_routes: dict[
+        str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
+    ] = {}
+    if native_saved_receipt_reader is not None:
+        turn_pack = "rumi_turn_runtime_pack"
+        receipt_callers: tuple[tuple[SavedReceiptCaller, str], ...] = (
+            ("saved-turn", "saved"), ("saved-reconcile", "reconcile"),
+        )
+        for caller, kind in receipt_callers:
+            turn_function = f"{turn_pack}.turn-runtime.{kind}"
+            parents = tuple(
+                edge for edge in captured_edges
+                if edge.caller.principal_id in shell_principal_ids
+                and edge.caller.function_id == "shell.tauri.default"
+                and edge.resolved_binding.artifact.pack_id == turn_pack
+                and edge.binding_key[1:] == (
+                    f"tobkiri.action.turn.{kind}.v1", f"{turn_pack}.turn-{kind}",
+                )
+                and edge.resolved_binding.operation.effect_class
+                is EffectClass.PRIVILEGED
+                and is_exact_original_python_edge(edge, turn_function)
+            )
+            if len(parents) != 1:
+                continue
+            parent_edge, = parents
+            receipt_edges = tuple(
+                edge for edge in captured_edges
+                if edge.caller.principal_id == parent_edge.target.principal_id
+                and edge.caller.function_id == turn_function
+                and edge.resolved_binding.artifact.pack_id == conversation_pack
+                and edge.binding_key[1:] == (
+                    conversation_contract, conversation_operation,
+                )
+                and edge.resolved_binding.operation.effect_class
+                is EffectClass.PRIVILEGED
+                and is_exact_original_python_edge(edge, conversation_function)
+            )
+            if len(receipt_edges) == 1:
+                receipt_edge, = receipt_edges
+                saved_receipt_routes[receipt_edge.caller.principal_id] = (
+                    caller, receipt_edge, parent_edge,
+                )
+
+    def saved_receipt_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge, RequestEnvelope] | None:
+        route = saved_receipt_routes.get(context.caller_principal.value)
+        turn_id = payload.get("turn_id")
+        if (
+            route is None
+            or parent is None
+            or parent.parent is not None
+            or not matches_captured_edge(parent.envelope, route[2])
+            or payload.get("operation") != "saved_receipt"
+            or payload.get("profile_id") != context.profile_id
+            or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
+            or not isinstance(turn_id, str)
+            or len(turn_id) > SAVED_RECEIPT_MAX_ID_CHARS
+        ):
+            return None
+        try:
+            turn_id.encode("utf-8", errors="strict")
+        except UnicodeEncodeError:
+            return None
+        return route[0], route[1], parent.envelope
+
+    def is_native_saved_receipt_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        return native_provider_runtime is not None and saved_receipt_lineage(
+            context, payload,
+            parent_invocation_scopes.lookup(context.caller_session_id),
+        ) is not None
+
+    def wrap_native_saved_receipt(
+        contribution: HostProviderContributionV4,
+        reader: Callable[[NativeSavedReceiptRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        """Borrow the exact saved receipt edge under its live signed Turn parent."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native saved receipt context is unavailable")
+            envelope = invocation.envelope
+            context = envelope.context
+            lineage = saved_receipt_lineage(
+                context, payload, invocation.parent_invocation,
+            )
+            pinned_runtime = native_provider_runtime
+            if lineage is None or pinned_runtime is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            caller, edge, parent = lineage
+            if (
+                operation_id != envelope.operation_id
+                or payload is not envelope.payload
+                or not matches_captured_edge(envelope, edge)
+                or envelope.lease.token == parent.lease.token
+                or envelope.deadline_monotonic > parent.deadline_monotonic
+                or envelope.resource_reservation_id == parent.resource_reservation_id
+            ):
+                raise AuthorityDenied("native saved receipt lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                retained = parent_invocation_scopes.lookup(context.caller_session_id)
+                if (
+                    retained is None or retained.envelope is not parent
+                    or parent_invocation_scopes.lookup(parent.context.caller_session_id)
+                    is not None
+                    or native_provider_runtime is not pinned_runtime
+                ):
+                    raise AuthorityDenied("native saved receipt capture changed")
+                pinned_runtime[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            def legacy_read() -> Mapping[str, Any]:
+                guard()
+                result = contribution.invoke(operation_id, payload, invocation)
+                guard()
+                return result
+
+            guard()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id,
+            )
+            if resources.memory_bytes < SAVED_RECEIPT_MINIMUM_MEMORY:
+                return legacy_read()
+            try:
+                result = reader(NativeSavedReceiptRequest(
+                    context=context,
+                    runtime_instance=pinned_runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    caller=caller,
+                    turn_id=payload["turn_id"],
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return legacy_read()
+            except NativeSavedReceiptFailure as error:
+                guard()
+                if error.code == "invalid":
+                    raise ValueError(
+                        "conversation or message identifier is invalid",
+                    ) from None
+                if error.code == "denied":
+                    raise PermissionError(
+                        "conversation read operation is denied",
+                    ) from None
+                raise
+            guard()
+            return result
+
+        return replace(contribution, invoke=invoke)
+
     model_resolve_routes: dict[
         tuple[str, str], tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
     ] = {}
@@ -4257,15 +4441,6 @@ def capture_production_dispatch(
                         role, (model_edge, gateway_edge, orchestration_edge, turn_edge),
                     )
 
-    def matches_model_resolve_edge(
-        envelope: RequestEnvelope, edge: _CapturedPlanEdge,
-    ) -> bool:
-        return (
-            envelope.context.caller_principal.value == edge.caller.principal_id
-            and envelope.target_principal == edge.resolved_binding.principal_ref
-            and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
-        )
-
     def model_resolve_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -4282,7 +4457,7 @@ def capture_production_dispatch(
         role, (model_edge, *parent_edges) = route
         ancestors: list[RequestEnvelope] = []
         for edge in parent_edges:
-            if parent is None or not matches_model_resolve_edge(parent.envelope, edge):
+            if parent is None or not matches_captured_edge(parent.envelope, edge):
                 return None
             ancestors.append(parent.envelope)
             parent = parent.parent
@@ -4320,7 +4495,7 @@ def capture_production_dispatch(
             role, model_edge, ancestors = lineage
             if (
                 payload is not envelope.payload
-                or not matches_model_resolve_edge(envelope, model_edge)
+                or not matches_captured_edge(envelope, model_edge)
                 or any(
                     envelope.lease.token == ancestor.lease.token
                     for ancestor in ancestors
@@ -4861,6 +5036,9 @@ def capture_production_dispatch(
     native_conversation_get_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
+    native_saved_receipt_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     native_model_resolve_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
@@ -4969,6 +5147,18 @@ def capture_production_dispatch(
                 if item.key in conversation_bindings else item
                 for item in contributions
             )
+        if native_saved_receipt_reader is not None:
+            receipt_bindings = {
+                (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
+                for _, edge, _parent in saved_receipt_routes.values()
+                if edge.resolved_binding in captured_bindings
+            }
+            native_saved_receipt_bindings.update(receipt_bindings)
+            contributions = tuple(
+                wrap_native_saved_receipt(item, native_saved_receipt_reader)
+                if item.key in receipt_bindings else item
+                for item in contributions
+            )
         if (
             native_model_save_edge is not None
             and native_model_save_writer is not None
@@ -5054,6 +5244,7 @@ def capture_production_dispatch(
                         native_model_settings_key,
                         native_model_save_key,
                     } or item.key in native_conversation_get_bindings
+                    or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
                 ),
             ),
@@ -5178,6 +5369,10 @@ def capture_production_dispatch(
         )
         for binding in native_conversation_get_bindings.values()
     ]
+    native_admission_rules.extend(
+        (binding, SAVED_RECEIPT_MINIMUM_MEMORY, is_native_saved_receipt_route)
+        for binding in native_saved_receipt_bindings.values()
+    )
     native_admission_rules.extend(
         (
             binding,
@@ -5944,7 +6139,7 @@ def capture_production_dispatch(
         native_provider_runtime_publish=(
             publish_native_provider_runtime
             if (native_execute_key is not None or native_conversation_get_bindings
-                or native_model_resolve_bindings)
+                or native_saved_receipt_bindings or native_model_resolve_bindings)
             else None
         ),
     )

@@ -45,8 +45,10 @@ _OWNER_RESULT_LIMIT = 1024 * 1024
 # The managed Launcher's Wasm instance has its own physical memory cap.
 CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
+SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
 _MODEL_SAVE_MAX_NODES = 100_000
 _OWNER_MAX_INTEGER_DIGITS = 4300
 _FAILURES = frozenset({
@@ -89,6 +91,14 @@ class NativeModelResolveFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native Model Resolve failed ({code})")
+        self.code = code
+
+
+class NativeSavedReceiptFailure(RuntimeError):
+    """The Launcher returned a typed failure from the saved receipt owner."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Saved Receipt lookup failed ({code})")
         self.code = code
 
 
@@ -138,6 +148,21 @@ class NativeConversationGetRequest:
     conversation_id: str
 
 
+SavedReceiptCaller = Literal["saved-turn", "saved-reconcile"]
+
+
+@dataclass(frozen=True)
+class NativeSavedReceiptRequest:
+    """Borrow the original saved receipt lookup's capture and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    caller: SavedReceiptCaller
+    turn_id: str
+
+
 ModelResolveRole = Literal["quote-generate", "quote-stream", "generate", "stream"]
 
 
@@ -158,6 +183,7 @@ _NativeBorrow = (
     | NativeModelSettingsRequest
     | NativeModelSaveRequest
     | NativeConversationGetRequest
+    | NativeSavedReceiptRequest
     | NativeModelResolveRequest
 )
 
@@ -258,6 +284,16 @@ def capture_launcher_conversation_get_reader() -> (
     return partial(_invoke, launcher, operation="conversation_get")
 
 
+def capture_launcher_saved_receipt_reader() -> (
+    Callable[[NativeSavedReceiptRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for a saved receipt lookup."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="conversation_receipt")
+
+
 def capture_launcher_model_resolve_reader() -> (
     Callable[[NativeModelResolveRequest], Mapping[str, Any]] | None
 ):
@@ -329,6 +365,18 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
         frame["conversation_get"] = {
             "caller": borrow.caller,
             "conversation_id": borrow.conversation_id,
+        }
+    elif isinstance(borrow, NativeSavedReceiptRequest):
+        if (
+            type(borrow.caller) is not str
+            or borrow.caller not in ("saved-turn", "saved-reconcile")
+            or not isinstance(borrow.turn_id, str)
+            or len(borrow.turn_id) > SAVED_RECEIPT_MAX_ID_CHARS
+        ):
+            raise _ProtocolError("native Saved Receipt lookup inputs are invalid")
+        frame["conversation_receipt"] = {
+            "caller": borrow.caller,
+            "turn_id": borrow.turn_id,
         }
     elif isinstance(borrow, NativeModelResolveRequest):
         if (
@@ -411,6 +459,18 @@ def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
         type(result) is not dict
         or set(result) != {"conversation"}
         or type(result["conversation"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_saved_receipt(payload: bytes) -> dict[str, Any]:
+    invalid = "native Saved Receipt owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or set(result) != {"receipt"}
+        or (result["receipt"] is not None and type(result["receipt"]) is not dict)
     ):
         raise _ProtocolError(invalid)
     return result
@@ -589,6 +649,9 @@ class _Exchange:
                     if conversation_get:
                         wait_seconds()
                         raise NativeConversationGetFailure(payload.decode("ascii"))
+                    if isinstance(borrow, NativeSavedReceiptRequest):
+                        wait_seconds()
+                        raise NativeSavedReceiptFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeModelResolveRequest):
                         wait_seconds()
                         raise NativeModelResolveFailure(payload.decode("ascii"))
@@ -613,6 +676,8 @@ class _Exchange:
             elif tag == _PLAN and entered_live_phase:
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
+                elif isinstance(borrow, NativeSavedReceiptRequest):
+                    plan = _decode_saved_receipt(payload)
                 elif isinstance(borrow, NativeModelResolveRequest):
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif self.model_save:
@@ -635,17 +700,19 @@ def _invoke(
     *,
     operation: Literal[
         "provider_prepare", "model_list", "model_save", "conversation_get",
-        "model_resolve",
+        "conversation_receipt", "model_resolve",
     ],
 ) -> Mapping[str, Any]:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
+    saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
     if (
         model_settings != (operation == "model_list")
         or model_save != (operation == "model_save")
         or conversation_get != (operation == "conversation_get")
+        or saved_receipt != (operation == "conversation_receipt")
         or model_resolve != (operation == "model_resolve")
     ):
         raise _ProtocolError("native Registry request role is invalid")
@@ -674,7 +741,10 @@ def _invoke(
         _authenticate(connection, launcher)
         plan_limit = (
             _OWNER_RESULT_LIMIT
-            if model_settings or model_save or conversation_get or model_resolve
+            if (
+                model_settings or model_save or conversation_get
+                or saved_receipt or model_resolve
+            )
             else _JSON_LIMIT
         )
         exchange = _Exchange(connection, plan_limit, model_save=model_save)
