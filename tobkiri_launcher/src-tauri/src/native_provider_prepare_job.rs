@@ -43,15 +43,16 @@ use super::{
         reacquire_conversation_append_pack_for, reacquire_conversation_complete_pack,
         reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
         reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
-        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
-        reacquire_provider_prepare_pack, reacquire_request_prepare_pack,
-        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
-        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
-        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
-        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
-        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
-        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        reacquire_linked_conversation_context_pack, reacquire_model_resolve_pack,
+        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
+        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
+        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack_for, reacquire_usage_cost_pack,
+        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationAppendCaller,
+        ConversationReadCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
+        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
+        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
         GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
         PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
@@ -176,6 +177,9 @@ pub(crate) enum NativeRegistryRequest {
         caller: ConversationReadCaller,
         conversation_id: String,
     },
+    LinkedConversationContext {
+        conversation_id: String,
+    },
     ConversationReceipt {
         caller: OriginalSavedReceiptRole,
         turn_id: String,
@@ -250,6 +254,7 @@ impl NativeRegistryRequest {
             Self::ModelList => proof.model_settings.is_some(),
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
+            Self::LinkedConversationContext { .. } => proof.permits_linked_conversation_context(),
             Self::ConversationReceipt { caller, .. } => proof.permits_saved_receipt(*caller),
             Self::ConversationConfirmation { caller, .. } => {
                 proof.permits_conversation_confirmation(*caller)
@@ -387,6 +392,9 @@ impl NativeRegistryRequest {
             Self::ConversationGet {
                 conversation_id: identifier,
                 ..
+            }
+            | Self::LinkedConversationContext {
+                conversation_id: identifier,
             }
             | Self::ConversationReceipt {
                 turn_id: identifier,
@@ -883,6 +891,24 @@ async fn run(
                     revalidate()?;
                     let output = inspection
                         .get_legacy_conversation(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            &conversation_id,
+                        )
+                        .await
+                        .map_err(conversation_registry_error)?;
+                    return decode_conversation_read_reply(output, &graph);
+                }
+                NativeRegistryRequest::LinkedConversationContext { conversation_id } => {
+                    let pack = reacquire_linked_conversation_context_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .get_legacy_linked_conversation_context(
                             &pack,
                             &config.user_data_dir,
                             &identity.profile_id,
@@ -2791,6 +2817,35 @@ mod tests {
         let reply = decode_conversation_read_reply(output, &budget).unwrap();
         assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
         assert!(reply.document.is_none());
+    }
+
+    #[test]
+    fn linked_conversation_context_requires_its_own_read_proof() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let receipt = VerifiedRegistryLaunch::test_saved_receipt_proof(
+            identity.clone(),
+            "catalog:fixture",
+            OriginalSavedReceiptRole::SavedTurn,
+        );
+        let linked = VerifiedRegistryLaunch::test_linked_conversation_context_proof(
+            identity,
+            "catalog:fixture",
+        );
+        let request = NativeRegistryRequest::LinkedConversationContext {
+            conversation_id: "child".into(),
+        };
+        assert!(!request.has_launch_proof(&receipt));
+        assert!(request.has_launch_proof(&linked));
+        assert!(!request.requires_publication_permit());
+        assert!(!request.uses_funded_input());
+        assert_eq!(request.input_capacity().unwrap(), "child".len());
     }
 
     #[test]

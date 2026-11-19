@@ -241,10 +241,7 @@ impl Start<'_> {
                 }
             }
             (None, None, None, Some(get), None, None, None, None, None, None, None, None) => {
-                NativeRegistryRequest::ConversationGet {
-                    caller: get.caller,
-                    conversation_id: get.conversation_id.clone(),
-                }
+                get.operation()?
             }
             (None, None, None, None, Some(receipt), None, None, None, None, None, None, None) => {
                 NativeRegistryRequest::ConversationReceipt {
@@ -426,6 +423,35 @@ struct ConversationGet {
     #[serde(deserialize_with = "deserialize_conversation_caller")]
     caller: ConversationReadCaller,
     conversation_id: String,
+    #[serde(default)]
+    linked_context: bool,
+}
+
+impl ConversationGet {
+    fn operation(&self) -> Result<NativeRegistryRequest> {
+        if self.linked_context {
+            ensure!(
+                self.caller == ConversationReadCaller::SavedOrchestration,
+                "linked Conversation context requires the Saved Orchestration caller"
+            );
+            let mut bytes = self.conversation_id.bytes();
+            ensure!(
+                self.conversation_id.len() <= 256
+                    && bytes
+                        .next()
+                        .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                    && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)),
+                "invalid linked Conversation child ID"
+            );
+            return Ok(NativeRegistryRequest::LinkedConversationContext {
+                conversation_id: self.conversation_id.clone(),
+            });
+        }
+        Ok(NativeRegistryRequest::ConversationGet {
+            caller: self.caller,
+            conversation_id: self.conversation_id.clone(),
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -1243,6 +1269,7 @@ pub(crate) fn admit_connection(
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
                 NativeRegistryRequest::TurnRead { .. }
+                    | NativeRegistryRequest::LinkedConversationContext { .. }
                     | NativeRegistryRequest::TurnStart { .. }
                     | NativeRegistryRequest::TurnSettlement { .. }
                     | NativeRegistryRequest::ConversationAppend { .. }
@@ -1460,6 +1487,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::ModelList => ReplyRole::ModelList,
             NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
             NativeRegistryRequest::ConversationGet { .. }
+            | NativeRegistryRequest::LinkedConversationContext { .. }
             | NativeRegistryRequest::ConversationReceipt { .. } => ReplyRole::ConversationRead,
             NativeRegistryRequest::ConversationConfirmation { .. } => {
                 ReplyRole::ConversationConfirmation
@@ -3876,6 +3904,35 @@ mod tests {
         ] {
             let frame = start_frame(&format!(r#", "conversation_get":{body}"#));
             assert!(serde_json::from_str::<Start<'_>>(&frame).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn linked_conversation_context_accepts_only_the_fixed_child_and_saved_caller() {
+        let get = r#", "conversation_get":{"caller":"saved-orchestration","conversation_id":"Side.1:child","linked_context":true}"#;
+        let frame = start_frame(get);
+        let start = parse_start(START, frame.as_bytes()).unwrap();
+        let NativeRegistryRequest::LinkedConversationContext { conversation_id } =
+            start.operation().unwrap()
+        else {
+            panic!("expected private linked Conversation context");
+        };
+        assert_eq!(conversation_id, "Side.1:child");
+
+        for rejected in [
+            get.replace("saved-orchestration", "shell"),
+            get.replace("saved-orchestration", "saved-turn"),
+            get.replace("Side.1:child", "../child"),
+            get.replace("Side.1:child", &"x".repeat(257)),
+            get.replace("Side.1:child", ""),
+            get.replace("true", "null"),
+            get.replace("true", "true,\"parent_id\":\"chosen\""),
+            format!("{get}{PROVIDER_REQUEST}"),
+        ] {
+            let frame = start_frame(&rejected);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.operation())
+                .is_err());
         }
     }
 
