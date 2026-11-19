@@ -7726,7 +7726,12 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 assert status == 200 and replay["data"]["status"] == "existing", replay
             else:
                 assert status != 200 or result["data"]["status"] != "completed", result
-                assert store.saved_receipt(conversation_id) is None
+                receipt = store.saved_receipt(conversation_id)
+                assert receipt is not None and receipt.get("result_reference") is None
+                assert [
+                    (item["role"], item["content"])
+                    for item in store.get(conversation_id)["messages"]
+                ] == [("user", content)]
                 assert not adapter_results
             assert len(native_calls) == len(adapter_calls) == 1
             assert not legacy_connections
