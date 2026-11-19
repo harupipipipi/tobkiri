@@ -6133,9 +6133,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   切り替え、拒否、応答未確認を検証した。テスト内でAdapterとRegistryのLeaseと容量予約が別々で、
   各段階の期限を超えず、読み取り完了後に同じ認可を使用できないことを確認した。この試験では
   RegistryとモデルのネイティブIPCの応答にfixtureを使用した。
+- 同じ署名済みProfileと配布用Wasmを使ったmacOSの分離ソケット試験では、Side Chatの通常・
+  ストリーム両役割で物理Registryを読み取れた。取り消し、別役割の拒否、元ファイルの不変を
+  併せて確認した。アプリの実プロセスマネージャーはfixtureを使用した。
+- 署名済みSide ChatのHTTPから実ソケットとWasmを通し、ストリーム用のRegistry応答が元の
+  所有者と一致した。読み取りは0.54秒。Rustプロセスがループバックの疑似APIに一度だけPOSTし、
+  通常の30秒期限内（送信処理28.70秒、残り1.16秒）に返信を保存した。プロセスの起動は
+  fixtureで、会話の他の処理には既存Hostを使用した。
 - [macOS CI](https://github.com/harupipipipi/tobkiri/actions/runs/44569440075) は
   `adbec3a8c` でLauncherの起動、DMGの生成とマウント済みリソース検査が通過した。
   Setupから会話までを同じインストール済みアプリで通した結果は引き続き必要。
+- [Gemma 3 1Bの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44588924001) は
+  `7fa028932` で通過した。Adapterの新しい起動時IPCをつなぐ前のビルドを対象とする。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
