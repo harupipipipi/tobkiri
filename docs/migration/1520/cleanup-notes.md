@@ -5718,3 +5718,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   workflow 22件とmaterialization 4件が成功。
   [通常Flow CI44138078966](https://github.com/harupipipipi/tobkiri/actions/runs/44138078966)も成功し、
   実受信UI entryからのProfile Flowと未承認の入れ子route拒否、実consumerのstrict Clippyを通過した。
+
+## 043: 設定とコマンド一覧の表示生成を PackVM から移す
+
+- `defaultspack.application-presentation` は現在の起動準備と、設定、UIカタログ、コマンド一覧の
+  署名済み呼出しに使われる。`defaultspack/runtime/application_presentation.py` は、表示定義を
+  作るために元の設定・コマンド処理を1,600行以上複製している。状態の読取りやコマンドの実行権限は、
+  既存の各呼出し元が所有する。
+- Rustゲストは同じ原本から生成した表示定義を同梱し、呼出し元が解決したモデル選択肢を
+  既存の4欄に入れる。設定欄、コマンドID、表示順、ルートの識別子、数値を文字列で保持する境界、
+  64 KiBの入力制限を維持する。署名済みコマンドの実行可否は元の所有者が決める。
+  固定CPython 3.13.16と、外部ポートをimportしない実コンポーネントを64 MiBのゲスト上限で比較。
+  空の候補、重複とUnicodeを含む候補、64 KiB境界、拒否、全50コマンドを検証した。
+  Rust単体4件とdoctest 1件、strict Clippy、Pythonの表示と呼出し元31件、CI構成22件が通過した。
+  コマンド一覧の既存テストは署名済みスキーマで既に使う `models.strategy_reference` に揃えた。
+- 旧汎用Wasm workerはLinuxのcgroup v2が必要で、macOSでは起動準備に使えない。
+  macOSの製品接続には、各署名済み呼出しの親と現在のリースを証明し、64 MiBの枠で動く
+  Launcher/Core側の経路を使う。元の3経路の設定と表示、秘密値の非公開、PackVMの
+  割当て回数を実際の署名済みHTTPで再検証した後に、旧表示実行を撤去する。
+- `conversation.turn.v1/complete` は別の起動条件として残る。通常チャットのWasm実行は
+  `shell.tauri.default` の署名済み経路に束縛されているため、Side Chatは別に検証する。

@@ -1,0 +1,3049 @@
+{
+  "commands": [
+    {
+      "canonical_id": "defaultspack:help",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "help",
+        "name": "help",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Help"
+        },
+        "description": {
+          "fallback": "Show slash command help."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "help",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_command_help"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:pet",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "pet",
+        "name": "pet",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Pet"
+        },
+        "description": {
+          "fallback": "Open the Tobkiri pet window locally."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "pet",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_task_pet"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:model",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "model",
+        "name": "model",
+        "aliases": [
+          "models"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Model"
+        },
+        "description": {
+          "fallback": "Select or search the active model."
+        },
+        "category": "model",
+        "visibility": "default",
+        "icon": "model",
+        "input": {
+          "kind": "search_select",
+          "argument": "query",
+          "selection": "single",
+          "datasource_ref": "tobkiri:model_catalog",
+          "search": {
+            "enabled": true,
+            "min_chars": 0,
+            "debounce_ms": 150
+          },
+          "keyboard": {
+            "commit_keys": [
+              "Enter",
+              "Tab"
+            ]
+          }
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "state_mutation",
+        "state_ref": "tobkiri:active_model",
+        "mutation": {
+          "argument": "query",
+          "when_present": "set"
+        }
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:think",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "think",
+        "name": "think",
+        "aliases": [
+          "thinking",
+          "t"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Thinking Level"
+        },
+        "description": {
+          "fallback": "Set thinking level."
+        },
+        "category": "model",
+        "visibility": "default",
+        "icon": "think",
+        "input": {
+          "kind": "select",
+          "argument": "level",
+          "selection": "single",
+          "options": [
+            {
+              "value": "none",
+              "label": {
+                "fallback": "none"
+              }
+            },
+            {
+              "value": "low",
+              "label": {
+                "fallback": "low"
+              }
+            },
+            {
+              "value": "medium",
+              "label": {
+                "fallback": "medium"
+              }
+            },
+            {
+              "value": "high",
+              "label": {
+                "fallback": "high"
+              }
+            },
+            {
+              "value": "xhigh",
+              "label": {
+                "fallback": "xhigh"
+              }
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "pack_operation",
+        "operation_ref": "defaultspack:ai_set_thinking_level"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:fast",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "fast",
+        "name": "fast",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Fast Mode"
+        },
+        "description": {
+          "fallback": "Switch to a fast-capable model or provider."
+        },
+        "category": "model",
+        "visibility": "default",
+        "icon": "fast",
+        "input": {
+          "kind": "toggle",
+          "argument": "enabled",
+          "state_ref": "host:model.fast_mode",
+          "bare_behavior": "toggle",
+          "show_current_state": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "state_mutation",
+        "state_ref": "host:model.fast_mode",
+        "mutation": {
+          "argument": "enabled",
+          "when_present": "set"
+        }
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:price",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "price",
+        "name": "price",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Price Mode"
+        },
+        "description": {
+          "fallback": "Switch to a low or high price model when available."
+        },
+        "category": "model",
+        "visibility": "default",
+        "icon": "price",
+        "input": {
+          "kind": "select",
+          "argument": "tier",
+          "selection": "single",
+          "options": [
+            {
+              "value": "low",
+              "label": {
+                "fallback": "low"
+              }
+            },
+            {
+              "value": "high",
+              "label": {
+                "fallback": "high"
+              }
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:set_price_mode"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:compact",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "compact",
+        "name": "compact",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Compact"
+        },
+        "description": {
+          "fallback": "Compact the current conversation context."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "compact",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "instruction",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "pack_operation",
+        "operation_ref": "compact_conversation"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:new",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "new",
+        "name": "new",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "New Chat"
+        },
+        "description": {
+          "fallback": "Create a new conversation."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "new",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:new_conversation"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:clear",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "clear",
+        "name": "clear",
+        "aliases": [
+          "reset"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Clear Draft"
+        },
+        "description": {
+          "fallback": "Clear composer draft and pending state."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "clear",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:clear_composer_state"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:home_title",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "home_title",
+        "name": "title",
+        "aliases": [
+          "name"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Home Title"
+        },
+        "description": {
+          "fallback": "Show or change the Tobkiri home title. Use reset to restore the default."
+        },
+        "category": "settings",
+        "visibility": "default",
+        "icon": "home_title",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "value",
+              "control": "text",
+              "required": false,
+              "placeholder": {
+                "fallback": "表示したい文字を入力"
+              }
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:set_home_title"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:coding",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "coding",
+        "name": "coding",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Coding Mode"
+        },
+        "description": {
+          "fallback": "Toggle coding mode."
+        },
+        "category": "mode",
+        "visibility": "default",
+        "icon": "coding",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:set_mode_coding"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:frontend",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "frontend",
+        "name": "frontend",
+        "aliases": [
+          "ui"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Frontend Precision"
+        },
+        "description": {
+          "fallback": "Force recursive frontend precision mode."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "frontend",
+        "input": {
+          "kind": "select",
+          "argument": "mode",
+          "selection": "single",
+          "options": [
+            {
+              "value": "strict",
+              "label": {
+                "fallback": "strict"
+              }
+            },
+            {
+              "value": "audit",
+              "label": {
+                "fallback": "audit"
+              }
+            },
+            {
+              "value": "refine",
+              "label": {
+                "fallback": "refine"
+              }
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "pack_operation",
+        "operation_ref": "defaultspack:ui.frontend_precision"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:chat",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "chat",
+        "name": "chat",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Chat Mode"
+        },
+        "description": {
+          "fallback": "Switch to chat mode."
+        },
+        "category": "mode",
+        "visibility": "default",
+        "icon": "chat",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:set_mode_chat"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:agent",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "agent",
+        "name": "agent",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Agent Mode"
+        },
+        "description": {
+          "fallback": "Switch to agent mode."
+        },
+        "category": "mode",
+        "visibility": "default",
+        "icon": "agent",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:set_mode_agent"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:yolo",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "yolo",
+        "name": "yolo",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Full Access (YOLO)"
+        },
+        "description": {
+          "fallback": "Toggle Full Access. /yolo and the Full Access approval option are the same setting."
+        },
+        "category": "mode",
+        "visibility": "default",
+        "icon": "yolo",
+        "input": {
+          "kind": "toggle",
+          "argument": "enabled",
+          "state_ref": "host:approval.full_access",
+          "bare_behavior": "toggle",
+          "show_current_state": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "state_mutation",
+        "state_ref": "host:approval.full_access",
+        "mutation": {
+          "argument": "enabled",
+          "when_present": "set"
+        }
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:ultra_yolo",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "ultra_yolo",
+        "name": "ultra",
+        "aliases": [
+          "ultra_yolo",
+          "ultrayolo"
+        ],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Full Access (legacy alias)"
+        },
+        "description": {
+          "fallback": "Legacy aliases for Full Access. This is the same setting as /yolo."
+        },
+        "category": "mode",
+        "visibility": "advanced",
+        "icon": "ultra_yolo",
+        "input": {
+          "kind": "toggle",
+          "argument": "enabled",
+          "state_ref": "host:approval.full_access",
+          "bare_behavior": "toggle",
+          "show_current_state": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "state_mutation",
+        "state_ref": "host:approval.full_access",
+        "mutation": {
+          "argument": "enabled",
+          "when_present": "set"
+        }
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:tools",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "tools",
+        "name": "tools",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Tools"
+        },
+        "description": {
+          "fallback": "Open or filter the tool picker."
+        },
+        "category": "tools",
+        "visibility": "default",
+        "icon": "tools",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "query",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_tool_picker"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:status",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "status",
+        "name": "status",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Status"
+        },
+        "description": {
+          "fallback": "Show model, mode, tools, and context status."
+        },
+        "category": "chat",
+        "visibility": "default",
+        "icon": "status",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:show_status"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:settings",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "settings",
+        "name": "settings",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Settings"
+        },
+        "description": {
+          "fallback": "Open settings."
+        },
+        "category": "settings",
+        "visibility": "default",
+        "icon": "settings",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "section",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_settings"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:diff",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "diff",
+        "name": "diff",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Diff"
+        },
+        "description": {
+          "fallback": "Preview current git changes."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "diff",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_diff_preview"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:review",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "review",
+        "name": "review",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Review"
+        },
+        "description": {
+          "fallback": "Review current diff or files."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "review",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:start_review"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:branch",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "branch",
+        "name": "branch",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Branch"
+        },
+        "description": {
+          "fallback": "Open branch picker or create a branch."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "branch",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "name",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_branch_picker"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:test",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "test",
+        "name": "test",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Test"
+        },
+        "description": {
+          "fallback": "Prepare a test run."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "test",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "target",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:prepare_test_run"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:lint",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "lint",
+        "name": "lint",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Lint"
+        },
+        "description": {
+          "fallback": "Prepare lint, format, or check."
+        },
+        "category": "coding",
+        "visibility": "default",
+        "icon": "lint",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:prepare_lint_run"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:files",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "files",
+        "name": "files",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Files"
+        },
+        "description": {
+          "fallback": "Search workspace files."
+        },
+        "category": "coding",
+        "visibility": "advanced",
+        "icon": "files",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "query",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_file_search"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:commit",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "commit",
+        "name": "commit",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Commit"
+        },
+        "description": {
+          "fallback": "Create a git commit after approval."
+        },
+        "category": "coding",
+        "visibility": "hidden",
+        "icon": "commit",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "message",
+              "control": "text",
+              "required": true
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:request_commit_approval"
+      },
+      "authorization": {
+        "risk": "high",
+        "permissions": [
+          "host.process.exec_guarded"
+        ],
+        "approval_required": true,
+        "approval_policy": "required",
+        "executor_policy_ref": "tobkiri.command.human_approved"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:push",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "push",
+        "name": "push",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Push"
+        },
+        "description": {
+          "fallback": "Push the branch after approval."
+        },
+        "category": "coding",
+        "visibility": "hidden",
+        "icon": "push",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "remote",
+              "control": "text",
+              "required": false
+            },
+            {
+              "argument": "branch",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:request_push_approval"
+      },
+      "authorization": {
+        "risk": "high",
+        "permissions": [
+          "host.process.exec_guarded"
+        ],
+        "approval_required": true,
+        "approval_policy": "required",
+        "executor_policy_ref": "tobkiri.command.human_approved"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:terminal",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "terminal",
+        "name": "terminal",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Terminal"
+        },
+        "description": {
+          "fallback": "Run a terminal command after approval."
+        },
+        "category": "coding",
+        "visibility": "hidden",
+        "icon": "terminal",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "cmd",
+              "control": "text",
+              "required": true
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:request_terminal_approval"
+      },
+      "authorization": {
+        "risk": "high",
+        "permissions": [
+          "host.process.exec_guarded"
+        ],
+        "approval_required": true,
+        "approval_policy": "required",
+        "executor_policy_ref": "tobkiri.command.human_approved"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:patch",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "patch",
+        "name": "patch",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Patch"
+        },
+        "description": {
+          "fallback": "Apply a patch after approval."
+        },
+        "category": "coding",
+        "visibility": "hidden",
+        "icon": "patch",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "patch",
+              "control": "text",
+              "required": true
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:request_patch_approval"
+      },
+      "authorization": {
+        "risk": "high",
+        "permissions": [
+          "host.process.exec_guarded"
+        ],
+        "approval_required": true,
+        "approval_policy": "required",
+        "executor_policy_ref": "tobkiri.command.human_approved"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:restore",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "restore",
+        "name": "restore",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Restore"
+        },
+        "description": {
+          "fallback": "Restore files after approval."
+        },
+        "category": "coding",
+        "visibility": "hidden",
+        "icon": "restore",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "paths",
+              "control": "text",
+              "required": true
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:request_restore_approval"
+      },
+      "authorization": {
+        "risk": "high",
+        "permissions": [
+          "host.process.exec_guarded"
+        ],
+        "approval_required": true,
+        "approval_policy": "required",
+        "executor_policy_ref": "tobkiri.command.human_approved"
+      },
+      "constraints": {
+        "modes": [
+          "coding"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:history",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "history",
+        "name": "history",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "History"
+        },
+        "description": {
+          "fallback": "Open conversation history."
+        },
+        "category": "chat",
+        "visibility": "hidden",
+        "icon": "history",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_history"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:export",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "export",
+        "name": "export",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Export"
+        },
+        "description": {
+          "fallback": "Export the current conversation."
+        },
+        "category": "chat",
+        "visibility": "hidden",
+        "icon": "export",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:export_conversation"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:fork",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "fork",
+        "name": "fork",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Fork"
+        },
+        "description": {
+          "fallback": "Fork the current conversation."
+        },
+        "category": "chat",
+        "visibility": "hidden",
+        "icon": "fork",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:fork_conversation"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:resume",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "resume",
+        "name": "resume",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Resume"
+        },
+        "description": {
+          "fallback": "Resume a prior run."
+        },
+        "category": "chat",
+        "visibility": "hidden",
+        "icon": "resume",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:resume_conversation"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:rename",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "rename",
+        "name": "rename",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Rename"
+        },
+        "description": {
+          "fallback": "Rename the current conversation."
+        },
+        "category": "chat",
+        "visibility": "advanced",
+        "icon": "rename",
+        "input": {
+          "kind": "form",
+          "fields": [
+            {
+              "argument": "title",
+              "control": "text",
+              "required": false
+            }
+          ]
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:rename_conversation"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:context",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "context",
+        "name": "context",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Context"
+        },
+        "description": {
+          "fallback": "Open context viewer."
+        },
+        "category": "debug",
+        "visibility": "advanced",
+        "icon": "context",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_context_viewer"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:memory",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "memory",
+        "name": "memory",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Memory"
+        },
+        "description": {
+          "fallback": "Open memory inspector."
+        },
+        "category": "debug",
+        "visibility": "advanced",
+        "icon": "memory",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_memory_inspector"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:permissions",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "permissions",
+        "name": "permissions",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Permissions"
+        },
+        "description": {
+          "fallback": "Open permissions settings."
+        },
+        "category": "settings",
+        "visibility": "advanced",
+        "icon": "permissions",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_permissions"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:approvals",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "approvals",
+        "name": "approvals",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Approvals"
+        },
+        "description": {
+          "fallback": "Open approval center."
+        },
+        "category": "settings",
+        "visibility": "advanced",
+        "icon": "approvals",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_approvals"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:usage",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "usage",
+        "name": "usage",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Usage"
+        },
+        "description": {
+          "fallback": "Show token and usage details."
+        },
+        "category": "debug",
+        "visibility": "advanced",
+        "icon": "usage",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:show_usage"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:debug",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "debug",
+        "name": "debug",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Debug"
+        },
+        "description": {
+          "fallback": "Open debug tools."
+        },
+        "category": "debug",
+        "visibility": "hidden",
+        "icon": "debug",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_debug"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:doctor",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "doctor",
+        "name": "doctor",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Doctor"
+        },
+        "description": {
+          "fallback": "Run diagnostics."
+        },
+        "category": "debug",
+        "visibility": "hidden",
+        "icon": "doctor",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:run_doctor"
+      },
+      "authorization": {
+        "risk": "medium",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:logs",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "logs",
+        "name": "logs",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Logs"
+        },
+        "description": {
+          "fallback": "Open logs."
+        },
+        "category": "debug",
+        "visibility": "hidden",
+        "icon": "logs",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_logs"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:raw",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "raw",
+        "name": "raw",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Raw"
+        },
+        "description": {
+          "fallback": "Show raw conversation payload."
+        },
+        "category": "debug",
+        "visibility": "hidden",
+        "icon": "raw",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:show_raw"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:theme",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "theme",
+        "name": "theme",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Theme"
+        },
+        "description": {
+          "fallback": "Open theme settings."
+        },
+        "category": "settings",
+        "visibility": "hidden",
+        "icon": "theme",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_theme_settings"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:keymap",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "keymap",
+        "name": "keymap",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Keymap"
+        },
+        "description": {
+          "fallback": "Open keymap settings."
+        },
+        "category": "settings",
+        "visibility": "hidden",
+        "icon": "keymap",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_keymap_settings"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:plugins",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "plugins",
+        "name": "plugins",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Plugins"
+        },
+        "description": {
+          "fallback": "Open plugin manager."
+        },
+        "category": "tools",
+        "visibility": "hidden",
+        "icon": "plugins",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_plugins"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:mcp",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "mcp",
+        "name": "mcp",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "MCP"
+        },
+        "description": {
+          "fallback": "Open MCP manager."
+        },
+        "category": "tools",
+        "visibility": "hidden",
+        "icon": "mcp",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_mcp"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:skills",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "skills",
+        "name": "skills",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Skills"
+        },
+        "description": {
+          "fallback": "Open skill manager."
+        },
+        "category": "tools",
+        "visibility": "hidden",
+        "icon": "skills",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_skills"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    },
+    {
+      "canonical_id": "defaultspack:hooks",
+      "pack_id": "defaultspack",
+      "pack_generation": 611611621,
+      "command_version": "1.0.0",
+      "identity": {
+        "id": "hooks",
+        "name": "hooks",
+        "aliases": [],
+        "version": "1.0.0"
+      },
+      "presentation": {
+        "label": {
+          "fallback": "Hooks"
+        },
+        "description": {
+          "fallback": "Open hook manager."
+        },
+        "category": "tools",
+        "visibility": "hidden",
+        "icon": "hooks",
+        "input": {
+          "kind": "action",
+          "run_on_bare": true
+        },
+        "mounts": [
+          {
+            "slot_ref": "tobkiri:command_palette.commands",
+            "display": "command",
+            "order": 100
+          }
+        ]
+      },
+      "execution": {
+        "kind": "host_operation",
+        "operation_ref": "host:open_hooks"
+      },
+      "authorization": {
+        "risk": "low",
+        "permissions": [],
+        "approval_required": false,
+        "approval_policy": "never",
+        "executor_policy_ref": "tobkiri.command.standard"
+      },
+      "constraints": {
+        "modes": [
+          "chat",
+          "coding",
+          "agent"
+        ]
+      },
+      "availability": {
+        "status": "unavailable",
+        "reason_code": "canonical_binding_missing",
+        "reason": "This command's canonical execution binding is not connected."
+      }
+    }
+  ],
+  "diagnostics": [],
+  "pack_generation": 611611621
+}

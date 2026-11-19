@@ -518,6 +518,8 @@ version = "1.0.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
 dependencies = [
+ "foldhash",
+ "indexmap",
  "itoa",
  "memchr",
  "serde",
@@ -748,6 +750,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "tobkiri-ai-usage-cost-core",
+ "wit-bindgen",
+]
+
+[[package]]
+name = "tobkiri-pack-application-presentation-rust"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
  "wit-bindgen",
 ]
 

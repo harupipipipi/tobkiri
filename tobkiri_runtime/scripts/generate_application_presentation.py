@@ -1,4 +1,4 @@
-"""Stage Defaultspack-owned pure presentation code for isolated PackVM reads.
+"""Stage Defaultspack-owned presentation code and Wasm guest data.
 
 This is packaging, not an execution or authority adapter. The generated file
 contains no Host imports, user-data lookup, network calls or provider discovery.
@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "ecosystem" / "defaultspack"
 OUTPUT = PACK / "runtime" / "application_presentation.py"
+WASM_DATA = ROOT.parent / "packs" / "local.application-presentation-rust" / "data"
 COMMAND_SCHEMA = ROOT / "ecosystem" / "rumi_command_protocol_pack" / "schemas" / "command-protocol-v1.schema.json"
 SOURCES = (
     "domain/frontend_settings_catalog.py",
@@ -126,6 +127,22 @@ def render() -> str:
     return "\n".join(parts)
 
 
+def render_wasm_data(source: str) -> dict[str, str]:
+    """Project the same fixed catalog for the Wasm guest, before model insertion."""
+    namespace: dict = {}
+    exec(compile(source, str(OUTPUT), "exec"), namespace)
+    invoke = namespace["tobkiri_packvm_invoke"]
+    return {
+        f"{kind}.json": json.dumps(
+            invoke("defaultspack.presentation.read", {"kind": kind}),
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        ) + "\n"
+        for kind in ("ui", "commands")
+    }
+
+
 def main() -> None:
     """Generate or check the portable presentation artifact."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -146,6 +163,15 @@ def main() -> None:
             raise SystemExit("application presentation artifact is stale")
     else:
         OUTPUT.write_text(expected, encoding="utf-8")
+    if not args.check:
+        WASM_DATA.mkdir(parents=True, exist_ok=True)
+    for name, content in render_wasm_data(expected).items():
+        path = WASM_DATA / name
+        if args.check:
+            if not path.is_file() or path.read_text(encoding="utf-8") != content:
+                raise SystemExit(f"Wasm presentation data is stale: {name}")
+        else:
+            path.write_text(content, encoding="utf-8")
 
 
 if __name__ == "__main__":

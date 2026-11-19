@@ -211,7 +211,7 @@ def test_command_catalog_publishes_only_bound_state_and_datasource_definitions(
         COMMAND_OPERATION, {"profile_id": "defaults"}, Client(),
     )
     assert result["states"] == [
-        {"state_ref": "defaultspack:models.deepthink_enabled"}
+        {"state_ref": "defaultspack:models.strategy_reference"}
     ]
     assert result["datasources"] == [
         {"datasource_ref": "tobkiri:model_catalog"},

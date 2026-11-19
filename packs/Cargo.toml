@@ -10,6 +10,7 @@ members = [
   "local.saved-conversation-rust",
   "local.saved-turn-runtime-rust",
   "local.saved-orchestration-rust",
+  "local.application-presentation-rust",
   "local.ai-routing-rust",
   "local.ai-usage-cost-rust",
   "local.ai-stream-normalizer-rust",

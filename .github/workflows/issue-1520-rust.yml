@@ -25,8 +25,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
-          targets: wasm32-wasip2
+          targets: wasm32-wasip2, wasm32-unknown-unknown
           components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
       - name: Boundary checker regression
         run: python3 tools/quality/test_issue_1520_gate.py
       - name: Launcher runtime dependency lock
@@ -86,6 +89,31 @@ jobs:
         run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
       - name: Build actual M2 Pack components and pin their hashes
         run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Compare the Wasm application presentation with its sealed source
+        run: |
+          set -euo pipefail
+          python3 -B - "$RUNNER_TEMP/application-presentation-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+          from tools.original_authority_reference import requirements
+
+          requirements(Path.cwd(), Path(sys.argv[1]), packages=(
+              "wasmtime", "pytest", "iniconfig", "packaging", "pluggy", "pygments",
+          ))
+          PY
+          python3 -m pip install --no-compile --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/application-presentation-requirements.txt"
+          python3 -B tobkiri_runtime/scripts/generate_application_presentation.py --check
+          cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-application-presentation-rust
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER="$(rustc --print sysroot)/lib/rustlib/$host/bin/wasm-component-ld"
+          cargo rustc --locked --release --manifest-path packs/Cargo.toml \
+            --target wasm32-unknown-unknown -p tobkiri-pack-application-presentation-rust \
+            -- -C link-arg=--wasi-adapter=none
+          export TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM="$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/tobkiri_pack_application_presentation_rust.wasm"
+          PYTHONPATH=tobkiri_runtime python3 -B -m pytest --noconftest -q -p no:cacheprovider \
+            tobkiri_runtime/tests/test_application_presentation.py
       - name: Pure Flow dependency graph
         run: |
           cargo tree --locked -p tobkiri-flow > flow-dependencies.txt

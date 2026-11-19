@@ -1,15 +1,23 @@
 """Defaultspack presentation packaging is standalone and grants no execution."""
 
+import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 
 import pytest
 
-from scripts.generate_application_presentation import OUTPUT, _portable_module, render
-from tobkiri_protocol.canonical import strict_loads
+from scripts.generate_application_presentation import (
+    OUTPUT,
+    WASM_DATA,
+    _portable_module,
+    render,
+    render_wasm_data,
+)
+from tobkiri_protocol.canonical import canonical_json, strict_loads
 
 OPERATION = "defaultspack.presentation.read"
 
@@ -23,7 +31,10 @@ def _module():
 
 
 def test_generated_artifact_is_current() -> None:
-    assert OUTPUT.read_text(encoding="utf-8") == render()
+    generated = render()
+    assert OUTPUT.read_text(encoding="utf-8") == generated
+    for name, content in render_wasm_data(generated).items():
+        assert (WASM_DATA / name).read_text(encoding="utf-8") == content
 
 
 @pytest.mark.parametrize("source", ["from core_runtime import di_container", "from .copy import deepcopy"])
@@ -104,3 +115,44 @@ def test_authority_paths_and_unbounded_display_data_are_rejected(payload: dict) 
 def test_arbitrary_operation_is_rejected() -> None:
     with pytest.raises(ValueError):
         _module().tobkiri_packvm_invoke("defaultspack.execute", {"kind": "commands"})
+
+
+def test_real_wasm_presentation_matches_sealed_application() -> None:
+    """Compare actual import-free Wasm with the sealed operation under 64 MiB."""
+    component = os.environ.get("TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM")
+    if not component:
+        pytest.skip("set TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM to the built guest")
+
+    from tobkiri_host.errors import ProviderExecutionError
+    from tobkiri_host.wasm_component import PureComponent
+
+    binary = Path(component).read_bytes()
+    digest = "sha256:" + hashlib.sha256(binary).hexdigest()
+    original = _module().tobkiri_packvm_invoke
+    option = {"label": "モデル 🔎", "value": "owner/model"}
+    largest = {"kind": "ui", "_session_id": "x" * 65_503}
+    assert len(json.dumps(largest)) == 65_536
+    for payload in (
+        {"kind": "commands", "profile_id": "defaults"},
+        {"kind": "ui"},
+        {"kind": "ui", "model_options": [option, option], "profile_id": "別プロファイル"},
+        largest,
+    ):
+        message = strict_loads(canonical_json(payload))
+        expected = original(OPERATION, message)
+        actual = PureComponent(binary, digest).invoke(
+            OPERATION, message, memory_bytes=64 * 1024 * 1024,
+        )
+        assert json.dumps(actual, ensure_ascii=False) == json.dumps(expected, ensure_ascii=False)
+    for operation, payload in (
+        ("defaultspack.execute", {"kind": "commands"}),
+        (OPERATION, {"kind": "commands", "model_options": []}),
+        (OPERATION, {**largest, "_session_id": largest["_session_id"] + "x"}),
+        (OPERATION, {"kind": "ui", "model_options": [{**option, "credential": "extra"}]}),
+    ):
+        with pytest.raises(ValueError):
+            original(operation, payload)
+        with pytest.raises(ProviderExecutionError, match="rejected"):
+            PureComponent(binary, digest).invoke(
+                operation, payload, memory_bytes=64 * 1024 * 1024,
+            )

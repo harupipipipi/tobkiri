@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 import logging
@@ -233,6 +234,26 @@ class _PresentationPackVmBackend(_ShellPolicyPackVmBackend):
     _CONTRACT_ID = "tobkiri.resource.application.presentation.v1"
     _OPERATION_ID = "defaultspack.presentation.read"
     _execute_abi = staticmethod(_presentation_abi)
+
+
+class _PresentationWasmTestTransport(_PresentationPackVmBackend):
+    """Render with Wasm behind the test-provided PackVM transport."""
+
+    def __init__(self, component_path: Path) -> None:
+        super().__init__()
+        self._component_bytes = component_path.read_bytes()
+        self._component_digest = "sha256:" + hashlib.sha256(
+            self._component_bytes
+        ).hexdigest()
+
+    def _execute_abi(self, operation_id: str, payload: dict) -> dict:
+        from tobkiri_host.wasm_component import PureComponent
+
+        rendered = PureComponent(self._component_bytes, self._component_digest).invoke(
+            operation_id, payload, memory_bytes=64 * 1024 * 1024,
+        )
+        assert rendered == super()._execute_abi(operation_id, payload)
+        return rendered
 
 
 class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
@@ -611,14 +632,25 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
-def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Keep production Broker checks while supplying the sealed presentation ABI."""
+def settings_vertical_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> Iterator[tuple[PackAPIServer, object, AuthorityStore]]:
+    """Keep production Broker checks with a test-provided presentation transport."""
     from tobkiri_host.credential_store import host_credential_store_factory
 
+    if getattr(request, "param", "packvm") == "wasm":
+        component = os.environ.get("TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM")
+        if not component:
+            pytest.skip("set TOBKIRI_TEST_APPLICATION_PRESENTATION_WASM to the built guest")
+        backend = _PresentationWasmTestTransport(Path(component))
+    else:
+        backend = _PresentationPackVmBackend()
     yield from _captured_production_server(
         tmp_path,
         monkeypatch,
-        packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+        packvm_backends=BackendRegistry((backend,)),
         credential_store_factory=host_credential_store_factory,
     )
 
@@ -4451,6 +4483,9 @@ def test_presentation_allocation_capacity_refusal_has_http503_through_real_broke
     ] * 3
 
 
+@pytest.mark.parametrize(
+    "settings_vertical_server", ["packvm", "wasm"], indirect=True
+)
 def test_settings_reads_saved_values_and_models_through_real_broker(
     settings_vertical_server,
     tmp_path: Path,
@@ -4487,10 +4522,15 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     before = path.read_bytes()
     server, _session, _authority = settings_vertical_server
     observed: list[RequestEnvelope] = []
+    presentation_calls: list[tuple[str, dict]] = []
     original_dispatch = _session.broker._dispatch
 
     def observe_dispatch(backend, envelope, *args, **kwargs):
         observed.append(envelope)
+        if isinstance(backend, _PresentationPackVmBackend):
+            assert envelope.contract_id == "tobkiri.resource.application.presentation.v1"
+            assert envelope.operation_id == "defaultspack.presentation.read"
+            presentation_calls.append((observed[0].operation_id, dict(envelope.payload)))
         return original_dispatch(backend, envelope, *args, **kwargs)
 
     monkeypatch.setattr(_session.broker, "_dispatch", observe_dispatch)
@@ -4531,6 +4571,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         ]
         assert "hidden-test-secret" not in json.dumps(payload)
         assert "opaque:test-secret" not in json.dumps(payload)
+    observed.clear()
     status, payload, _ = _request(
         server,
         "GET",
@@ -4563,6 +4604,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     )
     assert status == 200, host_payload
     assert host_payload["data"]["dynamic_host"]["profile_id"] == "defaults"
+    observed.clear()
     status, command_payload, _ = _request(
         server,
         "GET",
@@ -4626,6 +4668,17 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 400, payload
+    ui_input = {
+        "profile_id": "defaults",
+        "kind": "ui",
+        "model_options": [{"value": "settings-model", "label": "Settings model"}],
+    }
+    assert presentation_calls == [
+        ("tobkiri_ui_settings_pack.settings-read", ui_input),
+        ("tobkiri_ui_settings_pack.settings-read", ui_input),
+        ("tobkiri_ui_settings_pack.catalog-read", ui_input),
+        ("command.catalog.read", {"profile_id": "defaults", "kind": "commands"}),
+    ]
     assert path.read_bytes() == before
 
 
