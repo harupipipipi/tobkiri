@@ -4254,6 +4254,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   この試験のApplication管理、配布物のresolver入口、PackVMのプロセス搬送にはfixtureを
   使った。CIでは同じ世代のWasmとRegistry Packを同梱する署名済みLauncherで、GUIのSetupと
   Shell handoffを経たHostに、このHTTP応答と再送の検査を接続する余地がある。
+  `1dbc10644` は受信済みのProvider応答を変換する副作用なしの
+  `local.provider-adapter` Wasm Packを追加した。Registryレシートv4に、同じビルドの当該
+  Packと正確なWITを固定する。v1〜v3も引き続き検証する。Rust単体6件、通常CLIで検証した
+  Wasm PackをCore内で実行する5ケース、DMG検証121件が通過した。実WasmではGenerateと
+  Streamのフィールド・UTF-8の保持、未対応のJSONと4 MiBを超える投影の識別、各呼出し後の
+  容量台帳の解放を確認した。
+  `d592284f9` は通常の保存ターンでLauncherが読み込むこのPackへ応答変換を接続した。
+  POST前に起動時のRegistryレシートとPackを照合し、元の承認で送った後、同じCoreの
+  read-only portで変換する。変換済みの結果は要求済みで送信許可がある接続の専用フレーム
+  に返す。扱えないJSONや上限外の変換では、受信済み本文を元のAdapterで処理する。
+  同梱Adapterを1.0.4に更新し、CPython 3.13.16のIPC・ローカルHTTP・署名付き回帰382件、
+  macOS Launcherのテスト型チェック、生成物の照合6件が通過した。
+  クリーンな `d592284f9` の結合試験では、署名付きのGenerateとStreamがRust所有の
+  TCP接続で一度ずつPOSTし、v4レシートで検証したWasm結果をIPCから受け取った。
+  両方の返信を保存し、再送でProviderの受信数が増えないことを確認した。Application管理、
+  配布物のresolver入口、PackVMの搬送はfixture。最新DMGの起動からの実モデル会話は後続。
+  共用JSON codecは重複キーを一度再エンコードしてから有限値へ変換する。このコピーの削減は
+  初出順・最終値・非有限値や孤立サロゲートの扱いを共用codecで検証してから行う。
+  旧Pythonの応答解釈は、残る入力表現と例外の互換性を証明するまで必要。
   [717face1f の実Gemma 3 1B CI](https://github.com/harupipipipi/tobkiri/actions/runs/44487465311)
   は既存のHarness実行経路で通過した。
   [d3113e9b2 の再計測](https://github.com/harupipipipi/tobkiri/actions/runs/44490251513)では
