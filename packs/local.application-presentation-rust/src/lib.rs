@@ -2,7 +2,11 @@
 
 use serde_json::{Number, Value};
 
-wit_bindgen::generate!({ path: "wit", world: "pack" });
+#[cfg(feature = "component")]
+mod component;
+
+#[cfg(not(feature = "component"))]
+mod reference_component;
 
 const OPERATION: &str = "defaultspack.presentation.read";
 const UI: &str = include_str!("../data/ui.json");
@@ -18,16 +22,7 @@ const MODEL_FIELDS: [&str; 4] = [
 ];
 const INVALID_FIELDS: &str = "application presentation fields are invalid";
 const INVALID_EMBEDDED_UI: &str = "application presentation UI data is invalid";
-
-struct Presentation;
-
-impl Guest for Presentation {
-    fn invoke(operation_id: String, payload_json: String) -> Result<String, String> {
-        invoke(&operation_id, &payload_json).map_err(str::to_owned)
-    }
-}
-
-export!(Presentation);
+const INPUT_TOO_LARGE: &str = "application presentation input exceeds limit";
 
 /// Read the embedded presentation and apply any supplied model display options.
 pub fn invoke(operation_id: &str, payload_json: &str) -> Result<String, &'static str> {
@@ -46,7 +41,7 @@ pub fn invoke(operation_id: &str, payload_json: &str) -> Result<String, &'static
         return Err(INVALID_FIELDS);
     }
     if python_json_len(&payload) > INPUT_LIMIT {
-        return Err("application presentation input exceeds limit");
+        return Err(INPUT_TOO_LARGE);
     }
 
     let options = fields.get("model_options");

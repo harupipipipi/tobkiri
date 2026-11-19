@@ -356,6 +356,39 @@ class _SavedLocalChatRoute:
     parents: tuple[_CapturedPlanEdge, ...]
 
 
+_PRESENTATION_OPERATION = (
+    "tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read",
+)
+_PRESENTATION_FUNCTION = "defaultspack.application-presentation"
+_PRESENTATION_IMPLEMENTATION = (
+    "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29"
+)
+_PRESENTATION_CONTRACT_REVISION = (
+    "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967"
+)
+_UI_PRESENTATION_CALLER_IMPLEMENTATION = (
+    "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8"
+)
+_UI_PRESENTATION_CALLER_CONTRACT_REVISION = (
+    "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c"
+)
+_PRESENTATION_CALLERS = (
+    (
+        "settings", "tobkiri.ui.settings.read", "tobkiri_ui_settings_pack.settings-read",
+        _UI_PRESENTATION_CALLER_IMPLEMENTATION, _UI_PRESENTATION_CALLER_CONTRACT_REVISION,
+    ),
+    (
+        "catalog", "tobkiri.ui.catalog.read", "tobkiri_ui_settings_pack.catalog-read",
+        _UI_PRESENTATION_CALLER_IMPLEMENTATION, _UI_PRESENTATION_CALLER_CONTRACT_REVISION,
+    ),
+    (
+        "commands", "rumi_command_protocol_pack.catalog.read", "command.catalog.read",
+        "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0",
+        "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+    ),
+)
+
+
 class _UnavailablePackVmBackend:
     """Exact fail-closed registration for one missing PackVM backend."""
 
@@ -1879,6 +1912,7 @@ def capture_production_dispatch(
         AI_ROUTING_MINIMUM_MEMORY,
         AI_TOOL_INTENTS_INPUT_FIELDS,
         AI_USAGE_COST_INPUT_FIELDS,
+        APPLICATION_PRESENTATION_MINIMUM_MEMORY,
         CONVERSATION_APPEND_MINIMUM_MEMORY,
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
@@ -1893,10 +1927,12 @@ def capture_production_dispatch(
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         SAVED_TURN_START_MINIMUM_MEMORY,
         AiPipelineStep,
+        ApplicationPresentationRole,
         ConversationGetCaller,
         ModelResolveRole,
         NativeAiRoutingFailure,
         NativeAiRoutingRequest,
+        NativeApplicationPresentationRequest,
         NativeConversationAppendFailure,
         NativeConversationAppendPublicationUnconfirmed,
         NativeConversationAppendRequest,
@@ -1933,6 +1969,7 @@ def capture_production_dispatch(
         capture_launcher_ai_stream_result_normalizer,
         capture_launcher_ai_tool_intents_normalizer,
         capture_launcher_ai_usage_cost_calculator,
+        capture_launcher_application_presentation,
         capture_launcher_conversation_append_writer,
         capture_launcher_conversation_confirmation_writer,
         capture_launcher_conversation_get_reader,
@@ -1974,6 +2011,7 @@ def capture_production_dispatch(
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
+    native_presentation = capture_launcher_application_presentation()
     native_saved_local_chat = capture_launcher_saved_local_chat_executor()
     native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
     if native_saved_step is not None and native_saved_manifest is not None:
@@ -2723,6 +2761,146 @@ def capture_production_dispatch(
             executable_digest=native_saved_manifest,
         )
 
+    native_presentation_bindings: dict[
+        tuple[str, str, str, str, str, str], NativeWasmBinding
+    ] = {}
+    native_presentation_original_providers: dict[str, str] = {}
+
+    def assert_original_presentation_provider_current(domain_id: str) -> None:
+        provider_id = native_presentation_original_providers.get(domain_id)
+        if provider_id is None or authority_store.is_revoked(
+            "provider_authority", provider_id,
+        ):
+            raise AuthorityDenied("original Application presentation Provider was revoked")
+
+    def native_presentation_parent(
+        context: RequestContext, caller: OpaqueAuthorityRef,
+    ) -> CapturedInvocationScopeV4:
+        parent = parent_invocation_scopes.lookup(context.caller_session_id)
+        if (
+            parent is None
+            or parent.envelope.target_principal != caller
+            or context.caller_session_id
+            != authority_session_id(execution_session_id(parent.envelope), caller.value)
+        ):
+            raise AuthorityDenied("native Application presentation parent is unavailable")
+        return parent
+
+    def capture_current_native_presentation(
+        edge: _CapturedPlanEdge, envelope: RequestEnvelope,
+    ) -> Callable[[], None]:
+        launcher_runtime = native_provider_runtime
+        native = native_presentation_bindings.get(edge.key)
+        if native is None or launcher_runtime is None:
+            raise AuthorityDenied("native Application presentation capture is unavailable")
+        parent = native_presentation_parent(envelope.context, native.caller_principal)
+        if (
+            not matches_captured_edge(envelope, edge)
+            or not native.matches(envelope.context, edge.resolved_binding)
+            or envelope.lease.token == parent.envelope.lease.token
+            or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+            or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+        ):
+            raise AuthorityDenied("native Application presentation captured scope changed")
+
+        def guard() -> None:
+            if (
+                native_provider_runtime is not launcher_runtime
+                or native_presentation_parent(
+                    envelope.context, native.caller_principal,
+                ).envelope is not parent.envelope
+                or not dispatch_holder
+            ):
+                raise AuthorityDenied("native Application presentation capture changed")
+            with _capture_guard_traversal(assert_current_capture):
+                parent.assert_current()
+                dispatch_holder[0].assert_current()
+            assert_original_presentation_provider_current(native.domain_id)
+            launcher_runtime[1]()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id
+            )
+            if resources.memory_bytes < APPLICATION_PRESENTATION_MINIMUM_MEMORY:
+                raise AuthorityDenied("native Application presentation capacity is unavailable")
+
+        return guard
+
+    def execute_native_presentation(
+        presenter: Callable[[NativeApplicationPresentationRequest], dict[str, Any]],
+        role: ApplicationPresentationRole,
+        envelope: RequestEnvelope,
+        guard: Callable[[], None],
+    ) -> dict[str, Any]:
+        launcher_runtime = native_provider_runtime
+        guard()
+        if launcher_runtime is None:
+            raise AuthorityDenied("native Application presentation Launcher is unavailable")
+        return presenter(NativeApplicationPresentationRequest(
+            context=envelope.context,
+            runtime_instance=launcher_runtime[0],
+            deadline_monotonic=envelope.deadline_monotonic,
+            assert_current=guard,
+            role=role,
+            input=envelope.payload,
+        ))
+
+    if native_presentation is not None:
+        from tobkiri_host.native_application_presentation import (
+            NativeApplicationPresentationBackend,
+        )
+
+        manifest, presenter = native_presentation
+        for role, function_id, caller_operation, implementation, revision in (
+            _PRESENTATION_CALLERS
+        ):
+            matches = tuple(
+                edge for edge in captured_edges
+                if (
+                    edge.caller.function_id == function_id
+                    and edge.caller.operation_id == caller_operation
+                    and edge.caller.function_implementation_digest == implementation
+                    and edge.caller.contract_revision_digest == revision
+                    and edge.binding_key[1:] == _PRESENTATION_OPERATION
+                    and edge.target.function_implementation_digest
+                    == _PRESENTATION_IMPLEMENTATION
+                    and edge.target.contract_revision_digest == _PRESENTATION_CONTRACT_REVISION
+                    and edge.resolved_binding.artifact.pack_id == "defaultspack"
+                    and edge.resolved_binding.operation.effect_class is EffectClass.PURE
+                    and edge.resolved_binding.operation.contract_version == "1.0.0"
+                    and is_exact_original_python_edge(
+                        edge, _PRESENTATION_FUNCTION, backend="tobkiri.python-pack-v4",
+                        execution_kind="pack_vm", domain_kind="pack_vm",
+                    )
+                )
+            )
+            if len(matches) != 1:
+                continue
+            edge = matches[0]
+            caller = OpaqueAuthorityRef(edge.caller.principal_id)
+            manifest_hex = manifest.removeprefix("sha256:")
+            caller_suffix = caller.value.removeprefix("sha256:")[:24]
+            native_domain = (
+                f"domain.provider.presentation-wasm.{caller_suffix}."
+                f"{activation_suffix}.{manifest_hex}"
+            )
+            native_presentation_bindings[edge.key] = NativeWasmBinding(
+                binding=edge.resolved_binding,
+                backend=NativeApplicationPresentationBackend(
+                    edge.resolved_binding, caller, native_domain, manifest,
+                    authority_store=authority_store,
+                    execute=partial(execute_native_presentation, presenter, role),
+                    capture_current=partial(capture_current_native_presentation, edge),
+                ),
+                caller_principal=caller,
+                domain_id=native_domain,
+                executable_digest=manifest,
+            )
+
+    def physical_wasm_for_edge(edge: _CapturedPlanEdge) -> NativeWasmBinding | None:
+        if edge is ordinary_orchestration_edge:
+            return native_saved_execution
+        return native_presentation_bindings.get(edge.key)
+
     selected_backend_registry = BackendRegistry(registered_backends)
     for captured_edge in sorted(captured_edges, key=lambda item: item.key):
         if captured_edge.resolved_binding.operation.contract_id in _CONTROL_CONTRACTS:
@@ -2789,10 +2967,7 @@ def capture_production_dispatch(
             ExecutionKind.WASM,
         }:
             continue
-        physical_wasm = (
-            native_saved_execution
-            if captured_edge is ordinary_orchestration_edge else None
-        )
+        physical_wasm = physical_wasm_for_edge(captured_edge)
         if physical_wasm is not None:
             backend = physical_wasm.backend
         else:
@@ -2812,6 +2987,7 @@ def capture_production_dispatch(
             approval_roots_by_pack=approval_roots_by_pack,
         )
         if not provenance_valid:
+            native_presentation_bindings.pop(captured_edge.key, None)
             continue
         pack_approval_revision: str | None = None
         if approval_pack_id is not None:
@@ -2822,6 +2998,7 @@ def capture_production_dispatch(
                 # A selected Pack can remain in an immutable historical Plan,
                 # but a missing, stale, corrupt, or revoked approval must never
                 # recreate runtime authority for it.
+                native_presentation_bindings.pop(captured_edge.key, None)
                 continue
             captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
         execution_kind = backend.status.execution_kind
@@ -2873,7 +3050,11 @@ def capture_production_dispatch(
             authority_mode=captured_edge.authority_mode,
             pack_approval_revision=pack_approval_revision,
             execution_provider_label=(
-                "profile-saved-wasm-" + physical_wasm.executable_digest[7:31]
+                (
+                    "profile-saved-wasm-"
+                    if physical_wasm is native_saved_execution
+                    else "profile-presentation-wasm-"
+                ) + physical_wasm.executable_digest[7:31]
                 if physical_wasm is not None else None
             ),
         )
@@ -2882,8 +3063,14 @@ def capture_production_dispatch(
         else:
             _, logical_grant = profile_edge_authority_records[captured_edge.binding_key]
             if logical_grant is None:
-                raise AuthorityDenied("native Saved Orchestration original Grant is unavailable")
-            native_saved_original_provider = "provider." + logical_grant.grant_id.removeprefix("grant.")
+                raise AuthorityDenied("native Wasm original Profile Grant is unavailable")
+            original_provider = "provider." + logical_grant.grant_id.removeprefix("grant.")
+            if physical_wasm is native_saved_execution:
+                native_saved_original_provider = original_provider
+            else:
+                native_presentation_original_providers[physical_wasm.domain_id] = (
+                    original_provider
+                )
 
     # An optional Pack approval is part of the captured runtime boundary even
     # when its selected PackVM backend is unavailable.  The absence of a
@@ -4824,13 +5011,35 @@ def capture_production_dispatch(
             raise AuthorityDenied("native Saved Orchestration authority identity changed")
         return None
 
-    def selected_native_saved_binding(
+    def selected_native_wasm_binding(
         context: RequestContext, binding: ResolvedOperationBinding,
     ) -> NativeWasmBinding | None:
-        native = selected_native_saved_authority(context, binding.principal_ref)
+        native = selected_native_authority(context, binding.principal_ref)
         if native is not None and binding != native.binding:
-            raise AuthorityDenied("native Saved Orchestration signed binding changed")
+            raise AuthorityDenied("native Wasm signed binding changed")
         return native
+
+    def selected_native_authority(
+        context: RequestContext, target: OpaqueAuthorityRef,
+    ) -> NativeWasmBinding | None:
+        saved = selected_native_saved_authority(context, target)
+        if saved is not None:
+            return saved
+        for presentation in native_presentation_bindings.values():
+            if (
+                context.caller_principal == presentation.caller_principal
+                and target == presentation.binding.principal_ref
+            ):
+                assert_original_presentation_provider_current(presentation.domain_id)
+                native_presentation_parent(context, presentation.caller_principal).assert_current()
+                return presentation
+        if any(
+            context.target_domain_id == native.domain_id
+            or context.target_backend_digest == native.backend_digest
+            for native in native_presentation_bindings.values()
+        ):
+            raise AuthorityDenied("native Application presentation authority changed")
+        return None
 
     def capture_current_native_saved(envelope: RequestEnvelope) -> Callable[[], None]:
         captured_runtime = native_provider_runtime
@@ -7415,6 +7624,16 @@ def capture_production_dispatch(
         ))
     native_admission_rules.extend(
         (
+            native.binding,
+            APPLICATION_PRESENTATION_MINIMUM_MEMORY,
+            lambda context, _, *, domain_id=native.domain_id: (
+                context.target_domain_id == domain_id
+            ),
+        )
+        for native in native_presentation_bindings.values()
+    )
+    native_admission_rules.extend(
+        (
             route.adapter.resolved_binding,
             SAVED_LOCAL_CHAT_MINIMUM_MEMORY,
             is_native_saved_local_chat_route,
@@ -7455,8 +7674,9 @@ def capture_production_dispatch(
         confirmed_supervisor_release=confirmed_supervisor_release,
         native_bindings=tuple(native_admission_rules),
     )
-    if native_saved_execution is not None:
-        authority_control.install_native_wasm_binding_resolver(selected_native_saved_authority)
+    use_native_wasm = native_saved_execution is not None or bool(native_presentation_bindings)
+    if use_native_wasm:
+        authority_control.install_native_wasm_binding_resolver(selected_native_authority)
     broker = runtime.broker(
         authority_store=authority_store,
         adapters=AdapterPlanner(()),
@@ -7468,7 +7688,7 @@ def capture_production_dispatch(
         authority_adapter=authority_control,
         acceptance_receipts=acceptance_receipts,
         native_wasm_binding_for=(
-            selected_native_saved_binding if native_saved_execution is not None else None
+            selected_native_wasm_binding if use_native_wasm else None
         ),
     )
     activation_digest = canonical_digest(active.activation)
@@ -7519,7 +7739,7 @@ def capture_production_dispatch(
         caller = captured_edge.caller
         target = captured_edge.target
         target_suffix = target.principal_id.removeprefix("sha256:")[:24]
-        native = native_saved_execution if captured_edge is ordinary_orchestration_edge else None
+        native = physical_wasm_for_edge(captured_edge)
         # One authenticated panel session may invoke operations whose
         # resolved Shell caller principals differ.  Authority session
         # bindings are principal-specific, so include that exact caller in
@@ -7585,6 +7805,27 @@ def capture_production_dispatch(
                 caller_sessions.add(resolved_authority_session_id)
         return context
 
+    def presentation_backend_for(
+        binding: ResolvedOperationBinding,
+    ) -> ExecutionBackend | None:
+        return next((
+            native.backend for native in native_presentation_bindings.values()
+            if native.binding == binding
+        ), None)
+
+    def ready_presentation_backend(
+        binding: ResolvedOperationBinding,
+    ) -> ExecutionBackend | None:
+        backend = presentation_backend_for(binding)
+        if backend is not None:
+            if native_provider_runtime is None:
+                raise BackendUnavailableError("native Application presentation is unavailable")
+            native_provider_runtime[1]()
+            for native in native_presentation_bindings.values():
+                if native.binding == binding:
+                    assert_original_presentation_provider_current(native.domain_id)
+        return backend
+
     providers: dict[str, tuple[Mapping[str, Any], ...]] = {}
     provider_keys: set[tuple[str, str, str]] = set()
     for binding in plan["bindings"]:
@@ -7609,7 +7850,8 @@ def capture_production_dispatch(
                 native_saved_execution.backend
                 if native_saved_execution is not None
                 and resolved_binding == native_saved_execution.binding
-                else broker._backends.select(resolved_binding)
+                else presentation_backend_for(resolved_binding)
+                or broker._backends.select(resolved_binding)
             )
         except Exception as error:
             projected_backend = None
@@ -8200,8 +8442,11 @@ def capture_production_dispatch(
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
                 or native_saved_append_key is not None or native_saved_execution is not None
-                or saved_local_chat_routes)
+                or saved_local_chat_routes or native_presentation_bindings)
             else None
+        ),
+        native_readiness_for=(
+            ready_presentation_backend if native_presentation_bindings else None
         ),
     )
     dispatch_holder.append(dispatch)

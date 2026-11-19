@@ -39,6 +39,7 @@ _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
+_APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
@@ -83,6 +84,8 @@ SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_START_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+APPLICATION_PRESENTATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+_APPLICATION_PRESENTATION_INPUT_LIMIT = 128 * 1024
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
 SAVED_LOCAL_CHAT_MAX_RESULT_BYTES = 4 * 1024 * 1024
@@ -393,6 +396,21 @@ class NativeSavedOrchestrationRequest:
     input: Mapping[str, Any]
 
 
+ApplicationPresentationRole = Literal["settings", "catalog", "commands"]
+
+
+@dataclass(frozen=True)
+class NativeApplicationPresentationRequest:
+    """Borrow the live presentation operation selected by the Host."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    role: ApplicationPresentationRole
+    input: Mapping[str, Any]
+
+
 SavedLocalChatRole = Literal["generate", "stream"]
 
 
@@ -488,6 +506,7 @@ _NativeBorrow = (
     | NativeSavedTurnReadRequest
     | NativeSavedTurnStartRequest
     | NativeSavedOrchestrationRequest
+    | NativeApplicationPresentationRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
@@ -497,6 +516,7 @@ _NativeOperation = Literal[
     "provider_prepare", "model_list", "model_save", "conversation_get",
     "conversation_receipt", "model_resolve", "turn_start", "turn_settlement",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
+    "application_presentation",
 ]
 
 
@@ -666,6 +686,19 @@ def capture_launcher_saved_orchestration_step() -> (
     if launcher is None:
         return None
     return partial(_invoke, launcher, operation="saved_orchestration")
+
+
+def capture_launcher_application_presentation() -> (
+    tuple[str, Callable[[NativeApplicationPresentationRequest], dict[str, Any]]] | None
+):
+    """Capture the Launcher-attested presentation manifest and authenticated port."""
+    manifest = os.environ.get(_APPLICATION_PRESENTATION_ENV)
+    if manifest is None or _TURN_INPUT_DIGEST.fullmatch(manifest) is None:
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return manifest, partial(_invoke, launcher, operation="application_presentation")
 
 
 def capture_launcher_ai_routing_evaluator() -> (
@@ -925,6 +958,15 @@ def _start_payload(
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
         frame["saved_orchestration"] = {"input_bytes": body_input_bytes}
+    elif isinstance(borrow, NativeApplicationPresentationRequest):
+        if (
+            borrow.role not in ("settings", "catalog", "commands")
+            or not 0 < body_input_bytes <= _APPLICATION_PRESENTATION_INPUT_LIMIT
+        ):
+            raise _ProtocolError("native Application presentation input is invalid")
+        frame["application_presentation"] = {
+            "role": borrow.role, "input_bytes": body_input_bytes,
+        }
     elif isinstance(borrow, NativeAiRoutingRequest):
         if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
             raise _ProtocolError("native AI routing input size is invalid")
@@ -1870,6 +1912,7 @@ class _Exchange:
         conversation_mutation: bool,
         requires_body_ready: bool,
         ai_routing: bool = False,
+        application_presentation: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
@@ -1882,6 +1925,7 @@ class _Exchange:
         self.accepts_projected_local_chat = accepts_projected_local_chat
         self.requires_body_ready = requires_body_ready
         self.ai_routing = ai_routing
+        self.read_only_body = ai_routing or application_presentation
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
             if conversation_mutation
@@ -1994,7 +2038,7 @@ class _Exchange:
                         break
                     return
                 if (tag == _PLAN and (
-                    self.dispatch_possible or (self.ai_routing and self.entered_live_phase)
+                    self.dispatch_possible or (self.read_only_body and self.entered_live_phase)
                 )) or (
                     tag == _PROJECTED_LOCAL_CHAT and self.dispatch_permitted
                 ):
@@ -2160,7 +2204,7 @@ class _Exchange:
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
-            if self.ai_routing and tag == _PLAN and self.entered_live_phase:
+            if self.read_only_body and tag == _PLAN and self.entered_live_phase:
                 # The Launcher sends PLAN only after the pure worker drains.
                 self.terminal = True
             wait_seconds()
@@ -2393,6 +2437,7 @@ def _invoke(
     turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
     turn_start = isinstance(borrow, NativeSavedTurnStartRequest)
     saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
+    application_presentation = isinstance(borrow, NativeApplicationPresentationRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -2406,6 +2451,7 @@ def _invoke(
         or turn_read != (operation == "turn_read")
         or turn_start != (operation == "turn_start")
         or saved_orchestration != (operation == "saved_orchestration")
+        or application_presentation != (operation == "application_presentation")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -2418,6 +2464,11 @@ def _invoke(
     if ai_routing:
         wait_seconds()
         body_input = _ai_routing_input(borrow)
+    elif isinstance(borrow, NativeApplicationPresentationRequest):
+        wait_seconds()
+        body_input = canonical_json(dict(borrow.input))
+        if len(body_input) > _APPLICATION_PRESENTATION_INPUT_LIMIT:
+            raise _ProtocolError("native Application presentation input exceeds IPC limit")
     with _connect_launcher(launcher, wait_seconds) as connection:
         if saved_orchestration:
             plan_limit = MAX_CANONICAL_JSON_BYTES
@@ -2429,6 +2480,7 @@ def _invoke(
             model_settings or model_save or conversation_get
             or saved_receipt or model_resolve or turn_read or turn_settlement
             or conversation_append
+            or application_presentation
         ):
             plan_limit = _OWNER_RESULT_LIMIT
         else:
@@ -2441,8 +2493,9 @@ def _invoke(
                 or conversation_append
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
-            requires_body_ready=saved_orchestration or ai_routing,
+            requires_body_ready=saved_orchestration or ai_routing or application_presentation,
             ai_routing=ai_routing,
+            application_presentation=application_presentation,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds, body_input=body_input)

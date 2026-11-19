@@ -15,7 +15,7 @@ from core_runtime.authority.v4 import AuthorityStore
 
 from .artifact_compiler import CompiledPack, compile_pack_root, routes_for_plan
 from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
-from .backends import BackendRegistry, NativeWasmBinding
+from .backends import BackendRegistry, ExecutionBackend, NativeWasmBinding
 from .broker import NestedCancellationProof, RequestAdmissionPort, RequestBroker
 from .authority_v4 import AuthorityV4Adapter
 from .composition import AuthorityCeilings, HostV4Composition
@@ -154,6 +154,9 @@ class ProductionRuntimeV4:
         native_provider_runtime_publish: (
             Callable[[str, Callable[[], None]], None] | None
         ) = None,
+        native_readiness_for: (
+            Callable[[ResolvedOperationBinding], ExecutionBackend | None] | None
+        ) = None,
     ) -> "V4DispatchSession":
         """Bind request ports to identities from this captured composition."""
         return V4DispatchSession(
@@ -176,6 +179,7 @@ class ProductionRuntimeV4:
             stop_callbacks=stop_callbacks,
             before_close_callbacks=before_close_callbacks,
             native_provider_runtime_publish=native_provider_runtime_publish,
+            native_readiness_for=native_readiness_for,
         )
 
 
@@ -208,6 +212,9 @@ class V4DispatchSession:
     ) = field(
         default=None, repr=False, compare=False,
     )
+    native_readiness_for: (
+        Callable[[ResolvedOperationBinding], ExecutionBackend | None] | None
+    ) = field(default=None, repr=False, compare=False)
     _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
     _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
     _completed_pre_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
@@ -296,7 +303,9 @@ class V4DispatchSession:
 
         self._assert_open()
         binding = self.broker._catalog.resolve_pinned(contract_id, operation_id)
-        backend = self.broker._backends.select(binding)
+        backend = self.native_readiness_for(binding) if self.native_readiness_for else None
+        if backend is None:
+            backend = self.broker._backends.select(binding)
         providers = tuple(
             item
             for item in self.provider_metadata(contract_id)

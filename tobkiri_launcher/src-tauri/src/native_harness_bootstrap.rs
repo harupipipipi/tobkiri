@@ -42,8 +42,8 @@ pub(crate) use authority::{
 mod launch_metadata;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use launch_metadata::{
-    read_launch_metadata, registry_pack_receipt_bound, ConversationReadCaller, SettlementCaller,
-    VerifiedRegistryLaunch,
+    read_launch_metadata, registry_pack_receipt_bound, ApplicationPresentationRole,
+    ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use tobkiri_harness_native::{OriginalModelResolveRole, OriginalSavedReceiptRole};
@@ -57,7 +57,8 @@ pub(crate) use provider_prepare::{
     ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
     ProviderPrepareDeadline, RegistryResponse, SavedLocalChatRequiresLegacyRequest,
     SavedOrchestrationStepError, SavedTurnStartAction, TurnSettlementRequiresLegacyCodec,
-    TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, CONVERSATION_APPEND_LIMIT,
+    TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+    APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
     CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
     SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
 };

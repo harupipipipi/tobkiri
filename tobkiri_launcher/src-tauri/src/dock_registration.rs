@@ -1387,8 +1387,8 @@ pub(crate) fn spawn_defaultspack_local_server(
     let role_arguments =
         crate::python_env::RoleArguments::defaultspack(metadata.argv.iter().cloned())?;
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    let role_arguments = role_arguments
-        .with_saved_orchestration_admission(metadata.native_provider_prepare.as_ref());
+    let role_arguments =
+        role_arguments.with_native_registry_admission(metadata.native_provider_prepare.as_ref());
     crate::python_env::spawn_python_role(
         config,
         crate::python_env::PythonRole::Defaultspack,

@@ -17,8 +17,9 @@ use tobkiri_core::{
 use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
-    OriginalAiRoutingSelection, OriginalConversationAppendChoice,
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
+    OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection,
     OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
     OriginalRequestPrepareChoice, OriginalRoutePin, OriginalSavedGatewayChoice,
@@ -50,6 +51,9 @@ use crate::{
     preparation_budget, registry_pack_receipt, AppConfig, ShutdownState,
 };
 
+/// The original operation whose signed nested grant can read application presentation.
+pub(crate) use tobkiri_harness_native::ApplicationPresentationRole;
+
 /// The signed Shell-to-Turn grant authorizing this settlement caller.
 pub(crate) use tobkiri_harness_native::OriginalSavedTurnSettlementRole as SettlementCaller;
 
@@ -73,6 +77,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     turn: Option<VerifiedTurnSource>,
     orchestration: Option<VerifiedSavedOrchestrationSource>,
     local_chat: Option<VerifiedSavedLocalChatSource>,
+    application_presentation: Option<VerifiedApplicationPresentationSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -87,6 +92,24 @@ pub(crate) enum ConversationReadCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Require the caller's original nested presentation grant and verified read port.
+    pub(crate) fn permits_application_presentation(&self, role: ApplicationPresentationRole) -> bool {
+        self.application_presentation
+            .as_ref()
+            .and_then(|source| source.bundle(role))
+            .is_some()
+    }
+
+    /// Advertise the sealed replacement only when every ordinary caller can use it.
+    pub(crate) fn application_presentation_manifest_sha256(&self) -> Option<&str> {
+        let source = self.application_presentation.as_ref()?;
+        source
+            .bundles
+            .iter()
+            .all(Option::is_some)
+            .then_some(source.manifest_sha256.as_str())
+    }
+
     /// Authorize just the ordinary Provider operation verified at Launch for this role.
     pub(crate) fn permits_saved_local_chat(&self, role: OriginalSavedLocalChatRole) -> bool {
         self.local_chat.as_ref().is_some_and(|source| {
@@ -225,6 +248,26 @@ impl VerifiedRegistryLaunch {
         self.conversation
             .as_ref()
             .is_some_and(|source| source.permits_confirmation(role))
+    }
+}
+
+/// Separate installed Bundle proof for each caller, sharing one build-pinned archive receipt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedApplicationPresentationSource {
+    bundles: [Option<VerifiedOrdinarySavedBundle>; 3],
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+impl VerifiedApplicationPresentationSource {
+    fn bundle(&self, role: ApplicationPresentationRole) -> Option<&VerifiedOrdinarySavedBundle> {
+        let index = match role {
+            ApplicationPresentationRole::Settings => 0,
+            ApplicationPresentationRole::Catalog => 1,
+            ApplicationPresentationRole::Commands => 2,
+        };
+        self.bundles[index].as_ref()
     }
 }
 
@@ -504,6 +547,36 @@ impl From<&OriginalRoutePin> for VerifiedLegacyRoutePin {
 
 #[cfg(test)]
 impl VerifiedRegistryLaunch {
+    pub(crate) fn test_complete_application_presentation_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_application_presentation_proof(
+            identity,
+            catalog_revision,
+            ApplicationPresentationRole::Settings,
+        );
+        proof.application_presentation.as_mut().unwrap().bundles =
+            ApplicationPresentationRole::ALL.map(|_| Some(VerifiedOrdinarySavedBundle::fixture()));
+        proof
+    }
+
+    pub(crate) fn test_application_presentation_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: ApplicationPresentationRole,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.application_presentation = Some(VerifiedApplicationPresentationSource {
+            bundles: ApplicationPresentationRole::ALL
+                .map(|candidate| (candidate == role).then(VerifiedOrdinarySavedBundle::fixture)),
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
+        });
+        proof
+    }
+
     pub(crate) fn test_proof(identity: ExecutionProfileIdentity, catalog_revision: &str) -> Self {
         Self {
             identity,
@@ -524,6 +597,7 @@ impl VerifiedRegistryLaunch {
             turn: None,
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -549,6 +623,7 @@ impl VerifiedRegistryLaunch {
             turn: None,
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -575,6 +650,7 @@ impl VerifiedRegistryLaunch {
             turn: None,
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -606,6 +682,7 @@ impl VerifiedRegistryLaunch {
             turn: None,
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -826,6 +903,7 @@ impl VerifiedRegistryLaunch {
             turn: None,
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -887,6 +965,7 @@ impl VerifiedRegistryLaunch {
             }),
             orchestration: None,
             local_chat: None,
+            application_presentation: None,
         }
     }
 
@@ -1414,12 +1493,27 @@ impl LaunchActivationObserver<'_> {
         let orchestration = orchestration.flatten();
         let ai_routing = ai_routing.flatten();
         let local_chat = verify_saved_local_chat_source(inspection, active, adapter, checkpoint)?;
+        let application_presentation =
+            registry_pack_receipt::verify_installed_with_application_presentation(
+                &app_root,
+                REGISTRY_RECEIPT_SHA256,
+                || registry_checkpoint(inspection, &checkpoint),
+                |receipt, input| {
+                    verify_application_presentation_source(
+                        inspection, active, receipt, input, checkpoint,
+                    )
+                    .map_err(io::Error::other)
+                },
+            )
+            .context("bundled Application Presentation Pack verification failed during Launch")?
+            .flatten();
         if !has_existing_grants
             && conversation.is_none()
             && turn.is_none()
             && orchestration.is_none()
             && local_chat.is_none()
             && ai_routing.is_none()
+            && application_presentation.is_none()
         {
             return Ok(None);
         }
@@ -1478,6 +1572,7 @@ impl LaunchActivationObserver<'_> {
             turn,
             orchestration,
             local_chat,
+            application_presentation,
         };
         if let Some(local_chat) = &verified.local_chat {
             inspection.with_source(|sources| local_chat.bundle.require_source(sources))??;
@@ -1488,6 +1583,43 @@ impl LaunchActivationObserver<'_> {
         }
         Ok(Some(verified))
     }
+}
+
+/// Reopen the verified read port after confirming this role's original installed Bundle.
+pub(super) fn reacquire_application_presentation_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: ApplicationPresentationRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .application_presentation
+        .as_ref()
+        .context("admitted launch has no verified Application Presentation source")?;
+    let bundle = source
+        .bundle(role)
+        .context("admitted launch has no verified Application Presentation grant for the caller")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    checkpoint()?;
+    inspection.with_source(|sources| bundle.require_source(sources))??;
+    bundle.revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    registry_pack_receipt::verify_installed_with_application_presentation(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_application_presentation_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )?
+    .context("bundled Registry receipt has no Application Presentation archive")
 }
 
 /// Reacquire the Provider Pack from the original signed resolver source and receipt pin.
@@ -2218,6 +2350,40 @@ fn verify_conversation_confirmation_source(
                 ],
             )
         })
+    }))
+}
+
+fn verify_application_presentation_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedApplicationPresentationSource>> {
+    let budget = inspection.allocation_budget()?;
+    let mut bundles = [None, None, None];
+    for (bundle, role) in bundles.iter_mut().zip(ApplicationPresentationRole::ALL) {
+        checkpoint()?;
+        let Some(choice) = OriginalApplicationPresentationChoice::select(active, budget, role)?
+        else {
+            continue;
+        };
+        if let Some(locked) = inspection
+            .with_source(|sources| sources.application_presentation_bundle(&choice, budget))??
+        {
+            *bundle = Some(locked.verify(&checkpoint)?);
+        }
+    }
+    if bundles.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_application_presentation_declaration(&pack)?;
+    Ok(Some(VerifiedApplicationPresentationSource {
+        bundles,
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
     }))
 }
 
@@ -2967,6 +3133,49 @@ fn require_saved_orchestration_declaration(pack: &VerifiedPack) -> Result<()> {
     Ok(())
 }
 
+const APPLICATION_PRESENTATION_WIT: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.application-presentation-rust/registry-wit/pack.wit"),
+    ),
+    (
+        "wit/deps/core.wit",
+        include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+    ),
+    (
+        "wit/presentation.shape.json",
+        include_bytes!(
+            "../../../packs/local.application-presentation-rust/registry-wit/presentation.shape.json"
+        ),
+    ),
+];
+
+fn require_application_presentation_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(
+        pack,
+        registry_pack_receipt::APPLICATION_PRESENTATION_PACK_ID,
+        1,
+    )?;
+    let manifest = &pack.manifest;
+    ensure!(
+        manifest.version == "0.1.0"
+            && manifest.files.len() == APPLICATION_PRESENTATION_WIT.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && APPLICATION_PRESENTATION_WIT.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled Application Presentation Pack has unexpected WIT or version"
+    );
+    require_registry_ports(
+        pack,
+        "read",
+        &["local.application-presentation.presentation@1.0"],
+    )?;
+    Ok(())
+}
+
 // The staged declarations pin the exact ABI, including Core imports and cardinality.
 const TURN_WIT: (&str, &[u8]) = (
     "wit/pack.wit",
@@ -3192,6 +3401,78 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn application_presentation_launch_advertises_only_after_all_three_roles_are_proved() {
+        let digest = Digest::hash(b"test");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:application-presentation-test",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let role = ApplicationPresentationRole::Commands;
+        let proof = VerifiedRegistryLaunch::test_application_presentation_proof(
+            identity.clone(),
+            digest.as_str(),
+            role,
+        );
+        for candidate in ApplicationPresentationRole::ALL {
+            assert_eq!(
+                proof.permits_application_presentation(candidate),
+                candidate == role
+            );
+        }
+        assert_eq!(proof.application_presentation_manifest_sha256(), None);
+        let proof = VerifiedRegistryLaunch::test_complete_application_presentation_proof(
+            identity,
+            digest.as_str(),
+        );
+        assert_eq!(
+            proof.application_presentation_manifest_sha256(),
+            Some("sha256:manifest"),
+        );
+    }
+
+    #[test]
+    fn application_presentation_declaration_requires_the_sealed_read_wit() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-application-presentation-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>(),
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, wit) in APPLICATION_PRESENTATION_WIT {
+            fs::write(path.join(relative), wit).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft =
+            include_bytes!("../../../packs/local.application-presentation-rust/pack.draft.json");
+        let verify = || {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_application_presentation_declaration(&verify()).unwrap();
+        let wit = std::str::from_utf8(APPLICATION_PRESENTATION_WIT[0].1).unwrap();
+        fs::write(
+            path.join("wit/pack.wit"),
+            wit.replace("input: string", "input: u32"),
+        )
+        .unwrap();
+        assert!(require_application_presentation_declaration(&verify()).is_err());
+    }
 
     #[test]
     fn ai_routing_declaration_pins_the_stateless_ports_by_version() {

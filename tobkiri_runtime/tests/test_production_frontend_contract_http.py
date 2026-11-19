@@ -4410,6 +4410,113 @@ def test_manual_runtime_mode_selection_schema_rejects_nonboolean_without_write(
         assert not storage.exists(), value
 
 
+def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied
+    from core_runtime.invocation_scope_v4 import execution_session_id
+    from ecosystem.defaultspack.runtime.application_presentation import (
+        tobkiri_packvm_invoke,
+    )
+
+    target = (
+        "tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read",
+    )
+    routes = {
+        "settings": "/api/ui/settings",
+        "catalog": "/api/ui/full-catalog",
+        "commands": "/api/command-protocol/v1/catalog",
+    }
+    manifest = "sha256:" + "a" * 64
+    executions = []
+    envelopes = {}
+    revoke_during_reply = None
+
+    def present(request: ipc.NativeApplicationPresentationRequest) -> dict:
+        request.assert_current()
+        executions.append(request)
+        result = tobkiri_packvm_invoke(target[1], request.input)
+        if revoke_during_reply is not None:
+            revoke_during_reply(request)
+        return result
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_application_presentation", lambda: (manifest, present),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry(()),
+    ) as (server, session, authority):
+        session.assert_operation_ready(*target)
+        original_dispatch = session.broker._dispatch
+
+        def dispatch(backend, envelope: RequestEnvelope, *args, **kwargs):
+            envelopes[envelope.context] = envelope
+            return original_dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", dispatch)
+        with pytest.raises(AuthorityDenied, match="captured Shell caller edge"):
+            session.context_for(*target, "external-panel")
+        cookie, csrf, origin = _authenticate(server)
+        headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+        for role, path in routes.items():
+            status, payload, _ = _request(
+                server, "GET", _contract("GET", path),
+                headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            assert status == 200, (path, payload)
+            assert executions[-1].role == role
+
+        status, payload, _ = _request(
+            server, "POST", _contract("POST", "/api/command-protocol/v1/invoke"),
+            body={
+                "command_ref": "defaultspack:help", "args": {}, "mode": "chat",
+                "invocation_id": f"help-{uuid.uuid4()}",
+            },
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 200, payload
+        assert payload["data"]["legacy_result"]["action"] == "open_command_help"
+        assert [entry.role for entry in executions] == [
+            "settings", "catalog", "commands",
+        ]
+        assert len({entry.context.target_domain_id for entry in executions}) == 3
+        assert len({entry.context.caller_principal for entry in executions}) == 3
+        for entry in executions:
+            child = envelopes[entry.context]
+            parent = next(
+                envelope for envelope in envelopes.values()
+                if envelope.target_principal == entry.context.caller_principal
+                and child.context.caller_session_id.startswith(execution_session_id(envelope))
+            )
+            assert child.lease.token != parent.lease.token
+            assert child.resource_reservation_id != parent.resource_reservation_id
+            assert entry.deadline_monotonic == child.deadline_monotonic
+            assert entry.deadline_monotonic <= parent.deadline_monotonic
+            assert authority.get_domain(entry.context.target_domain_id).boundary.value == (
+                "wasm_component"
+            )
+
+        def revoke_during_reply(request: ipc.NativeApplicationPresentationRequest) -> None:
+            provider = next(
+                record for record in authority.list_provider_authorities()
+                if record.execution_domain_id == request.context.target_domain_id
+            )
+            authority.revoke(
+                target_kind="provider_authority", target_id=provider.record_id,
+                reason="fixture revocation during presentation reply",
+            )
+
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", routes["settings"]),
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status != 200, payload
+        assert len(executions) == 4
+        assert executions[-1].role == "settings"
+
+
 def test_presentation_allocation_capacity_refusal_has_http503_through_real_broker(
     settings_vertical_server,
     monkeypatch: pytest.MonkeyPatch,

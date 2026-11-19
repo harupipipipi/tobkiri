@@ -15,9 +15,9 @@ use tobkiri_core::{
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
-    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalRequestPrepareChoice,
-    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
-    OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    OriginalAiRoutingSelection, OriginalApplicationPresentationChoice, OriginalFailoverChoice,
+    OriginalRequestPrepareChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
+    OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -96,6 +96,14 @@ pub(crate) struct LockedAiRoutingBundle<'pin, const ROLES: usize, const PINS: us
     budget: Arc<dyn AllocationBudget>,
 }
 
+/// The signed Pack and executable catalog for both presentation grants.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedApplicationPresentationBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [LockedRegistryRoute<'pin>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
 /// The exact installed source from which Launcher verified an ordinary saved route.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -161,6 +169,31 @@ impl VerifiedOrdinarySavedBundle {
 }
 
 impl NativeApplicationSources {
+    /// Capture the installed documents behind the selected presentation caller.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn application_presentation_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalApplicationPresentationChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<LockedApplicationPresentationBundle<'pin>>> {
+        let [caller, presentation] = choice.pins();
+        if presentation.pack_id() != self.authority.application_id {
+            return Ok(None);
+        }
+        ensure!(
+            caller.caller_function_id() == self.authority.shell_provider_id
+                && self.authority.shell_provider_id == "shell.tauri.default"
+                && presentation.caller_function_id() == caller.function_id(),
+            "application presentation callers differ from the selected Shell and caller chain"
+        );
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(Some(LockedApplicationPresentationBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [from_lock(caller)?, from_lock(presentation)?],
+            budget: Arc::clone(budget),
+        }))
+    }
+
     /// Capture the original resolver's signed documents for every selected Routing role.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn ai_routing_bundle<'pin>(
@@ -801,6 +834,22 @@ impl LockedAiRoutingBundle<'_, 1, 3> {
             &self.budget,
             checkpoint,
             ["privileged", "pure", "privileged"],
+        )
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedApplicationPresentationBundle<'_> {
+    /// Prove the original caller's signed read and its effect-free nested operation.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.verify_routes(
+            &[Some(self.routes)],
+            &self.budget,
+            checkpoint,
+            ["privileged", "pure"],
         )
     }
 }

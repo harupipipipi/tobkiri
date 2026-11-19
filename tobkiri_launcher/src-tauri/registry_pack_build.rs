@@ -28,7 +28,7 @@ impl Input {
             _ => {
                 return Err(invalid(format!(
                     "{SOURCE_ENV} and {DIGEST_ENV} must be paired"
-                )))
+                )));
             }
         };
         if !allowed {
@@ -123,11 +123,13 @@ mod unix {
     mod tests {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
-            verify_installed, verify_installed_with_ai_routing, verify_installed_with_conversation,
+            verify_installed, verify_installed_with_ai_routing,
+            verify_installed_with_application_presentation, verify_installed_with_conversation,
             verify_installed_with_model, verify_installed_with_orchestration,
             verify_installed_with_orchestration_archives, verify_installed_with_provider,
             verify_installed_with_provider_adapter, verify_installed_with_provider_and_model,
             verify_installed_with_settlement, Pack, AI_ROUTING_PACK_ID, AI_ROUTING_RECEIPT_FORMAT,
+            APPLICATION_PRESENTATION_PACK_ID, APPLICATION_PRESENTATION_RECEIPT_FORMAT,
             ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID, ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS,
             PROVIDER_ADAPTER_PACK_ID, PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT,
             SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
@@ -748,6 +750,61 @@ mod unix {
                 .stage(&fixture.root)
                 .unwrap_err();
             assert!(error.to_string().contains(AI_ROUTING_PACK_ID));
+            Ok(())
+        }
+
+        #[test]
+        fn v6_receipt_pins_application_presentation() -> io::Result<()> {
+            let ids = PACK_IDS.into_iter().chain([
+                SETTLEMENT_PACK_ID,
+                ORCHESTRATION_PACK_ID,
+                PROVIDER_ADAPTER_PACK_ID,
+                AI_ROUTING_PACK_ID,
+                APPLICATION_PRESENTATION_PACK_ID,
+            ]);
+            let previous = Fixture::with_packs(AI_ROUTING_RECEIPT_FORMAT, ids.clone().take(7))?;
+            let input = previous.write_receipt(&previous.document)?;
+            input.stage(&previous.stage)?;
+            let absent = verify_installed_with_application_presentation(
+                &previous.stage,
+                input.receipt_sha256(),
+                || Ok(()),
+                |_, _| panic!("v5 cannot select application presentation"),
+            )?;
+            assert_eq!(absent, None::<()>);
+
+            let fixture = Fixture::with_packs(APPLICATION_PRESENTATION_RECEIPT_FORMAT, ids)?;
+            let mut receipt = fixture.document.clone();
+            let input = fixture.write_receipt(&receipt)?;
+            input.stage(&fixture.stage)?;
+            let inspect = || {
+                verify_installed_with_application_presentation(
+                    &fixture.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |pack, reader| {
+                        let mut bytes = String::new();
+                        reader.read_to_string(&mut bytes)?;
+                        assert_eq!(pack.id(), APPLICATION_PRESENTATION_PACK_ID);
+                        Ok(bytes)
+                    },
+                )
+            };
+            assert_eq!(
+                inspect()?.as_deref(),
+                Some(APPLICATION_PRESENTATION_PACK_ID)
+            );
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{APPLICATION_PRESENTATION_PACK_ID}.tpk"));
+            fs::write(archive, "local.application-presentatioN")?;
+            assert!(inspect().is_err());
+            receipt["packs"][7]["version"] = json!("0.1.1");
+            assert!(fixture
+                .write_receipt(&receipt)?
+                .stage(&fixture.root)
+                .is_err());
             Ok(())
         }
 

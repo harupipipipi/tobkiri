@@ -56,7 +56,8 @@ pub use original_authority::{
 };
 #[cfg(unix)]
 pub use original_provider_prepare_selection::{
-    OriginalAiRoutingSelection, OriginalConversationAppendChoice,
+    ApplicationPresentationRole, OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
+    OriginalConversationAppendChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
     OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,

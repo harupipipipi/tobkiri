@@ -1,0 +1,14 @@
+package local:application-presentation@1.0.0;
+
+interface presentation {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project this application's sealed settings and command display data.
+  read: func(input: string) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export presentation;
+}

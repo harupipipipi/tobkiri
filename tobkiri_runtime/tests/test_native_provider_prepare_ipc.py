@@ -162,6 +162,79 @@ def _served_model_settings(
         yield reader
 
 
+@pytest.mark.parametrize("revoke_after_reply", [False, True])
+def test_application_presentation_exchanges_only_the_admitted_body_and_live_reply(
+    monkeypatch: pytest.MonkeyPatch, revoke_after_reply: bool,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeApplicationPresentationRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        role="settings",
+        input={
+            "profile_id": "defaults", "kind": "ui",
+            "model_options": [{"value": "sample", "label": "日本語"}],
+        },
+    )
+    body = (
+        '{"kind":"ui","model_options":[{"label":"日本語","value":"sample"}],'
+        '"profile_id":"defaults"}'
+    ).encode("utf-8")
+    expected = {"sections": [], "definitions": {}}
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(payload)
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+            "application_presentation",
+        }
+        assert start["application_presentation"] == {
+            "role": "settings", "input_bytes": len(body),
+        }
+        assert start["runtime_instance"] == request.runtime_instance
+        assert start["deadline_ns"] <= int(request.deadline_monotonic * 10**9)
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, body)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+
+    if revoke_after_reply:
+        decode = ipc._decode_plan
+
+        def decode_and_revoke(payload: bytes, limit: int) -> dict[str, Any]:
+            result = decode(payload, limit)
+            borrow.revoked.set()
+            return result
+
+        monkeypatch.setattr(ipc, "_decode_plan", decode_and_revoke)
+    manifest = "sha256:" + "a" * 64
+    monkeypatch.setenv(ipc._APPLICATION_PRESENTATION_ENV, manifest)
+    with _served(monkeypatch, serve):
+        captured = ipc.capture_launcher_application_presentation()
+        assert captured is not None
+        captured_manifest, invoke = captured
+        assert captured_manifest == manifest
+        if revoke_after_reply:
+            with pytest.raises(PermissionError, match="fixture lease revoked"):
+                invoke(request)
+        else:
+            assert invoke(request) == expected
+
+
+def test_application_presentation_requires_an_attested_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._APPLICATION_PRESENTATION_ENV, raising=False)
+    assert ipc.capture_launcher_application_presentation() is None
+    monkeypatch.setenv(ipc._APPLICATION_PRESENTATION_ENV, "1")
+    assert ipc.capture_launcher_application_presentation() is None
+
+
 def _model_request(borrow: _Borrow) -> ipc.NativeModelSettingsRequest:
     return ipc.NativeModelSettingsRequest(
         context=borrow.context,

@@ -90,6 +90,40 @@ static MODEL_LIST: Route = Route {
     execution: PYTHON_HOST,
 };
 
+static APPLICATION_PRESENTATION: Route = Route {
+    pack: "defaultspack",
+    function: "defaultspack.application-presentation",
+    contract: "tobkiri.resource.application.presentation.v1",
+    operation: "defaultspack.presentation.read",
+    variant: "defaultspack.application-presentation.python",
+    execution: PYTHON_PACK_VM,
+};
+
+static SETTINGS_READ: Route = Route {
+    pack: "tobkiri_ui_settings_pack",
+    function: "tobkiri.ui.settings.read",
+    contract: "tobkiri.resource.ui.settings.v1",
+    operation: "tobkiri_ui_settings_pack.settings-read",
+    variant: "tobkiri.ui.settings.read.python",
+    execution: PYTHON_HOST,
+};
+
+static CATALOG_READ: Route = Route {
+    function: "tobkiri.ui.catalog.read",
+    operation: "tobkiri_ui_settings_pack.catalog-read",
+    variant: "tobkiri.ui.catalog.read.python",
+    ..SETTINGS_READ
+};
+
+static COMMAND_CATALOG_READ: Route = Route {
+    pack: "rumi_command_protocol_pack",
+    function: "rumi_command_protocol_pack.catalog.read",
+    contract: "tobkiri.resource.command.catalog.v1",
+    operation: "command.catalog.read",
+    variant: "rumi_command_protocol_pack.catalog.read.python",
+    execution: PYTHON_HOST,
+};
+
 static MODEL_RESOLVE_GENERATE: Route = Route {
     operation: "rumi_model_registry_pack.model-profile-resource.generate",
     ..MODEL_LIST
@@ -454,6 +488,59 @@ impl OriginalRoutePin {
     /// Digest of the exact operation invocation scope.
     pub fn requested_scope_digest(&self) -> &str {
         self.requested_scope_digest.as_str()
+    }
+}
+
+/// Original operation whose signed nested grant can read application presentation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApplicationPresentationRole {
+    /// UI settings read, including its complete settings view.
+    Settings,
+    /// UI catalog read.
+    Catalog,
+    /// Command catalog read.
+    Commands,
+}
+
+impl ApplicationPresentationRole {
+    /// Independent ordinary application presentation callers.
+    pub const ALL: [Self; 3] = [Self::Settings, Self::Catalog, Self::Commands];
+
+    fn caller(self) -> &'static Route {
+        match self {
+            Self::Settings => &SETTINGS_READ,
+            Self::Catalog => &CATALOG_READ,
+            Self::Commands => &COMMAND_CATALOG_READ,
+        }
+    }
+}
+
+/// Exact Shell-to-owner and owner-to-presentation grants in the active Profile.
+pub struct OriginalApplicationPresentationChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 2],
+}
+
+impl<'a> OriginalApplicationPresentationChoice<'a> {
+    /// Require both grants from the ordinary desktop Shell for this role.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: ApplicationPresentationRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_application_presentation_records(active.records(), budget, role)?.map(|pins| {
+                Self {
+                    _active: active,
+                    pins,
+                }
+            }),
+        )
+    }
+
+    /// The caller and its nested presentation route, in chain order.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
+        &self.pins
     }
 }
 
@@ -1204,6 +1291,25 @@ fn select_route_chain(
     Ok(records
         .select_route(first.function_id(), nested_target)?
         .map(|second| (first, second)))
+}
+
+fn select_application_presentation_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: ApplicationPresentationRole,
+) -> Result<Option<[OriginalRoutePin; 2]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+        return Ok(None);
+    }
+    let Some(caller) = records.select_shell_route(role.caller())? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(caller.function_id(), &APPLICATION_PRESENTATION)?
+        .map(|presentation| [caller, presentation]))
 }
 
 fn select_model_list_records(
@@ -2208,6 +2314,48 @@ mod tests {
                 "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
                 "sha256:49b503091bb37f7f3a8a0ec8e3a2242df94d09f2d494edf2a88f7b8720241d8b",
             ),
+            (
+                &SETTINGS_READ,
+                SHELL,
+                "authority-ref:e3dc6bccce89cfce7dbad6ef94e9dcaf3b3eaf2438e5973218af170a89921159",
+                "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+                "sha256:a0d56d52768d389143361876ddc49913b35528cbd6f4ea83ab28d6ac043ea3d5",
+            ),
+            (
+                &APPLICATION_PRESENTATION,
+                SETTINGS_READ.function,
+                "authority-ref:0a4549ef06aac7f9458a86284db7cfca7489111f56713239fbb6278fc5349063",
+                "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+                "sha256:278f3e40167b87ecb30c79605645e506d39952386dff5dfbb27f591e5467cadd",
+            ),
+            (
+                &CATALOG_READ,
+                SHELL,
+                "authority-ref:e7310d968403282e5eb7354962bc80e2cd740ea504ab36971fe33c3226b57210",
+                "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+                "sha256:db48a9b7c1991f86a26b31b4dc388c1e10d5e4be786a9165fc1f6c27666d58df",
+            ),
+            (
+                &APPLICATION_PRESENTATION,
+                CATALOG_READ.function,
+                "authority-ref:3ed084f1ee19dc303e13c7e592efc25dbdece96714c7b25ce6009f64d446dd5d",
+                "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+                "sha256:278f3e40167b87ecb30c79605645e506d39952386dff5dfbb27f591e5467cadd",
+            ),
+            (
+                &COMMAND_CATALOG_READ,
+                SHELL,
+                "authority-ref:782a93445998e0e790119294021f927425a6423fb2dbc82a5166604219e4c908",
+                "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+                "sha256:47defa37cae17ebab9e36fad4c123b72e496b6bde4d704ea69252a005074cb13",
+            ),
+            (
+                &APPLICATION_PRESENTATION,
+                COMMAND_CATALOG_READ.function,
+                "authority-ref:29e02b0b35458b7763a20fdf4c158eed9786632b07368052da8a4f5ce0928598",
+                "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+                "sha256:278f3e40167b87ecb30c79605645e506d39952386dff5dfbb27f591e5467cadd",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -2302,6 +2450,48 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_model_list_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn presentation_requires_each_roles_exact_ordinary_parent_and_nested_read() {
+        let fixture = records();
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value, role| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_application_presentation_records((&profile, &lock, &plan), &budget, role)
+        };
+        for role in ApplicationPresentationRole::ALL {
+            let [caller, presentation] = select(&fixture, role).unwrap().unwrap();
+            assert_eq!(caller.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(caller.operation_id(), role.caller().operation);
+            assert_eq!(presentation.caller_function_id(), caller.function_id());
+            assert_eq!(presentation.operation_id(), "defaultspack.presentation.read");
+            assert_eq!(presentation.execution_kind(), "pack_vm");
+            for pin in [&caller, &presentation] {
+                let row = fixture["profile"]["requested_edges"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .position(|edge| edge["authority_reference"] == pin.authority_reference())
+                    .unwrap();
+                let mut wrong_caller = fixture.clone();
+                wrong_caller["profile"]["requested_edges"][row]["caller_function_id"] =
+                    json!("unrelated.call");
+                wrong_caller["plan"]["bindings"][row]["caller_function_id"] = json!("unrelated.call");
+                assert!(select(&wrong_caller, role).unwrap().is_none());
+                for unrelated in ApplicationPresentationRole::ALL {
+                    if unrelated != role {
+                        assert!(select(&wrong_caller, unrelated).unwrap().is_some());
+                    }
+                }
+
+                let mut interactive = fixture.clone();
+                interactive["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                interactive["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                assert!(select(&interactive, role).unwrap().is_none());
+            }
+        }
     }
 
     fn select_model_save(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {

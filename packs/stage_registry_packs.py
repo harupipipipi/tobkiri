@@ -18,14 +18,17 @@ SETTLEMENT_PACK = "saved-turn-runtime"
 ORCHESTRATION_PACK = "saved-orchestration"
 PROVIDER_ADAPTER_PACK = "provider-adapter"
 AI_ROUTING_PACK = "ai-routing"
+APPLICATION_PRESENTATION_PACK = "application-presentation"
 SETTLEMENT_PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
 ORCHESTRATION_PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
 PROVIDER_ADAPTER_PACKS = (*ORCHESTRATION_PACKS, PROVIDER_ADAPTER_PACK)
-PACKS = (*PROVIDER_ADAPTER_PACKS, AI_ROUTING_PACK)
+AI_ROUTING_PACKS = (*PROVIDER_ADAPTER_PACKS, AI_ROUTING_PACK)
+PACKS = (*AI_ROUTING_PACKS, APPLICATION_PRESENTATION_PACK)
 PINNED_VERSIONS = {
     ORCHESTRATION_PACK: "0.1.0",
     PROVIDER_ADAPTER_PACK: "0.3.0",
     AI_ROUTING_PACK: "0.7.0",
+    APPLICATION_PRESENTATION_PACK: "0.1.0",
 }
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
@@ -43,8 +46,9 @@ def stage_pack(
     component = components / f"tobkiri_pack_{component_name}_rust.wasm"
     shutil.copyfile(component, stage / "component.wasm")
     shutil.copyfile(CORE_WIT, dependencies / "core.wit")
-    shutil.copyfile(source / "wit/pack.wit", stage / "wit/pack.wit")
-    for sidecar in sorted((source / "wit").glob("*.shape.json")):
+    wit = source / ("registry-wit" if name == APPLICATION_PRESENTATION_PACK else "wit")
+    shutil.copyfile(wit / "pack.wit", stage / "wit/pack.wit")
+    for sidecar in sorted(wit.glob("*.shape.json")):
         shutil.copyfile(sidecar, stage / "wit" / sidecar.name)
     if name == "model-registry":
         shutil.copyfile(
@@ -92,8 +96,12 @@ def main() -> None:
     args = parser.parse_args()
     selected = set(args.pack or ORIGINAL_PACKS)
     receipt_version = 1
-    if AI_ROUTING_PACK in selected:
+    if APPLICATION_PRESENTATION_PACK in selected:
         if selected != set(PACKS):
+            parser.error("the application-presentation Pack requires the full Registry Pack set")
+        receipt_version = 6
+    elif AI_ROUTING_PACK in selected:
+        if selected != set(AI_ROUTING_PACKS):
             parser.error("the ai-routing Pack requires the full Registry Pack set")
         receipt_version = 5
     elif PROVIDER_ADAPTER_PACK in selected:

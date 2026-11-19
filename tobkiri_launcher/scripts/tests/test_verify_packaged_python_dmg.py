@@ -472,6 +472,8 @@ def _write_registry_packs(
         pack_ids.append("local.provider-adapter")
     if version >= 5:
         pack_ids.append("local.ai-routing")
+    if version >= 6:
+        pack_ids.append("local.application-presentation")
     pack_versions = {
         "local.provider-adapter": adapter_version,
         "local.ai-routing": ai_routing_version,
@@ -509,6 +511,7 @@ def _write_registry_packs(
         pytest.param((5, {"ai_routing_version": "0.5.0"}), id="with-ai-routing-0.5.0"),
         pytest.param((5, {"ai_routing_version": "0.6.0"}), id="with-ai-routing-0.6.0"),
         pytest.param((5, {}), id="with-ai-routing-0.7.0"),
+        pytest.param((6, {}), id="with-application-presentation-0.1.0"),
     ],
 )
 def registry_mount(

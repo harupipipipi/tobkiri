@@ -34,13 +34,16 @@ SETTLEMENT_RECEIPT_FORMAT = "tobkiri.registry-packs/2"
 ORCHESTRATION_RECEIPT_FORMAT = "tobkiri.registry-packs/3"
 PROVIDER_ADAPTER_RECEIPT_FORMAT = "tobkiri.registry-packs/4"
 AI_ROUTING_RECEIPT_FORMAT = "tobkiri.registry-packs/5"
+APPLICATION_PRESENTATION_RECEIPT_FORMAT = "tobkiri.registry-packs/6"
 ORCHESTRATION_PACK_ID = "local.saved-orchestration"
 PROVIDER_ADAPTER_PACK_ID = "local.provider-adapter"
 AI_ROUTING_PACK_ID = "local.ai-routing"
+APPLICATION_PRESENTATION_PACK_ID = "local.application-presentation"
 PINNED_REGISTRY_PACK_VERSIONS = {
     ORCHESTRATION_PACK_ID: ("0.1.0",),
     PROVIDER_ADAPTER_PACK_ID: ("0.1.0", "0.2.0", "0.3.0"),
     AI_ROUTING_PACK_ID: ("0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0"),
+    APPLICATION_PRESENTATION_PACK_ID: ("0.1.0",),
 }
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",
@@ -62,6 +65,10 @@ REGISTRY_ARCHIVES_WITH_PROVIDER_ADAPTER = {
 REGISTRY_ARCHIVES_WITH_AI_ROUTING = {
     **REGISTRY_ARCHIVES_WITH_PROVIDER_ADAPTER,
     AI_ROUTING_PACK_ID: f"{AI_ROUTING_PACK_ID}.tpk",
+}
+REGISTRY_ARCHIVES_WITH_APPLICATION_PRESENTATION = {
+    **REGISTRY_ARCHIVES_WITH_AI_ROUTING,
+    APPLICATION_PRESENTATION_PACK_ID: f"{APPLICATION_PRESENTATION_PACK_ID}.tpk",
 }
 MAX_REGISTRY_RECEIPT_BYTES = 16 * 1024
 # Match the package limit in crates/tobkiri-manifest/src/package.rs.
@@ -587,6 +594,8 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
         archives = REGISTRY_ARCHIVES_WITH_PROVIDER_ADAPTER
     elif receipt["format"] == AI_ROUTING_RECEIPT_FORMAT:
         archives = REGISTRY_ARCHIVES_WITH_AI_ROUTING
+    elif receipt["format"] == APPLICATION_PRESENTATION_RECEIPT_FORMAT:
+        archives = REGISTRY_ARCHIVES_WITH_APPLICATION_PRESENTATION
     else:
         raise DmgVerificationError("native Registry Packs receipt has the wrong format")
     if len(receipt["packs"]) != len(archives):

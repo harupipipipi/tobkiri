@@ -342,8 +342,7 @@ where
     F: FnOnce(&mut RoleCommand<'_>) -> Result<()>,
 {
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    let (role_arguments, saved_orchestration_manifest) =
-        role_arguments.split_saved_orchestration_manifest();
+    let (role_arguments, native_registry) = role_arguments.split_native_registry_environment();
     let configure = |command: &mut RoleCommand<'_>| -> Result<()> {
         configure(command)?;
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET");
@@ -361,6 +360,7 @@ where
         command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_RESULT");
         command.env_remove("TOBKIRI_NATIVE_AI_GATEWAY_POLICY");
         command.env_remove(crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV);
+        command.env_remove(crate::sealed_python::APPLICATION_PRESENTATION_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
@@ -389,11 +389,17 @@ where
                         .env(AI_PIPELINE_ENV, "1")
                         .env(AI_GATEWAY_RESULT_ENV, "1")
                         .env(AI_GATEWAY_POLICY_ENV, "1");
-                    if let Some(manifest) = saved_orchestration_manifest.as_deref() {
+                    if let Some(manifest) = native_registry.saved_orchestration_manifest.as_deref()
+                    {
                         command.env(
                             crate::sealed_python::SAVED_ORCHESTRATION_MANIFEST_ENV,
                             manifest,
                         );
+                    }
+                    if let Some(manifest) =
+                        native_registry.application_presentation_manifest.as_deref()
+                    {
+                        command.env(crate::sealed_python::APPLICATION_PRESENTATION_ENV, manifest);
                     }
                 }
             }

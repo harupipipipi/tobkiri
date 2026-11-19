@@ -39,15 +39,16 @@ use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHA
 use super::{
     caught,
     launch_metadata::{
-        reacquire_ai_routing_pack, reacquire_conversation_append_pack,
-        reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
-        reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
-        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
-        reacquire_provider_prepare_pack, reacquire_request_prepare_pack,
-        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
-        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
-        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack,
-        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
+        reacquire_ai_routing_pack, reacquire_application_presentation_pack,
+        reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
+        reacquire_conversation_read_pack, reacquire_failover_pack, reacquire_gateway_policy_pack,
+        reacquire_gateway_result_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
+        reacquire_model_settings_pack, reacquire_provider_prepare_pack,
+        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
+        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack, reacquire_usage_cost_pack,
+        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationReadCaller,
         SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
         FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
         GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
@@ -82,6 +83,10 @@ pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
+/// Maximum UTF-8 bytes funded before reading an application presentation input.
+pub(crate) const APPLICATION_PRESENTATION_INPUT_LIMIT: usize = 128 * 1024;
+/// Maximum encoded application presentation result delivered to the Host.
+pub(crate) const APPLICATION_PRESENTATION_RESULT_LIMIT: usize = 1024 * 1024;
 /// Maximum original Gateway DATA input and result JSON.
 pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
 
@@ -173,6 +178,11 @@ pub(crate) enum NativeRegistryRequest {
     SavedOrchestration {
         input: Vec<u8>,
     },
+    ApplicationPresentation {
+        role: ApplicationPresentationRole,
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     AiGatewayData {
         operation: AiGatewayDataOperation,
         input: Vec<u8>,
@@ -206,6 +216,9 @@ impl NativeRegistryRequest {
             Self::TurnStart { .. } => proof.permits_turn_start(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+            Self::ApplicationPresentation { role, .. } => {
+                proof.permits_application_presentation(*role)
+            }
             Self::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
             Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
@@ -249,6 +262,15 @@ impl NativeRegistryRequest {
                     "native Conversation append exceeds its input envelope"
                 );
                 return Ok(request.capacity());
+            }
+            Self::ApplicationPresentation { input_bytes, .. } => {
+                if *input_bytes == 0 {
+                    return Err(SavedOrchestrationStepError::Invalid.into());
+                }
+                if *input_bytes > APPLICATION_PRESENTATION_INPUT_LIMIT {
+                    return Err(SavedOrchestrationStepError::Capacity.into());
+                }
+                return Ok(*input_bytes);
             }
             Self::SavedOrchestration { input } | Self::AiGatewayData { input, .. } => {
                 let limit = if matches!(self, Self::AiGatewayData { .. }) {
@@ -614,7 +636,12 @@ async fn run(
     let admitted = (|| {
         check_live(deadline.current(), None)?;
         job.ensure_accepting(&runtime.0.jobs)?;
-        continue_current()?;
+        if !matches!(
+            &operation,
+            NativeRegistryRequest::ApplicationPresentation { .. }
+        ) {
+            continue_current()?;
+        }
         check_live(deadline.current(), None)?;
         let config = app
             .try_state::<AppConfig>()
@@ -1164,6 +1191,51 @@ async fn run(
                         &graph,
                     );
                 }
+                NativeRegistryRequest::ApplicationPresentation {
+                    role,
+                    input_bytes,
+                    receive_input,
+                } => {
+                    checkpoint()?;
+                    let funding = input_funding
+                        .take()
+                        .context("application presentation input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    ensure!(
+                        input.len() == input_bytes && input.capacity() <= input_bytes,
+                        "application presentation input differs from its funded length"
+                    );
+                    revalidate()?;
+                    require_application_presentation_input_role(&input, role)?;
+                    let pack = reacquire_application_presentation_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        role,
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.application-presentation.presentation@1.0")?;
+                    let operation = OpName::parse("read")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    revalidate()?;
+                    let output =
+                        invoke_original_saved_orchestration_port(port, input, funding).await?;
+                    return decode_bounded_data_reply(
+                        output.as_str(),
+                        APPLICATION_PRESENTATION_RESULT_LIMIT,
+                        &graph,
+                    );
+                }
                 NativeRegistryRequest::AiGatewayData { operation, input } => {
                     let source = listener.verified_source();
                     let (pack, shape, function) = match operation {
@@ -1588,6 +1660,30 @@ fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
         }
         _ => error.into(),
     }
+}
+
+fn require_application_presentation_input_role(
+    input: &[u8],
+    role: ApplicationPresentationRole,
+) -> Result<()> {
+    #[derive(Deserialize)]
+    struct Input<'a> {
+        #[serde(borrow)]
+        kind: &'a RawValue,
+    }
+
+    // The trusted Host sends canonical JSON. Borrow only the dispatch field and
+    // let the admitted guest validate the other fields and their limits.
+    let input: Input<'_> =
+        serde_json::from_slice(input).map_err(|_| SavedOrchestrationStepError::Invalid)?;
+    let kind = match role {
+        ApplicationPresentationRole::Settings | ApplicationPresentationRole::Catalog => r#""ui""#,
+        ApplicationPresentationRole::Commands => r#""commands""#,
+    };
+    if input.kind.get() != kind {
+        return Err(NativeArtifactError::Denied.into());
+    }
+    Ok(())
 }
 
 fn decode_bounded_data_reply(
@@ -2068,6 +2164,96 @@ mod tests {
                 .unwrap(),
             SavedOrchestrationStepError::Invalid
         );
+    }
+
+    #[test]
+    fn application_presentation_funds_only_its_exact_role_and_declared_input() {
+        use ApplicationPresentationRole::{Catalog, Commands, Settings};
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        let unverified =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        for role in [Settings, Catalog, Commands] {
+            let proof = VerifiedRegistryLaunch::test_application_presentation_proof(
+                identity.clone(),
+                "catalog",
+                role,
+            );
+            for candidate in [Settings, Catalog, Commands] {
+                let request = NativeRegistryRequest::ApplicationPresentation {
+                    role: candidate,
+                    input_bytes: APPLICATION_PRESENTATION_INPUT_LIMIT,
+                    receive_input: Box::new(|_| panic!("admission cannot read the body")),
+                };
+                assert_eq!(request.has_launch_proof(&proof), candidate == role);
+                assert!(!request.has_launch_proof(&unverified));
+                assert!(!request.requires_publication_permit());
+                assert_eq!(
+                    request.input_capacity().unwrap(),
+                    APPLICATION_PRESENTATION_INPUT_LIMIT
+                );
+            }
+        }
+        for (input_bytes, expected) in [
+            (0, SavedOrchestrationStepError::Invalid),
+            (
+                APPLICATION_PRESENTATION_INPUT_LIMIT + 1,
+                SavedOrchestrationStepError::Capacity,
+            ),
+        ] {
+            let request = NativeRegistryRequest::ApplicationPresentation {
+                role: Settings,
+                input_bytes,
+                receive_input: Box::new(|_| panic!("admission cannot read the body")),
+            };
+            assert_eq!(
+                request
+                    .input_capacity()
+                    .unwrap_err()
+                    .downcast::<SavedOrchestrationStepError>()
+                    .unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn application_presentation_body_cannot_cross_the_signed_role() {
+        use ApplicationPresentationRole::{Catalog, Commands, Settings};
+
+        let ui = br#"{"kind":"ui","model_options":[]}"#;
+        let commands = br#"{"kind":"commands"}"#;
+        assert!(require_application_presentation_input_role(ui, Settings).is_ok());
+        assert!(require_application_presentation_input_role(ui, Catalog).is_ok());
+        assert!(require_application_presentation_input_role(commands, Commands).is_ok());
+        for (body, role) in [
+            (ui.as_slice(), Commands),
+            (commands.as_slice(), Settings),
+            (commands.as_slice(), Catalog),
+        ] {
+            let error = require_application_presentation_input_role(body, role).unwrap_err();
+            assert!(matches!(
+                error.downcast_ref(),
+                Some(NativeArtifactError::Denied)
+            ));
+        }
+        for body in [
+            br#"{}"#.as_slice(),
+            br#"{"kind":"ui","kind":"commands"}"#,
+            b"{\"\xff\":1}",
+        ] {
+            let error = require_application_presentation_input_role(body, Settings).unwrap_err();
+            assert_eq!(
+                error.downcast::<SavedOrchestrationStepError>().unwrap(),
+                SavedOrchestrationStepError::Invalid
+            );
+        }
     }
 
     #[test]

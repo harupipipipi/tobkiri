@@ -58,6 +58,7 @@ const SNAPSHOT_RUNTIME_MANIFEST: &str = "app/runtime-resource-manifest.v1.json";
 const RUNTIME_OVERLAY_SCHEMA: &str = "io.tobkiri.sealed-runtime-overlay.v1";
 pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
+pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -81,7 +82,14 @@ pub struct RoleArguments {
     application: Vec<OsString>,
     native_first_setup: bool,
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    saved_orchestration_manifest: Option<String>,
+    native_registry: NativeRegistryEnvironment,
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+#[derive(Debug, Default)]
+pub(crate) struct NativeRegistryEnvironment {
+    pub(crate) saved_orchestration_manifest: Option<String>,
+    pub(crate) application_presentation_manifest: Option<String>,
 }
 
 impl RoleArguments {
@@ -118,22 +126,27 @@ impl RoleArguments {
         self.native_first_setup
     }
 
-    /// Carry the verified replacement digest into the managed Defaultspack spawn.
+    /// Carry verified replacement digests into the managed Defaultspack spawn.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn with_saved_orchestration_admission(
+    pub(crate) fn with_native_registry_admission(
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
-        self.saved_orchestration_manifest = proof
-            .and_then(|proof| proof.saved_orchestration_manifest())
-            .map(str::to_owned);
+        self.native_registry = NativeRegistryEnvironment {
+            saved_orchestration_manifest: proof
+                .and_then(|proof| proof.saved_orchestration_manifest())
+                .map(str::to_owned),
+            application_presentation_manifest: proof
+                .and_then(|proof| proof.application_presentation_manifest_sha256())
+                .map(str::to_owned),
+        };
         self
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn split_saved_orchestration_manifest(mut self) -> (Self, Option<String>) {
-        let manifest = self.saved_orchestration_manifest.take();
-        (self, manifest)
+    pub(crate) fn split_native_registry_environment(mut self) -> (Self, NativeRegistryEnvironment) {
+        let environment = std::mem::take(&mut self.native_registry);
+        (self, environment)
     }
 
     pub(crate) fn into_values(self) -> Vec<OsString> {
@@ -279,6 +292,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
     if matches!(
         key,
         SAVED_ORCHESTRATION_MANIFEST_ENV
+            | APPLICATION_PRESENTATION_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
             | crate::native_provider_prepare_service::AI_ROUTING_ENV
@@ -4360,11 +4374,12 @@ mod tests {
             (Some(&other_proof), None),
             (Some(&verified), Some(expected.as_str())),
         ] {
-            let (args, admission) = RoleArguments::defaultspack([OsString::from("serve")])
+            let (args, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
-                .with_saved_orchestration_admission(proof)
-                .split_saved_orchestration_manifest();
-            assert_eq!(admission.as_deref(), digest);
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(environment.saved_orchestration_manifest.as_deref(), digest);
+            assert!(environment.application_presentation_manifest.is_none());
             assert_eq!(args.into_values(), [OsString::from("serve")]);
         }
 
@@ -4382,6 +4397,44 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
+    fn application_presentation_environment_requires_every_signed_role() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use crate::native_harness_bootstrap::{
+            ApplicationPresentationRole, VerifiedRegistryLaunch,
+        };
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        let partial = VerifiedRegistryLaunch::test_application_presentation_proof(
+            identity.clone(),
+            "catalog",
+            ApplicationPresentationRole::Settings,
+        );
+        let complete = VerifiedRegistryLaunch::test_complete_application_presentation_proof(
+            identity, "catalog",
+        );
+        for (proof, expected) in [
+            (None, None),
+            (Some(&partial), None),
+            (Some(&complete), Some("sha256:manifest")),
+        ] {
+            let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(
+                environment.application_presentation_manifest.as_deref(),
+                expected
+            );
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
             AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
@@ -4390,6 +4443,7 @@ mod tests {
         };
 
         for key in [
+            APPLICATION_PRESENTATION_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,
             AI_ROUTING_ENV,
