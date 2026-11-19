@@ -2038,6 +2038,59 @@ def test_provider_snapshot_receives_the_original_owner_reply(
         assert reader(request) == expected
 
 
+@pytest.mark.parametrize("role", ipc._WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
+@pytest.mark.parametrize("entry", ipc.WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES)
+def test_workflow_provider_snapshot_carries_the_exact_entry(
+    monkeypatch: pytest.MonkeyPatch,
+    role: ipc.WorkflowProviderSnapshotRole,
+    entry: ipc.WorkflowSnapshotEntry,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role, workflow_entry=entry,
+    )
+    result = {
+        "version": "rumi.provider-registry.store.v1",
+        "profile_id": borrow.context.profile_id,
+        "revision": 1,
+        "providers": [{"display_name": "ローカル", "metadata": {"cost": 0.125}}],
+    }
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == 1
+        assert json.loads(frame)["provider_snapshot"] == {"role": role, "entry": entry}
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(result).encode())
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "4")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and not reader.supports_workflow
+        with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+            reader(request)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "5")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_workflow and reader.supports_query
+        assert reader(request) == result
+
+
+@pytest.mark.parametrize(("role", "entry"), [
+    ("workflow-text", None), ("workflow-messages", "run.get"), ("generate", "run.advance"),
+])
+def test_workflow_provider_snapshot_rejects_mismatched_entry(role, entry) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role, workflow_entry=entry,
+    )
+    with pytest.raises(ipc._ProtocolError, match="snapshot role"):
+        ipc._start_payload(request, 1)
+
+
 @pytest.mark.parametrize("role", ipc._PROJECTED_PROVIDER_SNAPSHOT_ROLES)
 @pytest.mark.parametrize("unexpected_field", [None, "credential_handle", "endpoint"])
 def test_provider_snapshot_settings_role_only_accepts_the_public_view(

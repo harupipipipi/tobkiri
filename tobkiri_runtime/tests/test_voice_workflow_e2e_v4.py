@@ -12,7 +12,7 @@ real credentials or network access:
          (``_open_pinned_request`` replaced by a byte-verifying fake opener —
           the lease, endpoint binding, scope, deadline and redaction checks all
           still run; only the socket is faked)
-      -> typed text Gateway op -> real ``run.observe`` bounded projection.
+      -> typed text and Messages Gateway ops -> real ``run.observe`` bounded projection.
 
 Nothing about the Workflow invoker, Provider callbacks, approvals, or
 Broker dispatch is stubbed: every hop crosses the production captured
@@ -36,11 +36,11 @@ from typing import Any
 
 import pytest
 
-from core_runtime import credential_transport
+from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
 from core_runtime.host_contract import bind_host_contract
 from tests.conformance_support.host_contract import host_contract_for_session
 from core_runtime.authority.ui_operator import sign_ui_operator
-from core_runtime.authority.v4 import AuthorityStore
+from core_runtime.authority.v4 import AuthorityDenied, AuthorityStore
 from core_runtime.bootstrap.profile_capture import (
     capture_default_profile,
     prepare_default_profile_confirmation,
@@ -61,6 +61,7 @@ from tests.test_workflow_v4_pack_control_integration import (
     _capture_defaultspack_dispatch,
 )
 from tobkiri_host.credential_store import host_credential_store_factory
+from tobkiri_host.models import RequestEnvelope
 from tobkiri_host.ports import InteractiveApprovalDecisionCommand
 from tobkiri_protocol.canonical import canonical_json
 
@@ -74,6 +75,7 @@ _OBSERVE_BUDGET = 3 * 1024 * 1024
 _STT_CONTRACT = "tobkiri.service.ai.audio.transcribe.v1"
 _TTS_CONTRACT = "tobkiri.service.ai.audio.speech.v1"
 _TEXT_CONTRACT = "tobkiri.service.ai.text.generate.v1"
+_MESSAGES_CONTRACT = "tobkiri.service.ai.messages.generate.v1"
 _WORKFLOW_CONTRACT = "tobkiri.workflow.v4"
 
 _STT_BYTES = b"\xff\xfb" + b"voice-e2e-frames" * 64
@@ -352,10 +354,11 @@ def test_audio_palette_schemas_are_finite() -> None:
     assert speech_props.get("voice", {}).get("type") == "string"
 
 
+@pytest.mark.parametrize("native_registry", [False, True], ids=["legacy", "native"])
 def test_voice_chain_end_to_end(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_registry: bool,
 ) -> None:
-    """Published 3-step voice run rides capture, approvals, Broker, observe.
+    """Published voice run crosses captured Workflow, approvals, Broker and observe.
 
     Captures the exact Profile and executes every hop without real egress.
     """
@@ -364,8 +367,61 @@ def test_voice_chain_end_to_end(
     monkeypatch.setattr(
         credential_transport, "_open_pinned_request", _fake_opener(calls)
     )
+    observed_dispatches: list[RequestEnvelope] = []
+    registry_reads: list[ipc.NativeProviderSnapshotRequest] = []
+    instance = "1" * 32
+    operations_by_role = {
+        "workflow-text": ("rumi_ai_gateway_pack.ai-gateway.text-generate",),
+        "workflow-messages": ("rumi_ai_gateway_pack.ai-gateway.messages-generate",),
+        "workflow-audio-transcribe": (
+            "rumi_provider_adapters_pack.provider-audio-transcribe",
+            "rumi_ai_modality_pack.ai-transcribe",
+        ),
+        "workflow-audio-speech": (
+            "rumi_provider_adapters_pack.provider-audio-speech",
+            "rumi_ai_modality_pack.ai-speech",
+        ),
+    }
+
+    def snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
+        read = observed_dispatches[-1]
+        assert read.operation_id == "rumi_provider_registry_pack.provider-registry-resource.generate"
+        assert request.context is read.context and request.runtime_instance == instance
+        assert request.deadline_monotonic == read.deadline_monotonic
+        assert request.workflow_entry in ("run.advance", "run.step.resume")
+        chain = [read]
+        earlier = iter(reversed(observed_dispatches[:-1]))
+        for operation in (*operations_by_role[request.role], request.workflow_entry):
+            parent = next(item for item in earlier if item.operation_id == operation)
+            assert chain[-1].context.caller_principal == parent.target_principal
+            assert chain[-1].deadline_monotonic <= parent.deadline_monotonic
+            chain.append(parent)
+        assert len({item.lease.token for item in chain}) == len(chain)
+        assert len({item.resource_reservation_id for item in chain}) == len(chain)
+        request.assert_current()
+        registry_reads.append(request)
+        return ProviderRegistry(
+            request.context.profile_id, user_data_root=tmp_path / "user-data",
+        ).snapshot()
+
+    snapshot.supports_workflow = True
+    if native_registry:
+        monkeypatch.setattr(
+            ipc, "capture_launcher_provider_snapshot_reader", lambda: snapshot,
+        )
     session = _session(tmp_path, monkeypatch)
     try:
+        if native_registry:
+            publish = session.native_provider_runtime_publish
+            assert publish is not None
+            publish(instance, lambda: None)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            observed_dispatches.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
         palette = _invoke(session, "operation.palette", {})
         by_contract = {
             item["contract_id"]: item for item in palette["operations"]
@@ -374,6 +430,7 @@ def test_voice_chain_end_to_end(
             by_contract[_STT_CONTRACT],
             by_contract[_TEXT_CONTRACT],
             by_contract[_TTS_CONTRACT],
+            by_contract[_MESSAGES_CONTRACT],
         )
 
         def step(
@@ -431,6 +488,15 @@ def test_voice_chain_end_to_end(
                     },
                     ["llm"],
                 ),
+                step(
+                    "messages",
+                    targets[3],
+                    {
+                        "model_profile_id": "voice.text",
+                        "messages": "${inputs.messages}",
+                    },
+                    ["tts"],
+                ),
             ],
         }
         validated = _invoke(
@@ -456,6 +522,11 @@ def test_voice_chain_end_to_end(
                 "inputs": {
                     "audio": _inline_audio(_STT_BYTES),
                     "voice": "alloy",
+                    "messages": [
+                        {"role": "user", "content": "First question"},
+                        {"role": "assistant", "content": "First answer"},
+                        {"role": "user", "content": "Follow-up"},
+                    ],
                 },
             },
         )
@@ -474,11 +545,23 @@ def test_voice_chain_end_to_end(
         )
         assert content["media_type"] == "audio/mpeg"
         assert base64.b64decode(content["data_base64"]) == _TTS_BYTES
+        messages = _run_step(session, "voice-run-1", "messages")
+        assert messages["state"] == "succeeded", messages
+        assert messages["outcome"]["text"] == _REPLY
+
+        if native_registry:
+            assert [read.role for read in registry_reads] == [
+                "workflow-audio-transcribe", "workflow-text",
+                "workflow-audio-speech", "workflow-messages",
+            ]
+            for read in registry_reads:
+                with pytest.raises((AuthorityDenied, PermissionError)):
+                    read.assert_current()
 
         observed = _invoke(session, "run.observe", {"run_id": "voice-run-1"})
         assert observed["run"]["state"] == "succeeded"
         assert "inputs" not in observed["run"]
-        assert observed["step_count"] == 3
+        assert observed["step_count"] == 4
         assert all(
             "request" not in attempt for attempt in observed["attempts"]
         )
@@ -491,6 +574,7 @@ def test_voice_chain_end_to_end(
             _ENDPOINT + "/audio/transcriptions",
             _ENDPOINT + "/chat/completions",
             _ENDPOINT + "/audio/speech",
+            _ENDPOINT + "/chat/completions",
         ]
         multipart = calls[0]["body"]
         assert b"multipart" in calls[0]["headers"]["content-type"].encode()
@@ -501,5 +585,9 @@ def test_voice_chain_end_to_end(
         assert speech_request["model"] == "gpt-4o-mini-tts"
         assert speech_request["voice"] == "alloy"
         assert speech_request["input"] == _REPLY
+        messages_request = json.loads(calls[3]["body"].decode())
+        assert [message["content"] for message in messages_request["messages"]] == [
+            "First question", "First answer", "Follow-up",
+        ]
     finally:
         session.close()

@@ -1935,6 +1935,7 @@ def capture_production_dispatch(
         GATEWAY_PROVIDER_SNAPSHOT_ROLES,
         MODEL_RESOLVE_MINIMUM_MEMORY,
         PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
+        WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
         SAVED_ORCHESTRATION_MINIMUM_MEMORY,
@@ -1971,6 +1972,8 @@ def capture_production_dispatch(
         NativeProviderSnapshotRequest,
         ProjectedProviderSnapshotRole,
         ProviderSnapshotRole,
+        WorkflowProviderSnapshotRole,
+        WorkflowSnapshotEntry,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
@@ -4981,6 +4984,75 @@ def capture_production_dispatch(
     workflow_attempt_port = (
         LateBoundWorkflowAttemptPortV4() if workflow_assembly is not None else None
     )
+    workflow_snapshot_entries: dict[WorkflowSnapshotEntry, _CapturedPlanEdge] = {}
+    workflow_snapshot_routes: dict[
+        str, tuple[WorkflowProviderSnapshotRole, _CapturedPlanEdge, tuple[_CapturedPlanEdge, ...]],
+    ] = {}
+    if (
+        workflow_assembly is not None
+        and getattr(native_provider_snapshot_reader, "supports_workflow", False) is True
+    ):
+        workflow_principal_id = workflow_assembly.binding.principal_ref.value
+        for operation in WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES:
+            entry = select_original_chat_edge(
+                desktop_shell_principal_ids, "tobkiri_workflow_pack", "tobkiri.workflow.v4",
+                operation, "tobkiri.workflow.provider", EffectClass.PRIVILEGED,
+            )
+            if entry is not None and (
+                entry.target.principal_id == workflow_principal_id
+                and (*entry.binding_key[1:], workflow_principal_id)
+                in workflow_assembly.admitted_invocations
+            ):
+                workflow_snapshot_entries[operation] = entry
+
+        modalities = "rumi_ai_modality_pack"
+        adapters = "rumi_provider_adapters_pack"
+        workflow_paths: tuple[
+            tuple[WorkflowProviderSnapshotRole, tuple[tuple[str, str, str, str], ...]], ...
+        ] = (
+            ("workflow-text", ((
+                gateway_pack, "tobkiri.service.ai.text.generate.v1",
+                f"{gateway_pack}.ai-gateway.text-generate", f"{gateway_pack}.ai-gateway.text-generate",
+            ),)),
+            ("workflow-messages", ((
+                gateway_pack, "tobkiri.service.ai.messages.generate.v1",
+                f"{gateway_pack}.ai-gateway.messages-generate",
+                f"{gateway_pack}.ai-gateway.messages-generate",
+            ),)),
+            ("workflow-audio-transcribe", (
+                (modalities, "tobkiri.service.ai.audio.transcribe.v1",
+                 f"{modalities}.ai-transcribe", f"{modalities}.ai-modality.transcribe"),
+                (adapters, "tobkiri.service.ai.provider.audio.transcribe.v1",
+                 f"{adapters}.provider-audio-transcribe", f"{adapters}.provider.compatibility.audio_transcribe"),
+            )),
+            ("workflow-audio-speech", (
+                (modalities, "tobkiri.service.ai.audio.speech.v1",
+                 f"{modalities}.ai-speech", f"{modalities}.ai-modality.speech"),
+                (adapters, "tobkiri.service.ai.provider.audio.speech.v1",
+                 f"{adapters}.provider-audio-speech", f"{adapters}.provider.compatibility.audio_speech"),
+            )),
+        )
+        if workflow_snapshot_entries:
+            for role, path in workflow_paths:
+                parents: list[_CapturedPlanEdge] = []
+                caller_id = workflow_principal_id
+                for pack_id, contract, operation, function in path:
+                    selected = select_original_chat_edge(
+                        {caller_id}, pack_id, contract, operation, function,
+                        EffectClass.PRIVILEGED,
+                    )
+                    if selected is None:
+                        break
+                    parents.append(selected)
+                    caller_id = selected.target.principal_id
+                else:
+                    read = select_original_chat_edge(
+                        {caller_id}, "rumi_provider_registry_pack", _MODEL_PROVIDER_CONTRACT,
+                        f"{_MODEL_PROVIDER_OPERATION}.generate", _MODEL_PROVIDER_FUNCTION,
+                        EffectClass.PRIVILEGED,
+                    )
+                    if read is not None:
+                        workflow_snapshot_routes[caller_id] = role, read, tuple(reversed(parents))
 
     interactive_effect_coordinator = _interactive_effect_coordinator_factory(
         tuple(loaded_host_factories)
@@ -5295,6 +5367,7 @@ def capture_production_dispatch(
         operation_id: str,
     ) -> tuple[
         ProviderSnapshotRole, _CapturedPlanEdge, CapturedInvocationScopeV4 | None,
+        WorkflowSnapshotEntry | None,
     ] | None:
         if native_provider_runtime is None or (
             set(payload) - {"profile_id", "_session_id"}
@@ -5308,14 +5381,14 @@ def capture_production_dispatch(
                 return None
             projected_role, projected_edge, parent_edge = projected
             if parent_edge is None:
-                return (projected_role, projected_edge, None) if parent is None else None
+                return (projected_role, projected_edge, None, None) if parent is None else None
             if (
                 parent is not None and parent.parent is None
                 and parent.envelope.context.profile_id == context.profile_id
                 and parent.envelope.target_principal == context.caller_principal
                 and matches_captured_edge(parent.envelope, parent_edge)
             ):
-                return projected_role, projected_edge, parent
+                return projected_role, projected_edge, parent, None
             return None
 
         if parent is None:
@@ -5340,14 +5413,22 @@ def capture_production_dispatch(
                 ancestors[-2], ancestors[-1], context.profile_id,
             ):
                 continue
-            return GATEWAY_PROVIDER_SNAPSHOT_ROLES[side_chat, role], edge, parent
+            return GATEWAY_PROVIDER_SNAPSHOT_ROLES[side_chat, role], edge, parent, None
+
+        workflow = workflow_snapshot_routes.get(context.caller_principal.value)
+        if workflow is not None:
+            workflow_role, workflow_edge, parents = workflow
+            if operation_id == workflow_edge.binding_key[2]:
+                for entry, root in workflow_snapshot_entries.items():
+                    if match_captured_ancestors(parent, (*parents, root)) is not None:
+                        return workflow_role, workflow_edge, parent, entry
 
         route = saved_local_chat_lineage(caller.context, caller.payload, parent.parent)
         if (
             route is not None and operation_id == route.registry.binding_key[2]
             and matches_captured_edge(caller, route.adapter)
         ):
-            return route.role, route.registry, parent
+            return route.role, route.registry, parent, None
         return None
 
     def wrap_native_provider_snapshot(
@@ -5368,7 +5449,7 @@ def capture_production_dispatch(
             source = native_provider_snapshot_source(context, payload, operation_id)
             if source is None:
                 return contribution.invoke(operation_id, payload, invocation)
-            role, edge, parent = source
+            role, edge, parent, workflow_entry = source
             pinned = native_provider_runtime
             if (
                 pinned is None
@@ -5404,6 +5485,7 @@ def capture_production_dispatch(
                         deadline_monotonic=envelope.deadline_monotonic,
                         assert_current=guard,
                         role=role,
+                        workflow_entry=workflow_entry,
                     ))
                 except (
                     NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
@@ -7925,6 +8007,7 @@ def capture_production_dispatch(
                 *(edge for routes in gateway_snapshot_routes.values()
                   for _, _, edge, _ in routes),
                 *(edge for _, edge, _ in projected_snapshot_routes.values()),
+                *(edge for _, edge, _ in workflow_snapshot_routes.values()),
             )
             snapshot_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding

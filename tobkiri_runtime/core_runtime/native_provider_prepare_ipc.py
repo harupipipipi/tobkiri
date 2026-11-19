@@ -488,8 +488,23 @@ GatewayProviderSnapshotRole = Literal[
 ProjectedProviderSnapshotRole = Literal[
     "shell-settings", "model-save", "model-search", "command-datasource",
 ]
+WorkflowProviderSnapshotRole = Literal[
+    "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
+]
+WorkflowSnapshotEntry = Literal[
+    "run.advance", "run.cancel", "run.selected", "run.step.execute",
+    "run.step.resume", "run.step.retry",
+]
 ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | ProjectedProviderSnapshotRole
+    | WorkflowProviderSnapshotRole
+)
+_WORKFLOW_PROVIDER_SNAPSHOT_ROLES = (
+    "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
+)
+WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES: tuple[WorkflowSnapshotEntry, ...] = (
+    "run.advance", "run.cancel", "run.selected", "run.step.execute",
+    "run.step.resume", "run.step.retry",
 )
 _QUERY_PROVIDER_SNAPSHOT_ROLES = ("model-search", "command-datasource")
 _PROJECTED_PROVIDER_SNAPSHOT_ROLES = (
@@ -518,6 +533,7 @@ class NativeProviderSnapshotRequest:
     deadline_monotonic: float
     assert_current: Callable[[], None]
     role: ProviderSnapshotRole
+    workflow_entry: WorkflowSnapshotEntry | None = None
 
 
 @dataclass(frozen=True)
@@ -737,6 +753,7 @@ class _LauncherProviderSnapshot:
     supports_gateway: bool
     supports_projected: bool
     supports_query: bool
+    supports_workflow: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -746,6 +763,8 @@ class _LauncherProviderSnapshot:
                 and request.role in _PROJECTED_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_query
                 and request.role in _QUERY_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_workflow
+                and request.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
         ):
             raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
@@ -754,7 +773,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2", "3", "4"):
+    if version not in ("1", "2", "3", "4", "5"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -762,8 +781,9 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
     return _LauncherProviderSnapshot(
         launcher,
         supports_gateway=version != "1",
-        supports_projected=version in ("3", "4"),
-        supports_query=version == "4",
+        supports_projected=version in ("3", "4", "5"),
+        supports_query=version in ("4", "5"),
+        supports_workflow=version == "5",
     )
 
 
@@ -1120,13 +1140,22 @@ def _start_payload(
         "deadline_ns": deadline_ns,
     }
     if isinstance(borrow, NativeProviderSnapshotRequest):
+        workflow = borrow.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES
         if (
-            borrow.role not in _SAVED_LOCAL_CHAT_ROLES
-            and borrow.role not in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
-            and borrow.role not in _PROJECTED_PROVIDER_SNAPSHOT_ROLES
+            (workflow and borrow.workflow_entry not in WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES)
+            or (not workflow and (
+                borrow.workflow_entry is not None
+                or (
+                    borrow.role not in _SAVED_LOCAL_CHAT_ROLES
+                    and borrow.role not in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
+                    and borrow.role not in _PROJECTED_PROVIDER_SNAPSHOT_ROLES
+                )
+            ))
         ):
             raise _ProtocolError("native Provider snapshot role is invalid")
         frame["provider_snapshot"] = {"role": borrow.role}
+        if workflow:
+            frame["provider_snapshot"]["entry"] = borrow.workflow_entry
     elif isinstance(borrow, NativeModelSettingsRequest):
         frame["model_list"] = {}
     elif isinstance(borrow, NativeModelSaveRequest):
