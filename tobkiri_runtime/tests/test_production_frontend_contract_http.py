@@ -8377,7 +8377,9 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
         borrows.append(request)
         turn, saved, *gateway_invocations = ancestry
         envelope = gateway_invocations[-1]
-        assert (turn.operation_id, saved.operation_id) == (turn_operation, "saved_complete")
+        assert (turn.operation_id, saved.operation_id) == (
+            turn_operation, "saved_complete",
+        )
         assert request.context is envelope.context
         assert request.deadline_monotonic == envelope.deadline_monotonic
         assert request.runtime_instance == server._native_provider_prepare_instance
@@ -8388,7 +8390,11 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
         )
         assert turn.target_principal == saved.context.caller_principal
         assert saved.target_principal == envelope.context.caller_principal
-        assert envelope.deadline_monotonic <= saved.deadline_monotonic <= turn.deadline_monotonic
+        assert (
+            envelope.deadline_monotonic
+            <= saved.deadline_monotonic
+            <= turn.deadline_monotonic
+        )
         expected_role = (
             "quote-stream" if envelope.payload.get("delivery_mode") == "incremental"
             else "quote-generate"
@@ -8409,13 +8415,16 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
             assert value["profile_parameters"]["max_tokens"] == max_tokens
             assert value["profile_requirements"]["health_max_age"] == health_max_age
             result = {
-                "model_profile_id": str(value["resolved_profile_id"] or value["identifier"]),
+                "model_profile_id": str(
+                    value["resolved_profile_id"] or value["identifier"],
+                ),
                 "requirements": gateway._merge_requirements(
                     value["profile_requirements"], value["request_requirements"],
                     model_id=str(value["model_id"] or ""),
                 ),
                 "parameters": bounded_model_parameters(
-                    value["profile_parameters"] or {}, value["request_parameters"] or {},
+                    value["profile_parameters"] or {},
+                    value["request_parameters"] or {},
                 ),
             }
         else:
@@ -8462,10 +8471,13 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
     stream_ready = SavedBridgeCallbacks._stream_ready
     monkeypatch.setattr(
         SavedBridgeCallbacks, "_stream_ready",
-        lambda *args, **kwargs: delivery_role == "stream" and stream_ready(*args, **kwargs),
+        lambda *args, **kwargs: (
+            delivery_role == "stream" and stream_ready(*args, **kwargs)
+        ),
     )
     with contextmanager(_captured_production_server)(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
         credential_store_factory=host_credential_store_factory,
     ) as fixture:
         server, session, _authority = fixture
@@ -8476,12 +8488,16 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
         dispatch = session.broker._dispatch
 
         def observe_dispatch(backend, envelope, *args, **kwargs):
-            if envelope.operation_id in {turn_operation, "saved_complete", *gateway_operations}:
+            if envelope.operation_id in {
+                turn_operation, "saved_complete", *gateway_operations,
+            }:
                 ancestry.append(envelope)
             if envelope.contract_id == gateway.ROUTING_CONTRACT:
                 router_dispatches.append(envelope)
                 expected = requirements_by_invocation[ancestry[-1].context.request_id]
-                assert envelope.context.caller_principal == ancestry[-1].target_principal
+                assert (
+                    envelope.context.caller_principal == ancestry[-1].target_principal
+                )
                 assert envelope.payload["requirements"] == expected
                 assert expected["health_max_age"] == float(health_max_age)
                 assert expected["minimum_context"] == 0
@@ -8517,7 +8533,9 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
             }, expected_revision=revision)
             revision = saved["store_revision"]
             if index == 0:
-                alias = models.set_alias("daily-alias", "daily", expected_revision=revision)
+                alias = models.set_alias(
+                    "daily-alias", "daily", expected_revision=revision,
+                )
                 revision = alias["store_revision"]
             turn_id = f"{delivery_role}-{scenario}"
             store.create(
@@ -8560,9 +8578,9 @@ def test_signed_saved_gateway_policy_uses_current_model_and_role(
                 with pytest.raises(PermissionError):
                     borrow.assert_current()
             if completed:
-                assert [message["content"] for message in store.get(turn_id)["messages"]] == [
-                    "Hello", "Reply",
-                ]
+                assert [
+                    message["content"] for message in store.get(turn_id)["messages"]
+                ] == ["Hello", "Reply"]
 
 
 def test_signed_saved_gateway_response_borrows_own_role(

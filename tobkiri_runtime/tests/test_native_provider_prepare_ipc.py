@@ -2545,7 +2545,9 @@ def _ai_gateway_policy_fixture(
     ), result
 
 
-@pytest.mark.parametrize("role", ["generate", "stream", "quote-generate", "quote-stream"])
+@pytest.mark.parametrize(
+    "role", ["generate", "stream", "quote-generate", "quote-stream"],
+)
 @pytest.mark.parametrize("phase", ["model-profile", "route-requirement"])
 def test_ai_gateway_policy_preserves_phase_role_and_lossless_json(
     monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole, phase: str,

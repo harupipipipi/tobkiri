@@ -1134,7 +1134,11 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
             )
     try:
         step_input = dict(borrow.input)
-        if borrow.pipeline is not None or borrow.gateway_result or borrow.gateway_policy:
+        if (
+            borrow.pipeline is not None
+            or borrow.gateway_result
+            or borrow.gateway_policy
+        ):
             _check_lossless_json(step_input)
         payload = json.dumps(
             step_input, ensure_ascii=False, separators=(",", ":"), allow_nan=False,

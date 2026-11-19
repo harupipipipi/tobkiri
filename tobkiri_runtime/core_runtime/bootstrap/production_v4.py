@@ -5767,7 +5767,10 @@ def capture_production_dispatch(
                     "generate", "stream",
                 ):
                     gateway_result_routes[gateway_key] = role, parents
-                if native_ai_gateway_policy_projector is not None and role != "quote-stream":
+                if (
+                    native_ai_gateway_policy_projector is not None
+                    and role != "quote-stream"
+                ):
                     # Both quote roles use one signed edge. The live quote envelope
                     # selects the role at admission and when borrowing projection.
                     gateway_policy_routes[gateway_key] = role, parents
@@ -5850,7 +5853,9 @@ def capture_production_dispatch(
                                 role, (failover_edge, *parents),
                             )
 
-    gateway_projection_keys = gateway_result_routes.keys() | gateway_policy_routes.keys()
+    gateway_projection_keys = (
+        gateway_result_routes.keys() | gateway_policy_routes.keys()
+    )
 
     def saved_append_lineage(
         context: RequestContext,
@@ -6057,7 +6062,9 @@ def capture_production_dispatch(
             return None
         envelope = invocation.envelope
         route = routes.get((
-            envelope.contract_id, envelope.operation_id, envelope.target_principal.value,
+            envelope.contract_id,
+            envelope.operation_id,
+            envelope.target_principal.value,
         ))
         if route is None:
             return None
