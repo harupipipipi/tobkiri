@@ -1,4 +1,4 @@
-//! Indexed record validation and receipt settlement for the original Turn owner.
+//! Indexed record validation and saved-turn transitions for the original Turn owner.
 
 use ordered_python_compat::{CodecError, PyValue, dumps, dumps_bounded, loads, pystrip};
 use std::collections::BTreeSet;
@@ -6,6 +6,9 @@ use tobkiri_canon::Digest;
 
 #[cfg(feature = "component")]
 mod component;
+mod start;
+
+pub use start::{LegacySavedTurnStartRequest, active_turn_in_conversation};
 
 /// Maximum body size accepted by the original owner.
 pub const RECORD_LIMIT: usize = 1024 * 1024;
@@ -78,7 +81,7 @@ pub enum LegacySavedTurnSettlementError {
 
 type Error = LegacySavedTurnSettlementError;
 
-/// Result of a saved-turn receipt transition.
+/// Result of a saved-turn owner operation.
 pub type Result<T> = std::result::Result<T, Error>;
 
 const RESULT_FIELDS: &[&str] = &[
@@ -227,7 +230,11 @@ pub fn settle(
         object([("result_reference", reference)]),
     )?;
 
-    let body = dumps_bounded(&turn, RECORD_LIMIT)
+    commit(&turn, updated_at)
+}
+
+fn commit(turn: &PyValue, updated_at: i64) -> Result<Transition> {
+    let body = dumps_bounded(turn, RECORD_LIMIT)
         .map_err(|error| match error {
             CodecError::ByteLimit | CodecError::Resource => Error::Capacity,
             _ => Error::InvalidRecord,
@@ -370,19 +377,25 @@ fn validate_reference(
         ("user_message_id", "user"),
         ("assistant_message_id", "assistant"),
     ] {
-        let encoded = dumps(&PyValue::Array(vec![
-            string(conversation),
-            string(turn),
-            string(role),
-        ]))
-        .map_err(|_| Error::InvalidRecord)?;
-        let digest = Digest::hash(encoded.as_bytes());
-        let expected = format!("message:{}", digest.hex());
+        let expected = saved_message_id(conversation, turn, role)?;
         if reference.string(field) != Some(expected.as_str()) {
             return Err(Error::InvalidReference);
         }
     }
     Ok(())
+}
+
+fn saved_message_id(conversation: &str, turn: &str, role: &str) -> Result<String> {
+    let encoded = dumps(&PyValue::Array(vec![
+        string(conversation),
+        string(turn),
+        string(role),
+    ]))
+    .map_err(|_| Error::InvalidRecord)?;
+    Ok(format!(
+        "message:{}",
+        Digest::hash(encoded.as_bytes()).hex()
+    ))
 }
 
 fn same_reference(previous: &PyValue, reference: &PyValue, revision: u64) -> bool {
@@ -571,5 +584,7 @@ fn check_structure_bound(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod start_tests;
 #[cfg(test)]
 mod tests;

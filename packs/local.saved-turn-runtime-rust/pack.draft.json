@@ -1,7 +1,7 @@
 {
   "format": "tobkiri.pack/1",
   "id": "local.saved-turn-runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher_key": null,
   "runtime": {
     "kind": "wasm",
@@ -21,6 +21,12 @@
       "version": "1.0",
       "kind": "port",
       "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.saved-turn-runtime.legacy-start",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
     }
   ],
   "ports": {
@@ -32,6 +38,11 @@
       },
       {
         "shape": "local.saved-turn-runtime.legacy-read",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.saved-turn-runtime.legacy-start",
         "version": "1.0",
         "optional": false
       }
@@ -62,6 +73,7 @@
     "component.wasm",
     "wit/deps/core.wit",
     "wit/legacy-read.shape.json",
+    "wit/legacy-start.shape.json",
     "wit/legacy-settlement.shape.json",
     "wit/pack.wit"
   ]

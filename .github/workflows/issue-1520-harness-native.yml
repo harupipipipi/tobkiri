@@ -820,7 +820,7 @@ jobs:
           TOBKIRI_TURN_WASM_PACK: ${{ runner.temp }}/native-registry-packs/local.saved-turn-runtime.tpk
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 2 -- \
+            --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-harness-native \
               original_saved_turn_settlement::tests::actual_wasm_ -- --ignored
       - name: Replay original saved orchestration against its Wasm component

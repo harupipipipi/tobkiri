@@ -155,7 +155,7 @@ class NativeWorkflowContracts(unittest.TestCase):
         saved_turn = step(registry, "Verify saved Turn Wasm against the original SQLite owner")
         self.assertIn("/native-registry-packs/local.saved-turn-runtime.tpk", saved_turn)
         self.assertIn("original_saved_turn_settlement::tests::actual_wasm_ -- --ignored", saved_turn)
-        self.assertIn("--expected-passed 2", saved_turn)
+        self.assertIn("--expected-passed 3", saved_turn)
         self.assertLess(registry.index(saved_turn), registry.index("name: native-registry-packs"))
         orchestration = step(registry, "Replay original saved orchestration against its Wasm component")
         self.assertIn("/native-registry-packs/local.saved-orchestration.tpk", orchestration)

@@ -1,4 +1,4 @@
-//! Validate a Turn observation or prepare settlement using the live Core Profile.
+//! Project the original Turn lifecycle using the live Core Profile.
 
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core-v1-2/core.wit", "wit"],
@@ -7,13 +7,14 @@ wit_bindgen::generate!({
 });
 
 use crate::{
-    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, Transition, settle,
-    validate_legacy_saved_turn,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
+    Transition, settle, validate_legacy_saved_turn,
 };
 use exports::local::saved_turn_runtime::legacy_read::{self, ReadOutcome};
 use exports::local::saved_turn_runtime::legacy_settlement::{
     Guest, Replacement, SettlementError, SettlementOutcome,
 };
+use exports::local::saved_turn_runtime::legacy_start;
 use tobkiri::core::{
     clock, flow,
     types::{Error, ErrorCode},
@@ -67,27 +68,74 @@ impl Guest for Pack {
             expected_revision,
             result_reference: result_reference.as_bytes(),
         };
-        let decision = settle(
+        encode_transition(settle(
             &profile,
             &turn_id,
             &request_id,
             body.as_bytes(),
             &request,
-            &mut || {
-                i64::try_from(clock::now_ms()).map_err(|_| LegacySavedTurnSettlementError::Storage)
-            },
-        );
-        match decision {
-            Ok(Transition::Replay) => Ok(SettlementOutcome::Replay),
-            Ok(Transition::Commit { updated_at, body }) => {
-                let body = String::from_utf8(body).map_err(|_| Error {
-                    code: ErrorCode::Internal,
-                    message: "saved turn update serialization failed".into(),
-                })?;
-                Ok(SettlementOutcome::Update(Replacement { updated_at, body }))
-            }
-            Err(error) => Ok(SettlementOutcome::Rejected(domain_error(error))),
+            &mut now_ms,
+        ))
+    }
+}
+
+impl legacy_start::Guest for Pack {
+    fn begin(
+        turn_id: String,
+        conversation_id: String,
+        conversation_revision: u64,
+        input_digest: String,
+    ) -> Result<SettlementOutcome, Error> {
+        let profile = flow::current_profile()?;
+        let request = LegacySavedTurnStartRequest {
+            turn_id: &turn_id,
+            conversation_id: &conversation_id,
+            conversation_revision,
+            input_digest: &input_digest,
+        };
+        encode_transition(request.begin(&profile, &mut now_ms))
+    }
+
+    fn claim(
+        turn_id: String,
+        request_id: String,
+        body: String,
+        conversation_id: String,
+        conversation_revision: u64,
+        input_digest: String,
+    ) -> Result<SettlementOutcome, Error> {
+        let profile = flow::current_profile()?;
+        let request = LegacySavedTurnStartRequest {
+            turn_id: &turn_id,
+            conversation_id: &conversation_id,
+            conversation_revision,
+            input_digest: &input_digest,
+        };
+        encode_transition(request.claim(
+            &profile,
+            &turn_id,
+            &request_id,
+            body.as_bytes(),
+            &mut now_ms,
+        ))
+    }
+}
+
+fn now_ms() -> crate::Result<i64> {
+    i64::try_from(clock::now_ms()).map_err(|_| LegacySavedTurnSettlementError::Storage)
+}
+
+fn encode_transition(decision: crate::Result<Transition>) -> Result<SettlementOutcome, Error> {
+    match decision {
+        Ok(Transition::Replay) => Ok(SettlementOutcome::Replay),
+        Ok(Transition::Commit { updated_at, body }) => {
+            let body = String::from_utf8(body).map_err(|_| Error {
+                code: ErrorCode::Internal,
+                message: "saved turn update serialization failed".into(),
+            })?;
+            Ok(SettlementOutcome::Update(Replacement { updated_at, body }))
         }
+        Err(error) => Ok(SettlementOutcome::Rejected(domain_error(error))),
     }
 }
 

@@ -54,6 +54,29 @@ interface legacy-read {
   validate: func(turn-id: string, request-id: string, body: string) -> result<read-outcome, error>;
 }
 
+interface legacy-start {
+  use tobkiri:core/types@1.2.0.{error};
+  use legacy-settlement.{settlement-outcome};
+
+  /// Prepare the original queued record for the current Core Profile.
+  begin: func(
+    turn-id: string,
+    conversation-id: string,
+    conversation-revision: u64,
+    input-digest: string,
+  ) -> result<settlement-outcome, error>;
+
+  /// Prepare a claim for a validated row observed under the Turn owner's lock.
+  claim: func(
+    turn-id: string,
+    request-id: string,
+    body: string,
+    conversation-id: string,
+    conversation-revision: u64,
+    input-digest: string,
+  ) -> result<settlement-outcome, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   import tobkiri:core/flow@1.2.0;
@@ -61,4 +84,5 @@ world pack {
   export tobkiri:core/lifecycle@1.2.0;
   export legacy-settlement;
   export legacy-read;
+  export legacy-start;
 }

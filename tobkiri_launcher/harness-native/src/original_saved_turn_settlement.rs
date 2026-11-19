@@ -17,13 +17,25 @@ use std::{
 use tobkiri_canon::ids::ProfileId;
 use tobkiri_canon::{AllocationBudget, AllocationKind, AllocationRequest, CoreBuffer, Digest};
 pub use tobkiri_pack_saved_turn_runtime_rust::{
-    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
 };
 use tobkiri_pack_saved_turn_runtime_rust::{RECORD_LIMIT, Result, Transition, settle};
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::NativeReadOnlyPort;
 use wasmtime::component::{BudgetedBox, BudgetedString, Val};
 
+mod start;
+mod start_port;
+pub use start::{
+    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
+};
+pub use start_port::{
+    invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
+};
+
+#[cfg(all(test, unix))]
+mod start_tests;
 #[cfg(test)]
 mod tests;
 

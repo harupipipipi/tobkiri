@@ -969,6 +969,150 @@ async fn actual_wasm_reads_existing_owner_bytes_without_publication() -> anyhow:
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the verified saved-turn Wasm Pack with begin and claim"]
+async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow::Result<()> {
+    use std::collections::BTreeMap;
+    use tobkiri_canon::ids::{OpName, ShapeRef};
+    use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
+    use tobkiri_wasm::WasmEngine;
+
+    struct Proof;
+    impl NativeSetupLease for Proof {
+        fn validate(&self) -> std::result::Result<(), GateError> {
+            Ok(())
+        }
+        fn allocation_domain(&self) -> Digest {
+            Digest::hash(b"original saved turn start Wasm proof")
+        }
+    }
+    let source = std::env::var_os("TOBKIRI_TURN_WASM_PACK")
+        .expect("provide the built local.saved-turn-runtime.tpk");
+    let pack = tobkiri_core::pack::verify_tpk(&fs::read(source)?, &BTreeMap::new())?;
+    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-start@1.0")?;
+    let original = OriginalStore::new();
+    fs::create_dir_all(original.database.parent().unwrap())?;
+    let connection = Connection::open(&original.database)?;
+    connection.execute_batch(ORIGINAL_TURNS_SCHEMA)?;
+    connection.execute_batch(
+        "CREATE TABLE saved_inputs (id TEXT PRIMARY KEY, source_digest TEXT NOT NULL,
+             accepted_digest TEXT NOT NULL, context TEXT NOT NULL);
+         CREATE TABLE message_deliveries (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+             body TEXT NOT NULL);
+         CREATE TABLE message_interrupts (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+         CREATE TABLE calendar_preparations (id TEXT PRIMARY KEY, body TEXT NOT NULL);",
+    )?;
+    drop(connection);
+    let request = LegacySavedTurnStartRequest {
+        turn_id: TURN,
+        conversation_id: CONVERSATION,
+        conversation_revision: 7,
+        input_digest: SOURCE_DIGEST,
+    };
+    let request_id = request.request_id(PROFILE)?;
+    let control = CoreControl::default();
+    let ledger = CapacityLedger::new();
+    let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
+    let engine = WasmEngine::new_with_control(&control)?;
+    let runtime = tokio::runtime::Handle::current();
+    let offered = Arc::new(AtomicU64::new(0));
+    let mut durable = fs::read(&original.database)?;
+
+    for (begins, permit, replay) in [
+        (true, true, false),
+        (true, false, true),
+        (false, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let operation = OpName::parse(if begins { "begin" } else { "claim" })?;
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let budget = wasm.allocation_owners().graph().clone();
+        let mut port = Some(
+            wasm.prepare_declared_read_only_port(
+                &pack,
+                &shape,
+                &operation,
+                &original.profile,
+                deadline,
+                2,
+            )
+            .await?,
+        );
+        let offered_here = Arc::clone(&offered);
+        let guard = move |phase| {
+            if phase == OriginalSavedTurnCheck::Publish {
+                offered_here.fetch_add(1, Ordering::AcqRel);
+                if !permit {
+                    return Err(Error::Revoked);
+                }
+            }
+            Ok(())
+        };
+        let observed = tokio::task::block_in_place(|| {
+            let evaluate = |step: OriginalSavedTurnStartStep<'_>| {
+                let port = port.take().ok_or(Error::Storage)?;
+                match step {
+                    OriginalSavedTurnStartStep::Begin => runtime.block_on(
+                        invoke_original_saved_turn_begin_port(port, &request, &budget),
+                    ),
+                    OriginalSavedTurnStartStep::Claim(row) => runtime.block_on(
+                        invoke_original_saved_turn_claim_port(port, row, &request, &budget),
+                    ),
+                }
+            };
+            let execute = if begins {
+                begin_legacy_saved_turn_from_admitted_port
+            } else {
+                claim_legacy_saved_turn_from_admitted_port
+            };
+            execute(
+                &original.root,
+                &original.profile,
+                &request,
+                &budget,
+                deadline,
+                guard,
+                evaluate,
+            )
+        });
+        if !permit && !replay {
+            assert!(matches!(observed, Err(Error::Revoked)));
+        } else {
+            let OriginalSavedTurnStartOutcome::Turn { body, claimed } = observed? else {
+                panic!("the established owner unexpectedly required compatibility");
+            };
+            assert_eq!(claimed, !begins && !replay);
+            let (indexed_id, updated_at, row) = original.row();
+            assert_eq!(indexed_id, request_id);
+            assert_eq!(body.as_bytes(), row.as_bytes());
+            let parsed: Value = serde_json::from_str(&row)?;
+            let (status, revision, event) = if begins {
+                ("queued", 1, "turn.queued")
+            } else {
+                ("running", 2, "turn.running")
+            };
+            assert_eq!(parsed["status"], status);
+            assert_eq!(parsed["revision"], revision);
+            assert_eq!(parsed["updated_at"], updated_at);
+            assert_eq!(parsed["events"][revision - 1]["name"], event);
+        }
+        let current = fs::read(&original.database)?;
+        if !permit {
+            assert_eq!(current, durable);
+        }
+        durable = current;
+        assert!(!original.journal().exists());
+        drop(port);
+        drop(wasm);
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+    }
+    assert_eq!(offered.load(Ordering::Acquire), 3);
+    Ok(())
+}
+
 impl Drop for KillChild {
     fn drop(&mut self) {
         let _ = self.0.kill();

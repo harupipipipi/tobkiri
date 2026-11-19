@@ -27,10 +27,13 @@ pub use original_saved_orchestration::{
 mod original_saved_turn_settlement;
 #[cfg(unix)]
 pub use original_saved_turn_settlement::{
-    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
-    OriginalSavedTurnDecision, OriginalSavedTurnRow, invoke_original_saved_turn_port,
-    invoke_original_saved_turn_read_port, read_legacy_saved_turn, settle_legacy_saved_turn,
-    settle_legacy_saved_turn_from_admitted_port,
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
+    OriginalSavedTurnCheck, OriginalSavedTurnDecision, OriginalSavedTurnRow,
+    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
+    invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
+    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port, read_legacy_saved_turn,
+    settle_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port,
 };
 mod preparation;
 #[cfg(unix)]
