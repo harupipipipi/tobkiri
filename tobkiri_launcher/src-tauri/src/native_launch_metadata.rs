@@ -28,7 +28,8 @@ use tobkiri_harness_native::{
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice,
+    OriginalUsageCostChoice, OriginalWorkflowProviderSnapshotSelection,
+    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -155,6 +156,13 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.gateway.iter().any(Option::is_some))
     }
 
+    /// Whether any Workflow entry can reach a verified Registry resource caller.
+    pub(crate) fn permits_workflow_provider_snapshot(&self) -> bool {
+        self.provider_snapshot
+            .as_ref()
+            .is_some_and(|source| source.workflow.callers.iter().any(Option::is_some))
+    }
+
     /// Whether Shell Settings or Model Save has its own verified read grant.
     pub(crate) fn permits_projected_provider_snapshot(&self) -> bool {
         self.provider_snapshot
@@ -193,6 +201,12 @@ impl VerifiedRegistryLaunch {
                     return None;
                 }
                 &entry.bundle
+            }
+            OriginalProviderSnapshotRole::Workflow { caller, entry } => {
+                if !source.workflow.entries_by_caller[caller.index()][entry.index()] {
+                    return None;
+                }
+                source.workflow.callers[caller.index()].as_ref()?
             }
             OriginalProviderSnapshotRole::ShellSettings => source.shell_settings.as_ref()?,
             OriginalProviderSnapshotRole::ModelSave => source.model_save.as_ref()?,
@@ -734,6 +748,7 @@ struct VerifiedProviderAdapterSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedProviderSnapshotSource {
     gateway: [Option<VerifiedGatewayProviderSnapshotEntry>; 2],
+    workflow: VerifiedWorkflowProviderSnapshot,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
     model_search: Option<VerifiedOrdinarySavedBundle>,
@@ -741,6 +756,12 @@ struct VerifiedProviderSnapshotSource {
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct VerifiedWorkflowProviderSnapshot {
+    entries_by_caller: [[bool; 6]; 4],
+    callers: [Option<VerifiedOrdinarySavedBundle>; 4],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -800,28 +821,32 @@ impl VerifiedRegistryLaunch {
     ) -> Self {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
-        let entry = VerifiedSavedLocalChatEntry {
+        proof.add_test_saved_local_chat_role(role);
+        proof
+    }
+
+    fn add_test_saved_local_chat_role(&mut self, role: OriginalSavedLocalChatRole) {
+        let saved = self
+            .local_chat
+            .get_or_insert_with(|| VerifiedSavedLocalChatSource {
+                direct: None,
+                side_chat: None,
+                adapter: None,
+            });
+        let entry = if role.is_side_chat() {
+            &mut saved.side_chat
+        } else {
+            &mut saved.direct
+        };
+        let entry = entry.get_or_insert_with(|| VerifiedSavedLocalChatEntry {
             bundle: VerifiedOrdinarySavedBundle::fixture(),
             side_chat: role.is_side_chat().then(VerifiedLegacyRoutePin::fixture),
-            roles: [
-                Some((
-                    role,
-                    std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
-                )),
-                None,
-            ],
-        };
-        let (direct, side_chat) = if role.is_side_chat() {
-            (None, Some(entry))
-        } else {
-            (Some(entry), None)
-        };
-        proof.local_chat = Some(VerifiedSavedLocalChatSource {
-            direct,
-            side_chat,
-            adapter: None,
+            roles: [None, None],
         });
-        proof
+        entry.roles[usize::from(role.is_stream())] = Some((
+            role,
+            std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+        ));
     }
 
     pub(crate) fn test_provider_snapshot_proof(
@@ -829,49 +854,63 @@ impl VerifiedRegistryLaunch {
         catalog_revision: &str,
         role: impl Into<OriginalProviderSnapshotRole>,
     ) -> Self {
-        let role = role.into();
-        let mut gateway = [None, None];
-        let mut proof = match role {
-            OriginalProviderSnapshotRole::Adapter(role) => {
-                Self::test_saved_local_chat_proof(identity, catalog_revision, role)
-            }
-            OriginalProviderSnapshotRole::Gateway { role, side_chat } => {
-                gateway[usize::from(side_chat)] = Some(VerifiedGatewayProviderSnapshotEntry {
-                    bundle: VerifiedOrdinarySavedBundle::fixture(),
-                    side_chat: side_chat.then(VerifiedLegacyRoutePin::fixture),
-                    roles: OriginalModelResolveRole::ALL.map(|candidate| {
-                        (candidate == role).then(|| {
-                            (
-                                role,
-                                std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
-                            )
-                        })
-                    }),
-                });
-                Self::test_proof(identity, catalog_revision)
-            }
-            OriginalProviderSnapshotRole::ShellSettings
-            | OriginalProviderSnapshotRole::ModelSave
-            | OriginalProviderSnapshotRole::ModelSearch
-            | OriginalProviderSnapshotRole::CommandDatasource => {
-                Self::test_proof(identity, catalog_revision)
-            }
-        };
+        Self::test_provider_snapshot_proof_with_roles(identity, catalog_revision, [role.into()])
+    }
+
+    pub(crate) fn test_provider_snapshot_proof_with_roles(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        roles: impl IntoIterator<Item = OriginalProviderSnapshotRole>,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
-        proof.provider_snapshot = Some(VerifiedProviderSnapshotSource {
-            gateway,
-            shell_settings: (role == OriginalProviderSnapshotRole::ShellSettings)
-                .then(VerifiedOrdinarySavedBundle::fixture),
-            model_save: (role == OriginalProviderSnapshotRole::ModelSave)
-                .then(VerifiedOrdinarySavedBundle::fixture),
-            model_search: (role == OriginalProviderSnapshotRole::ModelSearch)
-                .then(VerifiedOrdinarySavedBundle::fixture),
-            command_datasource: (role == OriginalProviderSnapshotRole::CommandDatasource)
-                .then(VerifiedOrdinarySavedBundle::fixture),
+        let mut source = VerifiedProviderSnapshotSource {
+            gateway: [None, None],
+            workflow: VerifiedWorkflowProviderSnapshot::default(),
+            shell_settings: None,
+            model_save: None,
+            model_search: None,
+            command_datasource: None,
             archive_sha256: Digest::hash(b"provider-snapshot-archive").to_string(),
             archive_bytes: 512,
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
-        });
+        };
+        for role in roles {
+            let bundle = match role {
+                OriginalProviderSnapshotRole::Adapter(role) => {
+                    proof.add_test_saved_local_chat_role(role);
+                    continue;
+                }
+                OriginalProviderSnapshotRole::Gateway { role, side_chat } => {
+                    let entry = source.gateway[usize::from(side_chat)].get_or_insert_with(|| {
+                        VerifiedGatewayProviderSnapshotEntry {
+                            bundle: VerifiedOrdinarySavedBundle::fixture(),
+                            side_chat: side_chat.then(VerifiedLegacyRoutePin::fixture),
+                            roles: [None, None, None, None],
+                        }
+                    });
+                    let slot = OriginalModelResolveRole::ALL
+                        .iter()
+                        .position(|candidate| *candidate == role)
+                        .expect("Gateway role must have a fixture slot");
+                    entry.roles[slot] = Some((
+                        role,
+                        std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+                    ));
+                    continue;
+                }
+                OriginalProviderSnapshotRole::Workflow { caller, entry } => {
+                    source.workflow.entries_by_caller[caller.index()][entry.index()] = true;
+                    &mut source.workflow.callers[caller.index()]
+                }
+                OriginalProviderSnapshotRole::ShellSettings => &mut source.shell_settings,
+                OriginalProviderSnapshotRole::ModelSave => &mut source.model_save,
+                OriginalProviderSnapshotRole::ModelSearch => &mut source.model_search,
+                OriginalProviderSnapshotRole::CommandDatasource => &mut source.command_datasource,
+            };
+            bundle.get_or_insert_with(VerifiedOrdinarySavedBundle::fixture);
+        }
+        proof.provider_snapshot = Some(source);
         proof
     }
 
@@ -1706,6 +1745,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalQueryProviderSnapshotSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let workflow_snapshot_selection = active
+            .map(|active| OriginalWorkflowProviderSnapshotSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let model_resolve_selection = active
             .map(|active| OriginalModelResolveSelection::select(active, budget))
             .transpose()?
@@ -1726,7 +1769,7 @@ impl LaunchActivationObserver<'_> {
         let has_projected_grants = shell_snapshot_selection.is_some()
             || model_save_selection.is_some()
             || query_snapshot_selection.is_some();
-        let (app_root, catalog_revision, locked, projected) =
+        let (app_root, catalog_revision, locked, projected, workflow) =
             inspection.with_source(|sources| {
                 let catalog_revision = &sources.authority().catalog_revision;
                 if let Some(active) = active {
@@ -1756,11 +1799,16 @@ impl LaunchActivationObserver<'_> {
                         )
                     })
                     .transpose()?;
+                let workflow = workflow_snapshot_selection
+                    .as_ref()
+                    .map(|selection| sources.workflow_provider_snapshot_bundle(selection, budget))
+                    .transpose()?;
                 Ok::<_, anyhow::Error>((
                     sources.root(NativeSourceRoot::Application).to_path_buf(),
                     catalog_revision.clone(),
                     locked,
                     projected,
+                    workflow,
                 ))
             })??;
         let Some(active) = active else {
@@ -1777,6 +1825,22 @@ impl LaunchActivationObserver<'_> {
             .map(|bundle| bundle.verify(checkpoint))
             .transpose()?
             .unwrap_or_default();
+        let workflow = workflow
+            .map(|bundle| {
+                let (entries, callers) = bundle.verify(checkpoint)?;
+                Ok::<_, anyhow::Error>(VerifiedWorkflowProviderSnapshot {
+                    entries_by_caller: callers.each_ref().map(|caller| {
+                        if caller.is_some() {
+                            entries
+                        } else {
+                            [false; 6]
+                        }
+                    }),
+                    callers,
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
         let mut local_chat = verify_saved_local_chat_source(inspection, active, checkpoint)?;
         let [gateway_direct, gateway_side_chat] = [false, true].map(|via_side_chat| {
             verify_gateway_provider_snapshot_entry(inspection, active, via_side_chat, checkpoint)
@@ -1784,6 +1848,7 @@ impl LaunchActivationObserver<'_> {
         let gateway = [gateway_direct?, gateway_side_chat?];
         let has_snapshot_grants = local_chat.is_some()
             || gateway.iter().any(Option::is_some)
+            || workflow.callers.iter().any(Option::is_some)
             || shell_settings.is_some()
             || model_save_snapshot.is_some()
             || model_search.is_some()
@@ -1816,6 +1881,7 @@ impl LaunchActivationObserver<'_> {
                     {
                         Some(VerifiedProviderSnapshotSource {
                             gateway,
+                            workflow,
                             shell_settings,
                             model_save: model_save_snapshot,
                             model_search,
@@ -4379,6 +4445,57 @@ mod tests {
             assert!(!proof.permits_query_provider_snapshot());
             assert!(!proof.permits_provider_snapshot(role));
         }
+    }
+
+    #[test]
+    fn workflow_provider_snapshot_proof_keeps_caller_entry_pairs_independent() {
+        use OriginalProviderSnapshotRole::{Gateway, ShellSettings, Workflow};
+        use OriginalWorkflowSnapshotCaller::{AudioSpeech, Text};
+        use OriginalWorkflowSnapshotEntry::{Advance, StepResume};
+
+        let digest = Digest::hash(b"workflow-provider-snapshot-activation");
+        let identity = ExecutionProfileIdentity::new(
+            "defaults",
+            digest.as_str(),
+            "activation:workflow-provider-snapshot-test",
+            Digest::hash(b"plan").as_str(),
+        )
+        .unwrap();
+        let gateway = Gateway {
+            role: OriginalModelResolveRole::Generate,
+            side_chat: false,
+        };
+        let workflow = [
+            Workflow {
+                caller: Text,
+                entry: Advance,
+            },
+            Workflow {
+                caller: AudioSpeech,
+                entry: StepResume,
+            },
+        ];
+        let proof = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+            identity.clone(),
+            "catalog",
+            [workflow[0], workflow[1], gateway, ShellSettings],
+        );
+        assert!(proof.permits_workflow_provider_snapshot());
+        assert!(proof.permits_gateway_provider_snapshot());
+        assert!(proof.permits_projected_provider_snapshot());
+        for caller in OriginalWorkflowSnapshotCaller::ALL {
+            for entry in OriginalWorkflowSnapshotEntry::ALL {
+                let candidate = Workflow { caller, entry };
+                assert_eq!(
+                    proof.permits_provider_snapshot(candidate),
+                    workflow.contains(&candidate)
+                );
+            }
+        }
+        let gateway_only =
+            VerifiedRegistryLaunch::test_provider_snapshot_proof(identity, "catalog", gateway);
+        assert!(!gateway_only.permits_workflow_provider_snapshot());
+        assert!(!gateway_only.permits_provider_snapshot(workflow[0]));
     }
 
     #[test]

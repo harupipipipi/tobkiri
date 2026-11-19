@@ -148,7 +148,9 @@ impl RoleArguments {
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if proof.permits_query_provider_snapshot() {
+                if proof.permits_workflow_provider_snapshot() {
+                    Some("5")
+                } else if proof.permits_query_provider_snapshot() {
                     Some("4")
                 } else if proof.permits_projected_provider_snapshot() {
                     Some("3")
@@ -4562,6 +4564,7 @@ mod tests {
     fn side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs() {
         use tobkiri_harness_native::{
             OriginalModelResolveRole, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
+            OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
         };
 
         use crate::host_contract::ExecutionProfileIdentity;
@@ -4631,6 +4634,14 @@ mod tests {
             "catalog",
             OriginalProviderSnapshotRole::CommandDatasource,
         );
+        let workflow_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            side_chat.identity.clone(),
+            "catalog",
+            OriginalProviderSnapshotRole::Workflow {
+                caller: OriginalWorkflowSnapshotCaller::Text,
+                entry: OriginalWorkflowSnapshotEntry::StepExecute,
+            },
+        );
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4643,6 +4654,7 @@ mod tests {
             (Some(&model_save_snapshot), false, Some("3")),
             (Some(&model_search_snapshot), false, Some("4")),
             (Some(&command_datasource_snapshot), false, Some("4")),
+            (Some(&workflow_snapshot), false, Some("5")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

@@ -74,7 +74,9 @@ pub use original_provider_prepare_selection::{
     OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, SavedTurnStartCaller, select_original_saved_turn_settlement,
+    OriginalUsageCostChoice, OriginalWorkflowProviderSnapshotSelection,
+    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry, SavedTurnStartCaller,
+    select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

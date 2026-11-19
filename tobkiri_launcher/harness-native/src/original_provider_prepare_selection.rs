@@ -315,6 +315,94 @@ static GATEWAY_STREAM: Route = Route {
     execution: PYTHON_HOST,
 };
 
+static WORKFLOW_ADVANCE: Route = Route {
+    pack: "tobkiri_workflow_pack",
+    function: "tobkiri.workflow.provider",
+    contract: "tobkiri.workflow.v4",
+    operation: "run.advance",
+    variant: "tobkiri.workflow.provider.python",
+    execution: PYTHON_HOST,
+};
+
+static WORKFLOW_CANCEL: Route = Route {
+    operation: "run.cancel",
+    ..WORKFLOW_ADVANCE
+};
+
+static WORKFLOW_SELECTED: Route = Route {
+    operation: "run.selected",
+    ..WORKFLOW_ADVANCE
+};
+
+static WORKFLOW_STEP_EXECUTE: Route = Route {
+    operation: "run.step.execute",
+    ..WORKFLOW_ADVANCE
+};
+
+static WORKFLOW_STEP_RESUME: Route = Route {
+    operation: "run.step.resume",
+    ..WORKFLOW_ADVANCE
+};
+
+static WORKFLOW_STEP_RETRY: Route = Route {
+    operation: "run.step.retry",
+    ..WORKFLOW_ADVANCE
+};
+
+static GATEWAY_TEXT: Route = Route {
+    pack: "rumi_ai_gateway_pack",
+    function: "rumi_ai_gateway_pack.ai-gateway.text-generate",
+    contract: "tobkiri.service.ai.text.generate.v1",
+    operation: "rumi_ai_gateway_pack.ai-gateway.text-generate",
+    variant: "rumi_ai_gateway_pack.ai-gateway.text-generate.python",
+    execution: PYTHON_HOST,
+};
+
+static GATEWAY_MESSAGES: Route = Route {
+    pack: "rumi_ai_gateway_pack",
+    function: "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+    contract: "tobkiri.service.ai.messages.generate.v1",
+    operation: "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+    variant: "rumi_ai_gateway_pack.ai-gateway.messages-generate.python",
+    execution: PYTHON_HOST,
+};
+
+static MODALITY_TRANSCRIBE: Route = Route {
+    pack: "rumi_ai_modality_pack",
+    function: "rumi_ai_modality_pack.ai-modality.transcribe",
+    contract: "tobkiri.service.ai.audio.transcribe.v1",
+    operation: "rumi_ai_modality_pack.ai-transcribe",
+    variant: "rumi_ai_modality_pack.ai-modality.transcribe.python",
+    execution: PYTHON_HOST,
+};
+
+static MODALITY_SPEECH: Route = Route {
+    pack: "rumi_ai_modality_pack",
+    function: "rumi_ai_modality_pack.ai-modality.speech",
+    contract: "tobkiri.service.ai.audio.speech.v1",
+    operation: "rumi_ai_modality_pack.ai-speech",
+    variant: "rumi_ai_modality_pack.ai-modality.speech.python",
+    execution: PYTHON_HOST,
+};
+
+static ADAPTER_TRANSCRIBE: Route = Route {
+    pack: "rumi_provider_adapters_pack",
+    function: "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe",
+    contract: "tobkiri.service.ai.provider.audio.transcribe.v1",
+    operation: "rumi_provider_adapters_pack.provider-audio-transcribe",
+    variant: "rumi_provider_adapters_pack.provider.compatibility.audio_transcribe.python",
+    execution: PYTHON_HOST,
+};
+
+static ADAPTER_SPEECH: Route = Route {
+    pack: "rumi_provider_adapters_pack",
+    function: "rumi_provider_adapters_pack.provider.compatibility.audio_speech",
+    contract: "tobkiri.service.ai.provider.audio.speech.v1",
+    operation: "rumi_provider_adapters_pack.provider-audio-speech",
+    variant: "rumi_provider_adapters_pack.provider.compatibility.audio_speech.python",
+    execution: PYTHON_HOST,
+};
+
 static AI_ROUTING_GENERATE: Route = Route {
     pack: "rumi_ai_routing_pack",
     function: "rumi_ai_routing_pack.ai-routing.default",
@@ -1300,6 +1388,88 @@ impl OriginalModelResolveRole {
     }
 }
 
+/// Exact raw Registry callers in the Workflow attempt dispatch chain.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalWorkflowSnapshotCaller {
+    /// Text Generate Gateway.
+    Text,
+    /// Messages Generate Gateway.
+    Messages,
+    /// Transcription provider adapter.
+    AudioTranscribe,
+    /// Speech provider adapter.
+    AudioSpeech,
+}
+
+impl OriginalWorkflowSnapshotCaller {
+    /// All fixed callers.
+    pub const ALL: [Self; 4] = [
+        Self::Text,
+        Self::Messages,
+        Self::AudioTranscribe,
+        Self::AudioSpeech,
+    ];
+
+    /// Position in `ALL` and in the corresponding verification results.
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    const fn routes(self) -> (Option<&'static Route>, &'static Route) {
+        match self {
+            Self::Text => (None, &GATEWAY_TEXT),
+            Self::Messages => (None, &GATEWAY_MESSAGES),
+            Self::AudioTranscribe => (Some(&MODALITY_TRANSCRIBE), &ADAPTER_TRANSCRIBE),
+            Self::AudioSpeech => (Some(&MODALITY_SPEECH), &ADAPTER_SPEECH),
+        }
+    }
+}
+
+/// The fixed Workflow attempt operations that can enter the dispatch chain.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginalWorkflowSnapshotEntry {
+    /// `run.advance`.
+    Advance,
+    /// `run.cancel`.
+    Cancel,
+    /// `run.selected`.
+    Selected,
+    /// `run.step.execute`.
+    StepExecute,
+    /// `run.step.resume`.
+    StepResume,
+    /// `run.step.retry`.
+    StepRetry,
+}
+
+impl OriginalWorkflowSnapshotEntry {
+    /// All operations in WorkflowAttemptDeclarationV4.
+    pub const ALL: [Self; 6] = [
+        Self::Advance,
+        Self::Cancel,
+        Self::Selected,
+        Self::StepExecute,
+        Self::StepResume,
+        Self::StepRetry,
+    ];
+
+    /// Position in `ALL` and in the corresponding verification results.
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    const fn route(self) -> &'static Route {
+        match self {
+            Self::Advance => &WORKFLOW_ADVANCE,
+            Self::Cancel => &WORKFLOW_CANCEL,
+            Self::Selected => &WORKFLOW_SELECTED,
+            Self::StepExecute => &WORKFLOW_STEP_EXECUTE,
+            Self::StepResume => &WORKFLOW_STEP_RESUME,
+            Self::StepRetry => &WORKFLOW_STEP_RETRY,
+        }
+    }
+}
+
 /// The exact original caller of a raw or projected Provider Registry snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalProviderSnapshotRole {
@@ -1311,6 +1481,13 @@ pub enum OriginalProviderSnapshotRole {
         role: OriginalModelResolveRole,
         /// Whether the selected Shell enters Saved Turn through Side Chat.
         side_chat: bool,
+    },
+    /// The Workflow attempt entry and its exact raw Registry caller.
+    Workflow {
+        /// The Gateway or audio adapter with its own Registry grant.
+        caller: OriginalWorkflowSnapshotCaller,
+        /// The operation selected by the desktop Shell.
+        entry: OriginalWorkflowSnapshotEntry,
     },
     /// The desktop Shell owns this direct settings read grant.
     ShellSettings,
@@ -1325,6 +1502,52 @@ pub enum OriginalProviderSnapshotRole {
 impl From<OriginalSavedLocalChatRole> for OriginalProviderSnapshotRole {
     fn from(role: OriginalSavedLocalChatRole) -> Self {
         Self::Adapter(role)
+    }
+}
+
+/// The signed Workflow entries and their outgoing Provider Registry chains.
+pub struct OriginalWorkflowProviderSnapshotSelection<'a> {
+    _active: &'a OriginalActiveProfile,
+    entries: [Option<OriginalRoutePin>; 6],
+    callers: [Option<WorkflowProviderSnapshotPins>; 4],
+}
+
+struct WorkflowProviderSnapshotPins {
+    modality: Option<OriginalRoutePin>,
+    caller: OriginalRoutePin,
+    registry: OriginalRoutePin,
+}
+
+impl<'a> OriginalWorkflowProviderSnapshotSelection<'a> {
+    /// Select exact Workflow entry and nested caller grants from the active Profile.
+    /// Verify all returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_workflow_provider_snapshot_records(active.records(), budget)?.map(
+                |(entries, callers)| Self {
+                    _active: active,
+                    entries,
+                    callers,
+                },
+            ),
+        )
+    }
+
+    /// The desktop Shell grant for this operation.
+    pub fn entry(&self, entry: OriginalWorkflowSnapshotEntry) -> Option<&OriginalRoutePin> {
+        self.entries[entry.index()].as_ref()
+    }
+
+    /// The optional audio modality pin and ordered caller and Registry grants.
+    pub fn caller(
+        &self,
+        caller: OriginalWorkflowSnapshotCaller,
+    ) -> Option<(Option<&OriginalRoutePin>, [&OriginalRoutePin; 2])> {
+        let pins = self.callers[caller.index()].as_ref()?;
+        Some((pins.modality.as_ref(), [&pins.caller, &pins.registry]))
     }
 }
 
@@ -2027,6 +2250,60 @@ fn select_model_resolve_records(
 }
 
 type GatewayProviderSnapshotPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
+
+type WorkflowProviderSnapshotSelection = (
+    [Option<OriginalRoutePin>; 6],
+    [Option<WorkflowProviderSnapshotPins>; 4],
+);
+
+fn select_workflow_provider_snapshot_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<WorkflowProviderSnapshotSelection>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    if records.shell_caller.as_str() != Some("shell.tauri.default") {
+        return Ok(None);
+    }
+    let mut entries = [None, None, None, None, None, None];
+    for entry in OriginalWorkflowSnapshotEntry::ALL {
+        entries[entry.index()] = records.select_shell_route(entry.route())?;
+    }
+    if entries.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    // Outgoing edges are keyed by the Workflow function, shared by its allowed entries.
+    let mut callers = [None, None, None, None];
+    for caller in OriginalWorkflowSnapshotCaller::ALL {
+        let (modality, caller_route) = caller.routes();
+        let (modality, caller_function) = if let Some(route) = modality {
+            let Some(pin) = records.select_route(WORKFLOW_ADVANCE.function, route)? else {
+                continue;
+            };
+            (Some(pin), route.function)
+        } else {
+            (None, WORKFLOW_ADVANCE.function)
+        };
+        let Some(caller_pin) = records.select_route(caller_function, caller_route)? else {
+            continue;
+        };
+        let Some(registry) =
+            records.select_route(caller_pin.function_id(), &PROVIDER_READ_GENERATE)?
+        else {
+            continue;
+        };
+        callers[caller.index()] = Some(WorkflowProviderSnapshotPins {
+            modality,
+            caller: caller_pin,
+            registry,
+        });
+    }
+    Ok(callers
+        .iter()
+        .any(Option::is_some)
+        .then_some((entries, callers)))
+}
 
 fn select_gateway_provider_snapshot_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
@@ -3055,74 +3332,94 @@ mod tests {
             ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
-            let artifact = Digest::hash(route.pack.as_bytes());
-            let catalog = Digest::hash(route.variant.as_bytes());
-            let implementation = Digest::hash(route.function.as_bytes());
-            let pin = json!({
-                "pack_id": route.pack,
-                "variant_id": route.variant,
-                "artifact_digest": artifact.as_str(),
-                "executable_catalog_digest": catalog.as_str(),
-                "platform": "any",
-                "architecture": "any",
-                "runtime_abi": "python3.13",
-                "backend": route.execution.backend,
-                "execution_kind": route.execution.kind,
-                "domain_kind": route.execution.domain
-            });
-            let mut binding = pin.clone();
-            binding["caller_function_id"] = json!(caller);
-            binding["contract_id"] = json!(route.contract);
-            binding["operation_id"] = json!(route.operation);
-            binding["authority_reference"] = json!(reference);
-            binding["requested_scope_digest"] = json!(scope_digest);
-            binding["adapter_digests"] = json!([]);
-            binding["function_principal"] = json!({
-                "function_id": route.function,
-                "contract_revision_digest": revision,
-                "function_implementation_digest": implementation.as_str(),
-                "operation_id": route.operation,
-                "parent_artifact_digest": artifact.as_str(),
-            });
-            records["plan"]["bindings"]
-                .as_array_mut()
-                .unwrap()
-                .push(binding);
-            let variant_pins = records["lock"]["variant_pins"].as_array_mut().unwrap();
-            if !variant_pins.contains(&pin) {
-                variant_pins.push(pin);
-            }
-            let packs = records["profile"]["packs"].as_array_mut().unwrap();
-            if !packs.iter().any(|pack| pack["pack_id"] == route.pack) {
-                packs.push(json!({
-                    "pack_id": route.pack,
-                    "role": "provider",
-                    "artifact_digest": artifact.as_str(),
-                }));
-            }
-            records["profile"]["authority_references"]
-                .as_array_mut()
-                .unwrap()
-                .push(json!(reference));
-            records["profile"]["requested_edges"]
-                .as_array_mut().unwrap().push(json!({
-                    "caller_function_id": caller,
-                    "target_provider_id": route.function,
-                    "contract_id": route.contract,
-                    "operation_id": route.operation,
-                    "authority_mode": "profile_grant",
-                    "authority_reference": reference,
-                    "requested_scope_template": {
-                        "capability": "operation.invoke",
-                        "semantics_digest": revision,
-                        "dimensions": {"operation": [route.operation], "contract": [route.contract]},
-                        "quotas": {},
-                        "opaque": false,
-                        "exact_request_digest": null,
-                    },
-                }));
+            add_record(
+                &mut records,
+                route,
+                caller,
+                reference,
+                revision,
+                scope_digest,
+            );
         }
         records
+    }
+
+    fn add_record(
+        records: &mut Value,
+        route: &Route,
+        caller: &str,
+        reference: &str,
+        revision: &str,
+        scope_digest: &str,
+    ) {
+        let artifact = Digest::hash(route.pack.as_bytes());
+        let catalog = Digest::hash(route.variant.as_bytes());
+        let implementation = Digest::hash(route.function.as_bytes());
+        let pin = json!({
+            "pack_id": route.pack,
+            "variant_id": route.variant,
+            "artifact_digest": artifact.as_str(),
+            "executable_catalog_digest": catalog.as_str(),
+            "platform": "any",
+            "architecture": "any",
+            "runtime_abi": "python3.13",
+            "backend": route.execution.backend,
+            "execution_kind": route.execution.kind,
+            "domain_kind": route.execution.domain
+        });
+        let mut binding = pin.clone();
+        binding["caller_function_id"] = json!(caller);
+        binding["contract_id"] = json!(route.contract);
+        binding["operation_id"] = json!(route.operation);
+        binding["authority_reference"] = json!(reference);
+        binding["requested_scope_digest"] = json!(scope_digest);
+        binding["adapter_digests"] = json!([]);
+        binding["function_principal"] = json!({
+            "function_id": route.function,
+            "contract_revision_digest": revision,
+            "function_implementation_digest": implementation.as_str(),
+            "operation_id": route.operation,
+            "parent_artifact_digest": artifact.as_str(),
+        });
+        records["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .push(binding);
+        let variant_pins = records["lock"]["variant_pins"].as_array_mut().unwrap();
+        if !variant_pins.contains(&pin) {
+            variant_pins.push(pin);
+        }
+        let packs = records["profile"]["packs"].as_array_mut().unwrap();
+        if !packs.iter().any(|pack| pack["pack_id"] == route.pack) {
+            packs.push(json!({
+                "pack_id": route.pack,
+                "role": "provider",
+                "artifact_digest": artifact.as_str(),
+            }));
+        }
+        records["profile"]["authority_references"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(reference));
+        records["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "caller_function_id": caller,
+                "target_provider_id": route.function,
+                "contract_id": route.contract,
+                "operation_id": route.operation,
+                "authority_mode": "profile_grant",
+                "authority_reference": reference,
+                "requested_scope_template": {
+                    "capability": "operation.invoke",
+                    "semantics_digest": revision,
+                    "dimensions": {"operation": [route.operation], "contract": [route.contract]},
+                    "quotas": {},
+                    "opaque": false,
+                    "exact_request_digest": null,
+                },
+            }));
     }
 
     fn parse_records(records: &Value, budget: &Arc<dyn AllocationBudget>) -> [CoreValue; 3] {
@@ -3130,6 +3427,144 @@ mod tests {
             let bytes = serde_json::to_vec(&records[field]).unwrap();
             CoreValue::parse_guest(&bytes, budget).unwrap()
         })
+    }
+
+    fn workflow_snapshot_records() -> Value {
+        let mut fixture = records();
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let mut add = |caller, route: &Route| {
+            let snapshot = fixture["profile"]["profile_authority_snapshot_digest"]
+                .as_str()
+                .unwrap();
+            let reference = authority_reference(caller, route, snapshot, &budget).unwrap();
+            let revision = Digest::hash(route.contract.as_bytes());
+            let scope = json!({
+                "capability": "operation.invoke",
+                "semantics_digest": revision.as_str(),
+                "dimensions": {"operation": [route.operation], "contract": [route.contract]},
+                "quotas": {},
+                "opaque": false,
+                "exact_request_digest": null,
+            });
+            let scope_digest =
+                CoreValue::parse_guest(&serde_json::to_vec(&scope).unwrap(), &budget)
+                    .unwrap()
+                    .digest_guest(&budget)
+                    .unwrap();
+            add_record(
+                &mut fixture,
+                route,
+                caller,
+                &format!("authority-ref:{}", reference.hex()),
+                revision.as_str(),
+                scope_digest.as_str(),
+            );
+        };
+        for entry in OriginalWorkflowSnapshotEntry::ALL {
+            add("shell.tauri.default", entry.route());
+        }
+        for caller in OriginalWorkflowSnapshotCaller::ALL {
+            let (modality, route) = caller.routes();
+            if let Some(modality) = modality {
+                add(WORKFLOW_ADVANCE.function, modality);
+            }
+            add(modality.unwrap_or(&WORKFLOW_ADVANCE).function, route);
+            add(route.function, &PROVIDER_READ_GENERATE);
+        }
+        fixture
+    }
+
+    fn select_workflow_snapshot(
+        fixture: &Value,
+    ) -> Result<Option<WorkflowProviderSnapshotSelection>> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let [profile, lock, plan] = parse_records(fixture, &budget);
+        select_workflow_provider_snapshot_records((&profile, &lock, &plan), &budget)
+    }
+
+    #[test]
+    fn workflow_provider_snapshot_selects_each_entry_and_the_callers_own_nested_grants() {
+        assert!(select_workflow_snapshot(&records()).unwrap().is_none());
+        let (entries, callers) = select_workflow_snapshot(&workflow_snapshot_records())
+            .unwrap()
+            .unwrap();
+        for entry in OriginalWorkflowSnapshotEntry::ALL {
+            let pin = entries[entry.index()].as_ref().unwrap();
+            assert_eq!(pin.caller_function_id(), "shell.tauri.default");
+            assert_eq!(pin.function_id(), "tobkiri.workflow.provider");
+            assert_eq!(pin.operation_id(), entry.route().operation);
+        }
+        for caller in OriginalWorkflowSnapshotCaller::ALL {
+            let (modality, route) = caller.routes();
+            let pins = callers[caller.index()].as_ref().unwrap();
+            assert_eq!(
+                pins.modality.as_ref().map(OriginalRoutePin::operation_id),
+                modality.map(|route| route.operation)
+            );
+            assert_eq!(
+                pins.caller.caller_function_id(),
+                modality.unwrap_or(&WORKFLOW_ADVANCE).function
+            );
+            assert_eq!(pins.caller.operation_id(), route.operation);
+            assert_eq!(pins.registry.caller_function_id(), route.function);
+            assert_eq!(
+                pins.registry.operation_id(),
+                PROVIDER_READ_GENERATE.operation
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_provider_snapshot_requires_each_exact_profile_grant_and_scope() {
+        let fixture = workflow_snapshot_records();
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        let first_workflow_edge = edges
+            .iter()
+            .position(|edge| edge["operation_id"] == WORKFLOW_ADVANCE.operation)
+            .unwrap();
+        for (row, edge) in edges.iter().enumerate().skip(first_workflow_edge) {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            assert!(matches!(
+                select_workflow_snapshot(&candidate),
+                Err(Inconsistent(_))
+            ));
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            let (entries, callers) = select_workflow_snapshot(&candidate).unwrap().unwrap();
+            for entry in OriginalWorkflowSnapshotEntry::ALL {
+                assert_eq!(
+                    entries[entry.index()].is_none(),
+                    edge["operation_id"] == entry.route().operation,
+                );
+            }
+            for caller in OriginalWorkflowSnapshotCaller::ALL {
+                let (modality, route) = caller.routes();
+                assert_eq!(
+                    callers[caller.index()].is_none(),
+                    edge["operation_id"] == route.operation
+                        || modality.is_some_and(|route| edge["operation_id"] == route.operation)
+                        || (edge["operation_id"] == PROVIDER_READ_GENERATE.operation
+                            && edge["caller_function_id"] == route.function),
+                );
+            }
+        }
+
+        let row = edges.len() - 1;
+        let mut candidate = fixture;
+        let scope = &mut candidate["profile"]["requested_edges"][row]["requested_scope_template"];
+        scope["dimensions"]["operation"] = json!([PROVIDER_READ_GENERATE.operation, "extra"]);
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let digest = CoreValue::parse_guest(&serde_json::to_vec(&scope).unwrap(), &budget)
+            .unwrap()
+            .digest_guest(&budget)
+            .unwrap();
+        candidate["plan"]["bindings"][row]["requested_scope_digest"] = json!(digest.as_str());
+        let (_, callers) = select_workflow_snapshot(&candidate).unwrap().unwrap();
+        assert_eq!(
+            callers.map(|role| role.is_some()),
+            [true, true, true, false]
+        );
     }
 
     fn select(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {

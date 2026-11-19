@@ -2097,12 +2097,12 @@ fn encode_turn_start_reply(
 
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
-        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
     };
 
     match role {
         ShellSettings | ModelSave | ModelSearch | CommandDatasource => true,
-        Adapter(_) | Gateway { .. } => false,
+        Adapter(_) | Gateway { .. } | Workflow { .. } => false,
     }
 }
 
@@ -2635,9 +2635,17 @@ mod tests {
     #[test]
     fn provider_snapshot_checks_the_exact_role_and_selects_its_projection() {
         use crate::host_contract::ExecutionProfileIdentity;
+        use tobkiri_harness_native::{
+            OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+        };
+
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
+            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
+        };
+        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotEntry::{
+            Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
         };
 
         let identity = ExecutionProfileIdentity {
@@ -2664,6 +2672,21 @@ mod tests {
                 [Generate, Stream, QuoteGenerate, QuoteStream]
                     .into_iter()
                     .flat_map(|role| [false, true].map(|side_chat| Gateway { role, side_chat })),
+            )
+            .chain(
+                [Text, Messages, AudioTranscribe, AudioSpeech]
+                    .into_iter()
+                    .flat_map(|caller| {
+                        [
+                            Advance,
+                            Cancel,
+                            Selected,
+                            StepExecute,
+                            StepResume,
+                            StepRetry,
+                        ]
+                        .map(|entry| Workflow { caller, entry })
+                    }),
             )
             .map(|role| (role, false))
             .chain(

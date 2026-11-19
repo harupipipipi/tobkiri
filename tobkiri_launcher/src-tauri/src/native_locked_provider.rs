@@ -22,7 +22,8 @@ use tobkiri_harness_native::{
     OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
-    CONVERSATION_COMPLETE_APPLICATION_ID,
+    OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
+    OriginalWorkflowSnapshotEntry, CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
@@ -142,6 +143,24 @@ pub(crate) struct LockedProjectedProviderBundle<'pin> {
     command_datasource: Option<[LockedRegistryRoute<'pin>; 2]>,
     budget: Arc<dyn AllocationBudget>,
 }
+
+/// Signed documents for the Workflow entries and each caller's own Registry grant.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedWorkflowProviderSnapshotBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    entries: [Option<[LockedRegistryRoute<'pin>; 1]>; 6],
+    callers: [Option<LockedWorkflowProviderSnapshotCaller<'pin>>; 4],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+enum LockedWorkflowProviderSnapshotCaller<'pin> {
+    Gateway([LockedRegistryRoute<'pin>; 2]),
+    Audio([LockedRegistryRoute<'pin>; 3]),
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+type VerifiedWorkflowProviderSnapshotRoutes = ([bool; 6], [Option<VerifiedOrdinarySavedBundle>; 4]);
 
 /// Signed Bundle documents for an ordinary Gateway call and its selected AI operation.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
@@ -521,6 +540,57 @@ impl NativeApplicationSources {
             side_chat,
             routes,
             effects: ["privileged", "pure", "privileged", "privileged"],
+            budget: Arc::clone(budget),
+        })
+    }
+
+    /// Capture the signed Bundle documents for the selected Workflow and Registry grants.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn workflow_provider_snapshot_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalWorkflowProviderSnapshotSelection<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedWorkflowProviderSnapshotBundle<'pin>> {
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        let mut entries = [None, None, None, None, None, None];
+        for entry in OriginalWorkflowSnapshotEntry::ALL {
+            if let Some(pin) = selection.entry(entry) {
+                ensure!(
+                    pin.caller_function_id() == self.authority.shell_provider_id
+                        && self.authority.shell_provider_id == "shell.tauri.default",
+                    "Workflow Provider Registry entry differs from the selected desktop Shell"
+                );
+                entries[entry.index()] = Some([from_lock(pin)?]);
+            }
+        }
+        let mut callers = [None, None, None, None];
+        for caller in OriginalWorkflowSnapshotCaller::ALL {
+            let Some((modality, [caller_pin, registry])) = selection.caller(caller) else {
+                continue;
+            };
+            let prefix = modality.unwrap_or(caller_pin);
+            ensure!(
+                prefix.caller_function_id() == "tobkiri.workflow.provider"
+                    && modality
+                        .is_none_or(|pin| caller_pin.caller_function_id() == pin.function_id())
+                    && registry.caller_function_id() == caller_pin.function_id(),
+                "Workflow Provider Registry chain does not match its selected callers"
+            );
+            let caller_pin = from_lock(caller_pin)?;
+            let registry = from_lock(registry)?;
+            callers[caller.index()] = Some(match modality {
+                Some(modality) => LockedWorkflowProviderSnapshotCaller::Audio([
+                    from_lock(modality)?,
+                    caller_pin,
+                    registry,
+                ]),
+                None => LockedWorkflowProviderSnapshotCaller::Gateway([caller_pin, registry]),
+            });
+        }
+        Ok(LockedWorkflowProviderSnapshotBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            entries,
+            callers,
             budget: Arc::clone(budget),
         })
     }
@@ -1292,6 +1362,48 @@ impl LockedProjectedProviderBundle<'_> {
             verify_nested(self.model_search)?,
             verify_nested(self.command_datasource)?,
         ])
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedWorkflowProviderSnapshotBundle<'_> {
+    /// Verify the shared Workflow Pack once and retain each caller's own signed documents.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedWorkflowProviderSnapshotRoutes> {
+        self.source.revalidate(&self.budget, &mut checkpoint)?;
+        let prefix = self.source.verify_routes(
+            &self.entries,
+            &self.budget,
+            &mut checkpoint,
+            ["privileged"],
+        )?;
+        let mut callers = [None, None, None, None];
+        for (verified, caller) in callers.iter_mut().zip(self.callers) {
+            let Some(caller) = caller else {
+                continue;
+            };
+            *verified = Some(match caller {
+                LockedWorkflowProviderSnapshotCaller::Gateway(routes) => {
+                    prefix.clone().verify_routes(
+                        &[Some(routes)],
+                        &self.budget,
+                        &mut checkpoint,
+                        ["privileged"; 2],
+                    )?
+                }
+                LockedWorkflowProviderSnapshotCaller::Audio(routes) => {
+                    prefix.clone().verify_routes(
+                        &[Some(routes)],
+                        &self.budget,
+                        &mut checkpoint,
+                        ["privileged"; 3],
+                    )?
+                }
+            });
+        }
+        Ok((self.entries.each_ref().map(Option::is_some), callers))
     }
 }
 

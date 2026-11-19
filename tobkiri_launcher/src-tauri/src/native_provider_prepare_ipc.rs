@@ -16,6 +16,7 @@ use tobkiri_core::{Digest, NativeArtifactError};
 use tobkiri_harness_native::{
     LegacyLocalChatSourceError, LegacySavedTurnSettlementError, OriginalLocalChatError,
     OriginalLocalChatPolicyError, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
+    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
 };
 use tobkiri_wasm::{
     LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
@@ -418,10 +419,17 @@ impl Start<'_> {
 struct ModelList {}
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "ProviderSnapshotWire")]
 struct ProviderSnapshot {
-    #[serde(deserialize_with = "deserialize_provider_snapshot_role")]
     role: OriginalProviderSnapshotRole,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderSnapshotWire {
+    role: String,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    entry: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1098,36 +1106,65 @@ where
     }
 }
 
-fn deserialize_provider_snapshot_role<'de, D>(
-    deserializer: D,
-) -> std::result::Result<OriginalProviderSnapshotRole, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use OriginalProviderSnapshotRole::{
-        Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings,
-    };
+impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
+    type Error = &'static str;
 
-    let (role, side_chat) = match String::deserialize(deserializer)?.as_str() {
-        "generate" => return Ok(Adapter(OriginalSavedLocalChatRole::Generate)),
-        "stream" => return Ok(Adapter(OriginalSavedLocalChatRole::Stream)),
-        "side-chat-generate" => return Ok(Adapter(OriginalSavedLocalChatRole::SideChatGenerate)),
-        "side-chat-stream" => return Ok(Adapter(OriginalSavedLocalChatRole::SideChatStream)),
-        "gateway-generate" => (OriginalModelResolveRole::Generate, false),
-        "gateway-stream" => (OriginalModelResolveRole::Stream, false),
-        "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
-        "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
-        "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
-        "side-chat-gateway-stream" => (OriginalModelResolveRole::Stream, true),
-        "side-chat-gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, true),
-        "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
-        "shell-settings" => return Ok(ShellSettings),
-        "model-save" => return Ok(ModelSave),
-        "model-search" => return Ok(ModelSearch),
-        "command-datasource" => return Ok(CommandDatasource),
-        _ => return Err(de::Error::custom("unknown Provider Snapshot role")),
-    };
-    Ok(Gateway { role, side_chat })
+    fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
+        use OriginalProviderSnapshotRole::{
+            Adapter, CommandDatasource, Gateway, ModelSave, ModelSearch, ShellSettings, Workflow,
+        };
+        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotEntry::{
+            Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
+        };
+
+        if let Some(entry) = wire.entry {
+            let caller = match wire.role.as_str() {
+                "workflow-text" => Text,
+                "workflow-messages" => Messages,
+                "workflow-audio-transcribe" => AudioTranscribe,
+                "workflow-audio-speech" => AudioSpeech,
+                _ => return Err("Provider Snapshot entry requires a Workflow role"),
+            };
+            let entry = match entry.as_str() {
+                "run.advance" => Advance,
+                "run.cancel" => Cancel,
+                "run.selected" => Selected,
+                "run.step.execute" => StepExecute,
+                "run.step.resume" => StepResume,
+                "run.step.retry" => StepRetry,
+                _ => return Err("unknown Workflow Provider Snapshot entry"),
+            };
+            return Ok(Self {
+                role: Workflow { caller, entry },
+            });
+        }
+        let snapshot = |role| Ok(Self { role });
+        let (role, side_chat) = match wire.role.as_str() {
+            "generate" => return snapshot(Adapter(OriginalSavedLocalChatRole::Generate)),
+            "stream" => return snapshot(Adapter(OriginalSavedLocalChatRole::Stream)),
+            "side-chat-generate" => {
+                return snapshot(Adapter(OriginalSavedLocalChatRole::SideChatGenerate))
+            }
+            "side-chat-stream" => {
+                return snapshot(Adapter(OriginalSavedLocalChatRole::SideChatStream))
+            }
+            "gateway-generate" => (OriginalModelResolveRole::Generate, false),
+            "gateway-stream" => (OriginalModelResolveRole::Stream, false),
+            "gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, false),
+            "gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, false),
+            "side-chat-gateway-generate" => (OriginalModelResolveRole::Generate, true),
+            "side-chat-gateway-stream" => (OriginalModelResolveRole::Stream, true),
+            "side-chat-gateway-quote-generate" => (OriginalModelResolveRole::QuoteGenerate, true),
+            "side-chat-gateway-quote-stream" => (OriginalModelResolveRole::QuoteStream, true),
+            "shell-settings" => return snapshot(ShellSettings),
+            "model-save" => return snapshot(ModelSave),
+            "model-search" => return snapshot(ModelSearch),
+            "command-datasource" => return snapshot(CommandDatasource),
+            _ => return Err("unknown Provider Snapshot role or missing Workflow entry"),
+        };
+        snapshot(Gateway { role, side_chat })
+    }
 }
 
 fn deserialize_conversation_caller<'de, D>(
@@ -3169,6 +3206,42 @@ mod tests {
     }
 
     #[test]
+    fn workflow_provider_snapshot_start_decodes_exact_callers_and_entries() {
+        use OriginalWorkflowSnapshotCaller::{AudioSpeech, AudioTranscribe, Messages, Text};
+        use OriginalWorkflowSnapshotEntry::{
+            Advance, Cancel, Selected, StepExecute, StepResume, StepRetry,
+        };
+
+        for (role_name, caller) in [
+            ("workflow-text", Text),
+            ("workflow-messages", Messages),
+            ("workflow-audio-transcribe", AudioTranscribe),
+            ("workflow-audio-speech", AudioSpeech),
+        ] {
+            for (entry_name, entry) in [
+                ("run.advance", Advance),
+                ("run.cancel", Cancel),
+                ("run.selected", Selected),
+                ("run.step.execute", StepExecute),
+                ("run.step.resume", StepResume),
+                ("run.step.retry", StepRetry),
+            ] {
+                let fields = format!(
+                    r#", "provider_snapshot":{{"role":"{role_name}","entry":"{entry_name}"}}"#
+                );
+                let frame = start_frame(&fields);
+                let start = parse_start(START, frame.as_bytes()).unwrap();
+                assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+                let expected = OriginalProviderSnapshotRole::Workflow { caller, entry };
+                assert!(matches!(
+                    start.operation().unwrap(),
+                    NativeRegistryRequest::ProviderSnapshot { role } if role == expected
+                ));
+            }
+        }
+    }
+
+    #[test]
     fn start_rejects_nonobject_plans_and_extra_envelope_fields() {
         for extra in [
             r#","plan":{}"#,
@@ -3210,6 +3283,20 @@ mod tests {
             r#", "provider_snapshot":{"role":"command-datasource","settings_projection":false}"#,
             r#", "provider_snapshot":{"role":"command-datasource","profile_id":"elsewhere"}"#,
             r#", "provider_snapshot":{"role":"command-data-source"}"#,
+            r#", "provider_snapshot":{"role":"stream","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"gateway-generate","entry":null}"#,
+            r#", "provider_snapshot":{"role":"model-search","entry":"run.step.resume"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":null}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":false}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"advance"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"run.step.cancel"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","entry":"run.cancel"}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","input_bytes":32}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","settings_projection":true}"#,
+            r#", "provider_snapshot":{"role":"workflow-text","entry":"run.advance","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"workflow-stream","entry":"run.advance"}"#,
+            r#", "provider_snapshot":["workflow-text","run.advance"]"#,
             r#", "provider_snapshot":{"role":"stream"}, "provider_snapshot":{"role":"stream"}"#,
         ] {
             let payload = start_frame(extra);
@@ -3225,6 +3312,8 @@ mod tests {
             r#", "apply":{}, "provider_snapshot":{"role":"stream"}"#.to_owned(),
             r#", "model_list":{}, "provider_snapshot":{"role":"stream"}"#.to_owned(),
             format!(r#"{PROVIDER_REQUEST}, "provider_snapshot":{{"role":"stream"}}"#),
+            r#", "model_list":{}, "provider_snapshot":{"role":"workflow-text","entry":"run.advance"}"#.to_owned(),
+            r#", "saved_orchestration":{"input_bytes":32}, "provider_snapshot":{"role":"workflow-text","entry":"run.advance"}"#.to_owned(),
         ] {
             let payload = start_frame(&extra);
             let parsed: Start<'_> = serde_json::from_str(&payload).unwrap();
