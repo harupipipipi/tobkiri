@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from pathlib import Path
 import threading
 from types import MappingProxyType
 from typing import Any
@@ -14,11 +13,6 @@ from typing import Any
 from tobkiri_host.admission import ResourceAmount
 from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.secure_persistence import (
-    SecureDirectory,
-    SecurePersistenceError,
-    SecurePersistenceLimitError,
-)
 
 
 FUNCTION = "rumi_provider_registry_pack.provider-configure.prepare"
@@ -26,9 +20,8 @@ CONTRACT = "tobkiri.action.ai.provider.registry.manage.v1"
 OPERATION = "rumi_provider_registry_pack.provider-configure-prepare"
 EXECUTE_FUNCTION = "rumi_provider_registry_pack.provider-configure.execute"
 EXECUTE_OPERATION = "rumi_provider_registry_pack.provider-configure"
-DOCUMENT_LIMIT = 1024 * 1024
-# Two decoded Python strings can each occupy four bytes per source byte.
-MINIMUM_PREPARE_MEMORY = 10 * DOCUMENT_LIMIT
+# Preserve the existing Broker admission amount for native Provider operations.
+MINIMUM_PREPARE_MEMORY = 10 * 1024 * 1024
 
 _http_scope: ContextVar[tuple[str, Callable[[], None]] | None] = ContextVar(
     "provider_prepare_http_scope", default=None,
@@ -36,7 +29,7 @@ _http_scope: ContextVar[tuple[str, Callable[[], None]] | None] = ContextVar(
 
 
 class NativeProviderRegistryRequiresLegacyRead(RuntimeError):
-    """The fixed Provider Registry exceeds the native observation envelope."""
+    """The joined native operation hit a Registry bound before any writes."""
 
 
 @contextmanager
@@ -81,29 +74,24 @@ class NativeProviderPreparePlanner:
 
 
 class NativeProviderPrepareBorrow:
-    """Lend only this running operation's input, funding and fixed Registry reads."""
+    """Lend this running operation's original input, admission and live guard."""
 
     def __init__(
         self,
         *,
         context: RequestContext,
         payload: Mapping[str, Any],
-        user_data_root: Path,
-        document_path: Path,
         deadline_monotonic: float,
         resources: ResourceAmount,
         guard: Callable[[], None],
         runtime_instance: str | None = None,
         frozen_plan: Mapping[str, Any] | None = None,
-        publishes: bool = False,
     ) -> None:
         self._context = context
         self._request = MappingProxyType({
             key: tuple(value) if key == "capabilities" else value
             for key, value in payload.items() if key not in {"key_value", "protocol"}
         })
-        self._documents = SecureDirectory(user_data_root, create=False)
-        self._document_path = document_path.relative_to(user_data_root)
         self._deadline = deadline_monotonic
         self._resources = resources
         self._guard = guard
@@ -114,12 +102,8 @@ class NativeProviderPrepareBorrow:
                 for key, value in frozen_plan.items()
             }) if frozen_plan is not None else None
         )
-        self._read_limit = 3 if frozen_plan is not None else 2
-        self._publishes = publishes
         self._thread = threading.get_ident()
         self._active = True
-        self._read_attempts = 0
-        self._successful_reads = 0
 
     def assert_current(self) -> None:
         """Recheck admission, dispatched lease, cancellation and Profile custody."""
@@ -159,50 +143,9 @@ class NativeProviderPrepareBorrow:
 
     @property
     def frozen_plan(self) -> Mapping[str, Any] | None:
-        """Borrow the exact approved base plan during commit validation."""
+        """Borrow the exact approved base plan for publication, if present."""
         self.assert_current()
         return self._frozen_plan
-
-    @property
-    def publishes(self) -> bool:
-        """Identify the approved request that delegates one native publication."""
-        self.assert_current()
-        return self._publishes
-
-    def read_legacy_registry(self) -> str | None:
-        """Read the fixed Profile Registry at the current observation."""
-        self.assert_current()
-        if self._read_attempts >= self._read_limit:
-            raise PermissionError("native Provider preparation reads are exhausted")
-        self._read_attempts += 1
-        opened = False
-
-        def check_open_file(_path: Path, _descriptor: int) -> None:
-            nonlocal opened
-            opened = True
-            self.assert_current()
-
-        try:
-            content = self._documents.read_bytes_bounded(
-                self._document_path,
-                max_bytes=DOCUMENT_LIMIT,
-                verify_open_file=check_open_file,
-            ).decode("utf-8")
-        except FileNotFoundError:
-            if opened:
-                raise
-            content = None
-        except SecurePersistenceLimitError:
-            raise NativeProviderRegistryRequiresLegacyRead(
-                "Provider Registry exceeds the native observation envelope",
-            ) from None
-        except SecurePersistenceError as error:
-            if opened or not isinstance(error.__cause__, FileNotFoundError):
-                raise
-            content = None
-        self.assert_current()
-        self._successful_reads += 1
-        return content
 
     def _close(self) -> None:
         self._active = False
@@ -217,15 +160,13 @@ def invoke_native_provider_prepare(
 ) -> dict[str, Any]:
     """Close the borrow on every exit and accept only the original plan schema."""
     try:
-        borrow.assert_current()
+        if borrow.frozen_plan is not None:
+            raise PermissionError("native Provider preparation requires an unfrozen request")
         plan = dict(planner.plan(borrow))
         borrow.assert_current()
         revision = plan.get("expected_revision")
         expected = _expected_plan(borrow.context, payload, normalized, revision)
-        if (
-            borrow._successful_reads != 2 or type(revision) is not int or revision < 0
-            or plan != expected
-        ):
+        if type(revision) is not int or revision < 0 or plan != expected:
             raise ValueError("native Provider preparation returned an invalid plan")
         return expected
     finally:
@@ -261,7 +202,7 @@ def invoke_native_provider_commit(
     """Run one approved native publication, with closed acknowledgement fields."""
     try:
         frozen = borrow.frozen_plan
-        if frozen is None or not borrow.publishes:
+        if frozen is None:
             raise PermissionError("native Provider commit requires an approved plan")
         revision = frozen.get("expected_revision")
         expected = _expected_plan(borrow.context, payload, normalized, revision)
@@ -275,11 +216,7 @@ def invoke_native_provider_commit(
             "configured": True,
             "provider_instance_id": expected["provider_instance_id"],
         }
-        if (
-            borrow._successful_reads != 3
-            or result.get("configured") is not True
-            or result != configured
-        ):
+        if result.get("configured") is not True or result != configured:
             raise ValueError("native Provider publication acknowledgement differs")
         return configured
     finally:

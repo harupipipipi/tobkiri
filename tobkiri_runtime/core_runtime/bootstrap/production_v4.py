@@ -3991,14 +3991,8 @@ def capture_production_dispatch(
             from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
                 configuration_request,
             )
-            from ecosystem.rumi_provider_registry_pack.runtime.registry import (
-                ProviderRegistry,
-            )
 
             normalized = configuration_request(payload)
-            registry = ProviderRegistry(
-                capture.profile_id, user_data_root=capture.user_data_root,
-            )
             http_scope = (
                 current_provider_prepare_http_scope() if launcher_provider_prepare else None
             )
@@ -4018,8 +4012,6 @@ def capture_production_dispatch(
             borrow = NativeProviderPrepareBorrow(
                 context=envelope.context,
                 payload=payload,
-                user_data_root=capture.user_data_root,
-                document_path=registry.path,
                 deadline_monotonic=envelope.deadline_monotonic,
                 resources=resources,
                 guard=guard,
@@ -4029,8 +4021,9 @@ def capture_production_dispatch(
                 plan = invoke_native_provider_prepare(
                     planner, borrow, payload=payload, normalized=normalized,
                 )
-            except (NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead):
-                # The Launcher adapter propagates a Registry limit only after Join.
+            except (
+                NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
+            ):
                 guard()
                 return contribution.invoke(operation_id, payload, invocation)
             guard()
@@ -4064,7 +4057,7 @@ def capture_production_dispatch(
         planner: NativeProviderPreparePlanner,
         edge: _CapturedPlanEdge,
     ) -> HostProviderContributionV4:
-        """Validate a detached approved effect before the original locked save."""
+        """Delegate publication of a detached approved effect to the live Launcher."""
 
         def invoke(
             operation_id: str,
@@ -4130,21 +4123,14 @@ def capture_production_dispatch(
             from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
                 configuration_request,
             )
-            from ecosystem.rumi_provider_registry_pack.runtime.registry import (
-                ProviderRegistry,
-            )
 
             request = payload["request"]
             normalized = configuration_request(request)
-            registry = ProviderRegistry(
-                capture.profile_id, user_data_root=capture.user_data_root,
-            )
             borrow = NativeProviderPrepareBorrow(
-                context=context, payload=request, user_data_root=capture.user_data_root,
-                document_path=registry.path,
+                context=context, payload=request,
                 deadline_monotonic=envelope.deadline_monotonic,
                 resources=resources, guard=guard, runtime_instance=pinned_runtime[0],
-                frozen_plan=payload["plan"], publishes=True,
+                frozen_plan=payload["plan"],
             )
             try:
                 return invoke_native_provider_commit(

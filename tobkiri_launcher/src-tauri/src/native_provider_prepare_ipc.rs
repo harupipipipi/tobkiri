@@ -1,4 +1,4 @@
-//! Private synchronous access to the original Provider Registry reader.
+//! Private Provider requests and live authorization checks for the managed Host.
 
 use std::{
     io::{self, Read, Write},
@@ -12,14 +12,14 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
-use tobkiri_core::{AllocationBudget, AllocationError, CoreBuffer, NativeArtifactError};
+use tobkiri_core::NativeArtifactError;
 use tobkiri_wasm::NativeDataIoError;
 
 use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, PendingProviderPrepare, ProviderPlan, ProviderPrepareDeadline,
+        start_provider_prepare, PendingProviderPrepare, ProviderPrepareDeadline,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -27,15 +27,11 @@ use crate::{
 const START: u8 = 1;
 const CHECK: u8 = 2;
 const LIVE: u8 = 3;
-const READ: u8 = 4;
-const PRESENT: u8 = 5;
-const ABSENT: u8 = 6;
 const PLAN: u8 = 7;
 const FAILURE: u8 = 8;
 const CANCEL: u8 = 9;
 const INAPPLICABLE: u8 = 10;
 const JSON_LIMIT: usize = 16 * 1024;
-const DOCUMENT_LIMIT: usize = 1024 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CLEANUP_WAIT: Duration = Duration::from_secs(10);
@@ -50,20 +46,7 @@ struct Start<'a> {
     deadline_ns: u64,
     request: Request,
     #[serde(borrow, default, deserialize_with = "deserialize_plan")]
-    plan: Option<&'a RawValue>,
-    #[serde(borrow, default, deserialize_with = "deserialize_plan")]
     apply: Option<&'a RawValue>,
-}
-
-impl Start<'_> {
-    fn provider_plan(&self) -> Result<Option<ProviderPlan>> {
-        match (self.plan, self.apply) {
-            (None, None) => Ok(None),
-            (Some(plan), None) => Ok(Some(ProviderPlan::Validate(plan.get().as_bytes().to_vec()))),
-            (None, Some(plan)) => Ok(Some(ProviderPlan::Publish(plan.get().as_bytes().to_vec()))),
-            _ => bail!("a Provider connection has more than one operation"),
-        }
-    }
 }
 
 fn deserialize_plan<'de, D>(deserializer: D) -> std::result::Result<Option<&'de RawValue>, D::Error>
@@ -139,7 +122,6 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     read_exact(&mut stream, &mut bytes, start_deadline)?;
     let start: Start<'_> =
         serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid Provider prepare start"))?;
-    let plan = start.provider_plan()?;
     ensure!(
         start.runtime_instance.len() == 32
             && start
@@ -198,11 +180,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         "Provider prepare request exceeds its envelope"
     );
     // Keep the frozen plan's exact JSON for the Core's funded strict parser.
-    let result_limit = if matches!(plan.as_ref(), Some(ProviderPlan::Validate(_))) {
-        DOCUMENT_LIMIT
-    } else {
-        JSON_LIMIT
-    };
+    let apply = start.apply.map(|plan| plan.get().as_bytes().to_vec());
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
     let connection = Arc::new(Connection {
@@ -210,17 +188,14 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         candidate: Arc::clone(&candidate),
         wire: Mutex::new(Wire { stream, stop: None }),
         deadline: Arc::clone(&deadline),
-        result_limit,
     });
     let check_connection = Arc::clone(&connection);
-    let read_connection = Arc::clone(&connection);
     let pending = match start_provider_prepare(
         app,
         candidate,
         request,
-        plan,
+        apply,
         deadline,
-        Box::new(move |budget| read_connection.read_registry(budget)),
         Arc::new(move || check_connection.check_current()),
     ) {
         Ok(pending) => pending,
@@ -234,10 +209,9 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
 struct Connection {
     manager: Arc<ApplicationProcessManager>,
     candidate: Arc<ProviderPrepareListener>,
-    // The worker's synchronous borrow and the idle actor share one reader.
+    // The worker's authorization checks and the idle actor share one reader.
     wire: Mutex<Wire>,
     deadline: Arc<ProviderPrepareDeadline>,
-    result_limit: usize,
 }
 
 struct Wire {
@@ -265,23 +239,20 @@ impl Connection {
         Ok(())
     }
 
-    fn exchange<T>(
-        &self,
-        tag: u8,
-        receive: impl FnOnce(&mut UnixStream, (u8, usize), Instant) -> Result<T>,
-    ) -> Result<T> {
+    fn check_current(&self) -> Result<()> {
         let mut wire = self.lock_wire()?;
         self.checkpoint(&mut wire)?;
         let deadline = self.deadline.current().min(Instant::now() + FRAME_TIMEOUT);
         let result = (|| {
             wire.check_idle(deadline)?;
-            send_frame(&mut wire.stream, tag, &[], deadline)?;
+            send_frame(&mut wire.stream, CHECK, &[], deadline)?;
             let header = read_header(&mut wire.stream, deadline)?;
             if header == (CANCEL, 0) {
                 wire.stop = Some(Stop::Cancelled);
                 return Err(Stop::Cancelled.as_error());
             }
-            receive(&mut wire.stream, header, deadline)
+            ensure!(header == (LIVE, 0), "invalid Provider prepare LIVE frame");
+            Ok(())
         })();
         if result.is_err() && wire.stop.is_none() {
             wire.stop = Some(if Instant::now() >= self.deadline.current() {
@@ -290,40 +261,8 @@ impl Connection {
                 Stop::Broken
             });
         }
-        let result = result?;
-        self.checkpoint(&mut wire)?;
-        Ok(result)
-    }
-
-    fn check_current(&self) -> Result<()> {
-        self.exchange(CHECK, |_, header, _| {
-            ensure!(header == (LIVE, 0), "invalid Provider prepare LIVE frame");
-            Ok(())
-        })
-    }
-
-    fn read_registry(&self, budget: &Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> {
-        self.exchange(READ, |stream, (tag, size), deadline| match tag {
-            ABSENT if size == 0 => Ok(None),
-            PRESENT if size <= DOCUMENT_LIMIT => {
-                // The original Core allocation owner funds the receive buffer
-                // before any document bytes can cross into the Launcher.
-                let mut received = Ok(());
-                let buffer = CoreBuffer::write_exact(size, budget, |destination| {
-                    received = read_exact(stream, destination, deadline);
-                    if received.is_ok() {
-                        Ok(())
-                    } else {
-                        Err(AllocationError::Unavailable)
-                    }
-                });
-                received?;
-                let document = buffer?;
-                document.as_str()?;
-                Ok(Some(document))
-            }
-            _ => bail!("invalid Provider prepare Registry frame"),
-        })
+        result?;
+        self.checkpoint(&mut wire)
     }
 
     fn lock_wire(&self) -> Result<std::sync::MutexGuard<'_, Wire>> {
@@ -385,7 +324,7 @@ impl Connection {
             return self.send_stopped(stop);
         }
         match result {
-            Ok(output) if output.len() <= self.result_limit => {
+            Ok(output) if output.len() <= JSON_LIMIT => {
                 send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
             }
             Ok(_) => send_frame(&mut wire.stream, FAILURE, b"limit-exceeded", deadline),
@@ -623,35 +562,28 @@ mod tests {
     }
 
     #[test]
-    fn start_leaves_legacy_prepare_unmodified_and_preserves_frozen_plan_bytes() {
+    fn start_distinguishes_prepare_and_preserves_frozen_apply_bytes() {
         let prepare = start_frame("");
         let prepare: Start<'_> = serde_json::from_str(&prepare).unwrap();
-        assert!(prepare.plan.is_none());
+        assert!(prepare.apply.is_none());
         assert_eq!(prepare.request.connection_name, "local");
 
         // Leave semantic checks, including duplicate object keys, to the Core.
         let plan = r#"{"record": {"name":"ä", "name":"same"}}"#;
-        let validate = start_frame(&format!(r#", "plan": {plan}"#));
-        let validate: Start<'_> = serde_json::from_str(&validate).unwrap();
-        assert_eq!(validate.plan.unwrap().get(), plan);
-
         let apply = start_frame(&format!(r#", "apply": {plan}"#));
         let apply: Start<'_> = serde_json::from_str(&apply).unwrap();
-        assert!(matches!(
-            apply.provider_plan().unwrap(),
-            Some(ProviderPlan::Publish(bytes)) if bytes == plan.as_bytes()
-        ));
+        assert_eq!(apply.apply.unwrap().get(), plan);
     }
 
     #[test]
     fn start_rejects_nonobject_plans_and_extra_envelope_fields() {
         for extra in [
-            r#","plan":null"#,
-            r#","plan":[]"#,
-            r#","plan":"{}""#,
-            r#","plan":42"#,
-            r#","plan":{},"plan":{}"#,
-            r#","plan":{},"approved":true"#,
+            r#","plan":{}"#,
+            r#","plan":{},"apply":{}"#,
+            r#","apply":"{}""#,
+            r#","apply":42"#,
+            r#","apply":{},"apply":{}"#,
+            r#","apply":{},"approved":true"#,
             r#","apply":null"#,
             r#","apply":[] "#,
         ] {
@@ -661,9 +593,6 @@ mod tests {
                 "{extra}"
             );
         }
-        let both = start_frame(r#","plan":{},"apply":{}"#);
-        let both: Start<'_> = serde_json::from_str(&both).unwrap();
-        assert!(both.provider_plan().is_err());
     }
 
     #[test]
@@ -673,10 +602,10 @@ mod tests {
         receiver.set_nonblocking(true).unwrap();
         let deadline = Instant::now() + FRAME_TIMEOUT;
         let utf8 = "{\"ä\":null}".as_bytes();
-        send_frame(&mut sender, PRESENT, utf8, deadline).unwrap();
+        send_frame(&mut sender, PLAN, utf8, deadline).unwrap();
         assert_eq!(
             read_header(&mut receiver, deadline).unwrap(),
-            (PRESENT, utf8.len())
+            (PLAN, utf8.len())
         );
         let mut received = [0u8; 11];
         read_exact(&mut receiver, &mut received[..utf8.len()], deadline).unwrap();
@@ -709,7 +638,7 @@ mod tests {
     fn incomplete_frame_cannot_extend_its_absolute_deadline() {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         receiver.set_nonblocking(true).unwrap();
-        sender.write_all(&[PRESENT, 0, 0]).unwrap();
+        sender.write_all(&[CHECK, 0, 0]).unwrap();
         let error =
             read_header(&mut receiver, Instant::now() + Duration::from_millis(10)).unwrap_err();
         assert_eq!(

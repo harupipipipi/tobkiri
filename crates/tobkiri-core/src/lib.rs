@@ -51,7 +51,7 @@ pub mod native_flight;
 pub mod native_job;
 mod native_profile_review;
 #[cfg(unix)]
-mod native_provider_commit;
+mod native_provider_registry;
 #[cfg(feature = "native-shared-state")]
 mod native_state_registry;
 mod outcomes;
@@ -82,7 +82,7 @@ pub use native_declared_artifact::{
     NativeArtifactInspection, NativeDeclaredArtifactSource,
 };
 #[cfg(unix)]
-pub use native_provider_commit::NativeProviderRegistryCommit;
+pub use native_provider_registry::NativeProviderRegistry;
 pub use process_catalog::ProcessRegistrationError;
 pub use profile_review::{
     FilesystemPermissionReview, PermissionReview, ProfileReview, ProfileReviewCapacity,

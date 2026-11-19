@@ -408,6 +408,20 @@ async fn verify_legacy_preparation(
     {
         source.write_atomic(&path, observed.as_bytes())?;
         let frozen = prepare(observe()?, observe()?).await?;
+        let physical_plan = native_legacy_configuration(
+            core,
+            pack,
+            profile,
+            fixture,
+            (
+                &request["request"],
+                NativeLegacyCall::PrepareFromFile(&legacy_path),
+            ),
+            || panic!("physical Registry preparation borrowed test observations"),
+            2,
+        )
+        .await?;
+        ensure!(physical_plan == frozen);
         let checked = native_legacy_configuration(
             core,
             pack,
@@ -421,7 +435,7 @@ async fn verify_legacy_preparation(
                     permitted: false,
                 },
             ),
-            observe.clone(),
+            || panic!("physical Registry publication borrowed test observations"),
             4,
         )
         .await
@@ -445,7 +459,7 @@ async fn verify_legacy_preparation(
                     permitted: true,
                 },
             ),
-            observe.clone(),
+            || panic!("physical Registry publication borrowed test observations"),
             4,
         )
         .await?;
@@ -480,7 +494,7 @@ async fn verify_legacy_preparation(
                     permitted: true,
                 },
             ),
-            observe.clone(),
+            || panic!("physical Registry replay borrowed test observations"),
             2,
         )
         .await
@@ -503,6 +517,7 @@ async fn verify_legacy_preparation(
 #[cfg(unix)]
 enum NativeLegacyCall<'a> {
     Prepare,
+    PrepareFromFile(&'a Path),
     Validate(&'a Value),
     Publish {
         frozen: &'a Value,
@@ -552,14 +567,16 @@ async fn native_legacy_configuration(
         declarations: BTreeMap::new(),
     })?;
     let budget = inspection.allocation_budget()?.clone();
-    let publication = if let NativeLegacyCall::Publish { user_data, .. } = &operation {
+    let registry = if let NativeLegacyCall::PrepareFromFile(user_data)
+    | NativeLegacyCall::Publish { user_data, .. } = &operation
+    {
         Some(Arc::new(std::sync::Mutex::new(Some(
-            inspection.legacy_provider_commit(user_data, profile)?,
+            inspection.legacy_provider_registry(user_data, profile)?,
         ))))
     } else {
         None
     };
-    let read_publication = publication.clone();
+    let read_registry = registry.clone();
     let reads = Arc::new(AtomicUsize::new(0));
     let read_count = Arc::clone(&reads);
     let outcome: Result<(CoreBuffer, Option<CoreBuffer>)> = async {
@@ -574,23 +591,22 @@ async fn native_legacy_configuration(
         let input = CoreValue::parse_guest(&serde_json::to_vec(request)?, &budget)?;
         let read: LegacyProviderRegistryRead = Box::new(move |budget| {
             let count = read_count.fetch_add(1, Ordering::Relaxed) + 1;
-            if count == 4
-                && let Some(publication) = &read_publication
-            {
-                return publication
-                    .lock()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .observe_locked(budget, || Ok(()))
-                    .map_err(Into::into);
+            if let Some(registry) = &read_registry {
+                let mut registry = registry.lock().unwrap();
+                let registry = registry.as_mut().unwrap();
+                return if count == 4 {
+                    registry.observe_locked(budget, || Ok(()))
+                } else {
+                    registry.observe(budget)
+                }
+                .map_err(Into::into);
             }
             Ok(observe()?
                 .map(|observation| CoreBuffer::copy_from(observation.as_bytes(), budget))
                 .transpose()?)
         });
         let output = match &operation {
-            NativeLegacyCall::Prepare => {
+            NativeLegacyCall::Prepare | NativeLegacyCall::PrepareFromFile(_) => {
                 inspection
                     .invoke_live_legacy_provider_prepare(&pack, profile, &input, read)
                     .await?
@@ -633,7 +649,7 @@ async fn native_legacy_configuration(
     );
     let (output, document) = outcome?;
     if let (NativeLegacyCall::Publish { permitted, .. }, Some(document)) = (operation, document) {
-        let publication = publication.context("expected publication transaction")?;
+        let publication = registry.context("expected publication transaction")?;
         publication
             .lock()
             .unwrap()

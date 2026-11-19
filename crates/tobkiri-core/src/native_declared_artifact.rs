@@ -233,19 +233,16 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
 
     /// Bind the original Host-selected user-data root to the fixed Registry
     /// operation. The root and Profile come from the Launcher resolver.
-    pub fn legacy_provider_commit(
+    pub fn legacy_provider_registry(
         &self,
         root: &Path,
         profile_id: &str,
-    ) -> Result<crate::NativeProviderRegistryCommit, NativeArtifactError> {
+    ) -> Result<crate::NativeProviderRegistry, NativeArtifactError> {
         self.require_ready()?;
-        let transaction = crate::NativeProviderRegistryCommit::open(
-            &self.work.get().invocation,
-            root,
-            profile_id,
-        )?;
+        let registry =
+            crate::NativeProviderRegistry::open(&self.work.get().invocation, root, profile_id)?;
         self.require_ready()?;
-        Ok(transaction)
+        Ok(registry)
     }
 
     /// Verify the trusted native adapter's exact archive stream using this

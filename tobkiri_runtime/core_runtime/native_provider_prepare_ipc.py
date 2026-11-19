@@ -17,7 +17,6 @@ from typing import Any
 
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import (
-    DOCUMENT_LIMIT,
     MINIMUM_PREPARE_MEMORY,
     NativeProviderPrepareBorrow,
     NativeProviderPreparePlanner,
@@ -34,7 +33,8 @@ _SOL_LOCAL = 0
 _LOCAL_PEERPID = 2
 _SOCKET_PATH_MAX = 103  # Darwin sockaddr_un.sun_path includes the terminating NUL.
 _FRAME = struct.Struct("!BI")
-_START, _CHECK, _LIVE, _READ, _PRESENT, _ABSENT, _PLAN, _FAILURE, _CANCEL = range(1, 10)
+_START, _CHECK, _LIVE = 1, 2, 3
+_PLAN, _FAILURE, _CANCEL = 7, 8, 9
 _INAPPLICABLE = 10
 _JSON_LIMIT = 16 * 1024
 _FAILURES = frozenset({
@@ -43,7 +43,7 @@ _FAILURES = frozenset({
 })
 _INBOUND_LIMITS = {
     _CHECK: 0,
-    _READ: 0,
+    _PLAN: _JSON_LIMIT,
     _FAILURE: max(map(len, _FAILURES)),
     _INAPPLICABLE: 0,
 }
@@ -161,7 +161,7 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
     }
     frozen_plan = borrow.frozen_plan
     if frozen_plan is not None:
-        frame["apply" if borrow.publishes else "plan"] = dict(frozen_plan)
+        frame["apply"] = dict(frozen_plan)
     payload = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
     try:
         encoded = payload.encode("utf-8")
@@ -172,9 +172,9 @@ def _start_payload(borrow: NativeProviderPrepareBorrow, deadline_ns: int) -> byt
     return encoded
 
 
-def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
+def _decode_plan(payload: bytes) -> dict[str, Any]:
     try:
-        plan = strict_loads(payload, max_bytes=limit)
+        plan = strict_loads(payload, max_bytes=_JSON_LIMIT)
     except (ValueError, RecursionError):
         raise _ProtocolError("native Provider preparation plan is invalid") from None
     if not isinstance(plan, dict):
@@ -183,9 +183,8 @@ def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
 
 
 class _Exchange:
-    def __init__(self, connection: socket.socket, *, result_limit: int) -> None:
+    def __init__(self, connection: socket.socket) -> None:
         self.connection = connection
-        self.result_limit = result_limit
         self.received = bytearray()
         self.partial_write = False
         self.started = False
@@ -220,7 +219,7 @@ class _Exchange:
     def receive(self, wait_seconds: Callable[[], float]) -> tuple[int, bytes]:
         self._receive_until(_FRAME.size, wait_seconds)
         tag, size = _FRAME.unpack_from(self.received)
-        limit = self.result_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
+        limit = _INBOUND_LIMITS.get(tag)
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
         self._receive_until(_FRAME.size + size, wait_seconds)
@@ -252,7 +251,7 @@ class _Exchange:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in _FAILURES:
                     return
-                if tag not in {_CHECK, _READ}:
+                if tag != _CHECK:
                     break
         except (OSError, _ProtocolError):
             pass
@@ -266,40 +265,29 @@ class _Exchange:
     ) -> dict[str, Any]:
         self.send(_START, _start_payload(borrow, deadline_ns), wait_seconds)
         self.started = True
-        work_observed = False
+        entered_live_phase = False
         while True:
             tag, payload = self.receive(wait_seconds)
             if tag == _FAILURE and payload in _FAILURES:
                 self.terminal = True
-                if payload == b"legacy-read-required" and borrow.publishes:
+                if payload == b"legacy-read-required" and entered_live_phase:
                     wait_seconds()
                     raise NativeProviderRegistryRequiresLegacyRead(
-                        "Provider publication exceeds the native envelope before rename",
+                        "Provider Registry exceeds the native envelope before writes",
                     )
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
             wait_seconds()
             if tag == _CHECK:
-                work_observed = True
                 self.send(_LIVE, b"", wait_seconds)
-            elif tag == _READ:
-                work_observed = True
-                try:
-                    document = borrow.read_legacy_registry()
-                    raw = b"" if document is None else document.encode("utf-8")
-                except (OSError, ValueError):
-                    wait_seconds()
-                    raise _ProtocolError("Provider Registry read failed") from None
-                if len(raw) > DOCUMENT_LIMIT:
-                    raise _ProtocolError("Provider Registry exceeds its read bound")
-                self.send(_ABSENT if document is None else _PRESENT, raw, wait_seconds)
-            elif tag == _PLAN:
-                plan = _decode_plan(payload, self.result_limit)
+                entered_live_phase = True
+            elif tag == _PLAN and entered_live_phase:
+                plan = _decode_plan(payload)
                 wait_seconds()
                 self.terminal = True
                 return plan
-            elif tag == _INAPPLICABLE and not work_observed:
+            elif tag == _INAPPLICABLE and not entered_live_phase:
                 self.terminal = True
                 raise NativeProviderPrepareUnavailable("native Provider is unavailable")
             else:
@@ -331,11 +319,7 @@ def _plan(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        result_limit = (
-            DOCUMENT_LIMIT
-            if borrow.frozen_plan is not None and not borrow.publishes else _JSON_LIMIT
-        )
-        exchange = _Exchange(connection, result_limit=result_limit)
+        exchange = _Exchange(connection)
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
         except Exception as error:

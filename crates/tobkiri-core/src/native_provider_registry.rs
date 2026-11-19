@@ -1,4 +1,4 @@
-//! Native custody of a staged write to the original Profile Registry.
+//! Native access to the original Profile Registry during an admitted operation.
 use crate::{CoreError, NativeArtifactError};
 use std::{io::ErrorKind, path::Path, sync::Arc, thread, time::Duration};
 use tobkiri_canon::{AllocationBudget, CoreBuffer, ids::ProfileId};
@@ -17,16 +17,16 @@ struct LockedRegistry {
     observed: Option<CoreBuffer>,
 }
 
-/// The fixed Profile's original Registry lock and its bounded observation.
+/// Bounded observations and optional save custody for one original Profile Registry.
 /// Only the native application can obtain this from its live inspection.
-pub struct NativeProviderRegistryCommit {
+pub struct NativeProviderRegistry {
     root: DataRoot,
     profile: ProfileId,
     locked: Option<LockedRegistry>,
     _raw_read_funding: NativeSetupReservation,
 }
 
-impl NativeProviderRegistryCommit {
+impl NativeProviderRegistry {
     pub(crate) fn open(
         invocation: &NativeSetupInvocation,
         root: &Path,
@@ -36,12 +36,27 @@ impl NativeProviderRegistryCommit {
         let funding = invocation
             .reserve(CapacityKind::VfsBuffer, DOCUMENT_LIMIT as u64)
             .map_err(CoreError::from)?;
+        #[cfg(target_os = "macos")]
+        let physical_root = macos_platform_root(root);
+        #[cfg(target_os = "macos")]
+        let root = physical_root.as_ref();
         Ok(Self {
             root: DataRoot::open_existing(root).map_err(CoreError::from)?,
             profile,
             locked: None,
             _raw_read_funding: funding,
         })
+    }
+
+    /// Read the original Registry without creating or locking it.
+    pub fn observe(&self, budget: &Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> {
+        if self.locked.is_some() {
+            return Err(NativeArtifactError::Denied);
+        }
+        let bytes = self
+            .root
+            .read_legacy_provider_registry(&self.profile, DOCUMENT_LIMIT);
+        funded_observation(bytes, budget)
     }
 
     /// Retain the fourth observation and its cooperative lock until publication.
@@ -65,12 +80,7 @@ impl NativeProviderRegistryCommit {
             }
         };
         checkpoint()?;
-        let observed = transaction
-            .read(DOCUMENT_LIMIT)
-            .map_err(before_publish)?
-            .map(|bytes| CoreBuffer::copy_from(&bytes, budget))
-            .transpose()
-            .map_err(|_| NativeDataIoError::Unavailable)?;
+        let observed = funded_observation(transaction.read(DOCUMENT_LIMIT), budget)?;
         checkpoint()?;
         self.locked = Some(LockedRegistry {
             transaction,
@@ -113,6 +123,38 @@ impl NativeProviderRegistryCommit {
             }
         }
     }
+}
+
+// Keep the original Host's platform aliases without resolving other symlinks.
+#[cfg(target_os = "macos")]
+fn macos_platform_root(root: &Path) -> std::borrow::Cow<'_, Path> {
+    use std::{borrow::Cow, fs, os::unix::fs::MetadataExt};
+
+    for (alias, physical, relative) in [
+        ("/var", "/private/var", "private/var"),
+        ("/tmp", "/private/tmp", "private/tmp"),
+    ] {
+        if let Ok(suffix) = root.strip_prefix(alias)
+            && fs::symlink_metadata(alias)
+                .is_ok_and(|metadata| metadata.is_symlink() && metadata.uid() == 0)
+            && fs::read_link(alias)
+                .is_ok_and(|link| link == Path::new(physical) || link == Path::new(relative))
+        {
+            return Cow::Owned(Path::new(physical).join(suffix));
+        }
+    }
+    Cow::Borrowed(root)
+}
+
+fn funded_observation(
+    bytes: std::result::Result<Option<Vec<u8>>, StoreError>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<CoreBuffer>> {
+    bytes
+        .map_err(before_publish)?
+        .map(|bytes| CoreBuffer::copy_from(&bytes, budget))
+        .transpose()
+        .map_err(|_| NativeDataIoError::Unavailable.into())
 }
 
 fn before_publish(error: StoreError) -> NativeArtifactError {

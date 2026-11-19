@@ -32,6 +32,83 @@ fn assert_no_staged_files(registry: &Path) {
 }
 
 #[test]
+fn read_only_registry_observes_stable_absence_without_creating_directories_or_lock() {
+    let (_temp, root, profile, registry) = fixture();
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!root.path().join("packs").exists());
+    fs::create_dir_all(registry.parent().unwrap()).unwrap();
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert!(!registry.exists());
+    fs::create_dir(&registry).unwrap();
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, MAX).unwrap(),
+        None
+    );
+    assert_eq!(fs::read_dir(&registry).unwrap().count(), 0);
+}
+
+#[test]
+fn read_only_registry_respects_the_cap_even_while_the_publication_lock_is_held() {
+    let (_temp, root, profile, registry) = fixture();
+    fs::create_dir_all(&registry).unwrap();
+    fs::set_permissions(&registry, fs::Permissions::from_mode(0o755)).unwrap();
+    let store = registry.join(STORE_NAME);
+    fs::write(&store, b"original").unwrap();
+
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, 8)
+            .unwrap()
+            .as_deref(),
+        Some(b"original".as_slice())
+    );
+    assert!(!registry.join("locks").exists());
+
+    let transaction = root.lock_legacy_provider_registry(&profile).unwrap();
+    let lock = fs::read(registry.join(LOCK_PATH)).unwrap();
+    assert!(matches!(
+        root.read_legacy_provider_registry(&profile, 7),
+        Err(StoreError::Quota)
+    ));
+    assert_eq!(
+        root.read_legacy_provider_registry(&profile, 8)
+            .unwrap()
+            .as_deref(),
+        Some(b"original".as_slice())
+    );
+    assert_eq!(fs::read(&store).unwrap(), b"original");
+    assert_eq!(fs::read(registry.join(LOCK_PATH)).unwrap(), lock);
+    assert_no_staged_files(&registry);
+    drop(transaction);
+}
+
+#[test]
+fn read_only_registry_rejects_a_detached_or_replaced_root_as_a_conflict() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().canonicalize().unwrap().join("data");
+    let root = DataRoot::open(&path).unwrap();
+    let profile = ProfileId::parse("defaults").unwrap();
+    fs::create_dir_all(path.join(PROFILE_PATH)).unwrap();
+    fs::write(path.join(PROFILE_PATH).join(STORE_NAME), b"detached").unwrap();
+    fs::rename(&path, path.with_file_name("old-data")).unwrap();
+    assert!(matches!(
+        root.read_legacy_provider_registry(&profile, MAX),
+        Err(StoreError::Conflict(_))
+    ));
+    fs::create_dir(&path).unwrap();
+    assert!(matches!(
+        root.read_legacy_provider_registry(&profile, MAX),
+        Err(StoreError::Conflict(_))
+    ));
+    assert_eq!(fs::read_dir(&path).unwrap().count(), 0);
+}
+
+#[test]
 fn interoperates_with_legacy_named_lock_and_never_breaks_a_stale_file() {
     let (_temp, root, profile, registry) = fixture();
     let lock_path = registry.join(LOCK_PATH);
@@ -221,6 +298,7 @@ fn refuses_symlinks_and_multilink_store_entries() {
     fs::create_dir_all(registry.parent().unwrap()).unwrap();
     symlink(&outside, &registry).unwrap();
     assert!(root.lock_legacy_provider_registry(&profile).is_err());
+    assert!(root.read_legacy_provider_registry(&profile, MAX).is_err());
     assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
     fs::remove_file(&registry).unwrap();
 
@@ -231,6 +309,10 @@ fn refuses_symlinks_and_multilink_store_entries() {
     symlink(&outside_file, &store).unwrap();
     assert!(matches!(transaction.read(MAX), Err(StoreError::Denied(_))));
     assert!(matches!(
+        root.read_legacy_provider_registry(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
+    assert!(matches!(
         transaction.publish(None, b"next", MAX, || Ok::<_, ()>(())),
         Err(LegacyProviderRegistryPublishError::BeforePublish(
             StoreError::Denied(_)
@@ -239,6 +321,10 @@ fn refuses_symlinks_and_multilink_store_entries() {
     fs::remove_file(&store).unwrap();
     fs::hard_link(&outside_file, &store).unwrap();
     assert!(matches!(transaction.read(MAX), Err(StoreError::Denied(_))));
+    assert!(matches!(
+        root.read_legacy_provider_registry(&profile, MAX),
+        Err(StoreError::Denied(_))
+    ));
     assert_eq!(fs::read(outside_file).unwrap(), b"unchanged");
     assert_no_staged_files(&registry);
     drop(transaction);

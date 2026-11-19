@@ -46,24 +46,17 @@ class _Borrow:
         "key_value": "discarded-by-the-wire-shape",
     }
     runtime_instance = "a" * 32
-    frozen_plan = None
-    publishes = False
+    frozen_plan: dict[str, Any] | None = None
 
     def __init__(self, lifetime: float = 3.0) -> None:
         self.deadline_monotonic = time.monotonic() + lifetime
         self.thread_id = threading.get_ident()
         self.revoked = threading.Event()
-        self.reads = 0
 
     def assert_current(self) -> None:
         assert threading.get_ident() == self.thread_id
         if self.revoked.is_set():
             raise PermissionError("fixture lease revoked")
-
-    def read_legacy_registry(self) -> str | None:
-        self.assert_current()
-        self.reads += 1
-        return '{"name":"日本語"}\n' if self.reads == 1 else None
 
 
 def _read_exact(peer: socket.socket, size: int) -> bytes:
@@ -124,61 +117,56 @@ def _served(
             result.result(timeout=5)
 
 
-def test_approved_provider_validation_carries_a_larger_retained_model_policy(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("apply", [False, True])
+def test_registry_limit_allows_fallback_after_a_live_checkpoint(
+    monkeypatch: pytest.MonkeyPatch, apply: bool,
 ) -> None:
     borrow = _Borrow()
-    borrow.frozen_plan = {"expected_revision": 42}
-    result = {
-        "expected_revision": 42,
-        "record": {"model_access": {
-            "mode": "explicit",
-            "model_ids": [f"model-{index}-{'x' * 120}" for index in range(150)],
-        }},
-    }
-    encoded = json.dumps(result).encode()
-    assert 16 * 1024 < len(encoded) <= 1024 * 1024
+    if apply:
+        borrow.frozen_plan = {"expected_revision": 42}
 
     def serve(peer: socket.socket) -> None:
         tag, data = _receive(peer)
         assert tag == 1
         frame = json.loads(data)
-        assert frame["plan"] == borrow.frozen_plan
-        assert "key_value" not in frame["request"]
-        for _ in range(3):
-            _send(peer, 4)
-            assert _receive(peer)[0] in {5, 6}
-        _send(peer, 7, encoded)
-
-    with _served(monkeypatch, serve) as planner:
-        assert planner.plan(borrow) == result
-        assert borrow.reads == 3
-
-
-def test_native_apply_has_a_separate_wire_operation_and_known_presave_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    borrow = _Borrow()
-    borrow.frozen_plan = {"expected_revision": 42}
-    borrow.publishes = True
-
-    def serve(peer: socket.socket) -> None:
-        tag, data = _receive(peer)
-        assert tag == 1
-        frame = json.loads(data)
-        assert frame["apply"] == borrow.frozen_plan
+        assert frame.get("apply") == borrow.frozen_plan
+        assert ("apply" in frame) is apply
         assert "plan" not in frame
-        _send(peer, 4)
-        assert _receive(peer)[0] == 5
+        assert "key_value" not in frame["request"]
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
         _send(peer, 8, b"legacy-read-required")
+        assert peer.recv(1) == b""
 
     with _served(monkeypatch, serve) as planner:
         with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
             planner.plan(borrow)
-        assert borrow.reads == 1
 
 
-def test_captured_launcher_borrow_preserves_raw_request_and_documents(
+@pytest.mark.parametrize("apply", [False, True])
+@pytest.mark.parametrize("tag, size", [(4, 0), (5, 2), (6, 0), (7, 16 * 1024 + 1)])
+def test_obsolete_document_tags_and_oversized_results_cancel_the_exchange(
+    monkeypatch: pytest.MonkeyPatch, apply: bool, tag: int, size: int,
+) -> None:
+    borrow = _Borrow()
+    if apply:
+        borrow.frozen_plan = {"expected_revision": 42}
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        # The Host must reject the header without waiting for the claimed body.
+        peer.sendall(_HEADER.pack(tag, size))
+        assert _receive(peer) == (9, b"")
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve) as planner:
+        with pytest.raises(RuntimeError, match="cleanup was unconfirmed"):
+            planner.plan(borrow)
+
+
+def test_captured_launcher_borrow_preserves_raw_request_and_checks_liveness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     borrow = _Borrow()
@@ -206,19 +194,41 @@ def test_captured_launcher_borrow_preserves_raw_request_and_documents(
         }
         _send(peer, 2)
         assert _receive(peer) == (3, b"")
-        _send(peer, 4)
-        assert _receive(peer) == (5, '{"name":"日本語"}\n'.encode())
         _send(peer, 2)
         assert _receive(peer) == (3, b"")
-        _send(peer, 4)
-        assert _receive(peer) == (6, b"")
         _send(peer, 7, json.dumps(plan).encode())
 
     with _served(monkeypatch, serve) as planner:
         monkeypatch.setenv(ipc._SOCKET_ENV, "/invalidated-after-capture")
         monkeypatch.delenv(ipc._OWNER_ENV)
         assert planner.plan(borrow) == plan
-    assert borrow.reads == 2
+
+
+def test_result_before_a_live_checkpoint_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 7, b"{}")
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+
+    with _served(monkeypatch, serve) as planner:
+        with pytest.raises(RuntimeError, match="frame is out of order"):
+            planner.plan(_Borrow())
+
+
+def test_size_fallback_requires_a_live_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 8, b"legacy-read-required")
+
+    with _served(monkeypatch, serve) as planner:
+        with pytest.raises(RuntimeError, match="failed") as error:
+            planner.plan(_Borrow())
+        assert not isinstance(error.value, ipc.NativeProviderRegistryRequiresLegacyRead)
 
 
 @pytest.mark.parametrize("work_started", [False, True])
@@ -245,25 +255,24 @@ def test_inapplicable_can_decline_only_before_a_live_checkpoint(
                 planner.plan(_Borrow())
 
 
-def test_revocation_cancels_once_across_a_fragmented_read_request(
+def test_revocation_cancels_once_across_a_fragmented_live_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     borrow = _Borrow()
 
     def serve(peer: socket.socket) -> None:
         assert _receive(peer)[0] == 1
-        pending_read = _HEADER.pack(4, 0)
-        peer.sendall(pending_read[:2])
+        pending_check = _HEADER.pack(2, 0)
+        peer.sendall(pending_check[:2])
         borrow.revoked.set()
         assert _receive(peer) == (9, b"")
-        peer.sendall(pending_read[2:])
+        peer.sendall(pending_check[2:])
         _send(peer, 8, b"cancelled")
         assert peer.recv(1) == b""
 
     with _served(monkeypatch, serve) as planner:
         with pytest.raises(PermissionError, match="fixture lease revoked"):
             planner.plan(borrow)
-    assert borrow.reads == 0
 
 
 @pytest.mark.parametrize("terminal", [None, (7, b"{}"), (8, b"unexpected")])
@@ -281,7 +290,6 @@ def test_deadline_discards_late_plan_and_requires_cleanup_proof(
     with _served(monkeypatch, serve) as planner:
         with pytest.raises(RuntimeError, match="cleanup was unconfirmed"):
             planner.plan(borrow)
-    assert borrow.reads == 0
 
 
 def test_deadline_keeps_original_failure_after_cancel_cleanup(

@@ -4883,10 +4883,10 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     from core_runtime.bootstrap import production_v4
     from core_runtime import native_provider_prepare_ipc
     from core_runtime.provider_prepare_native_v4 import (
-        DOCUMENT_LIMIT,
         MINIMUM_PREPARE_MEMORY,
         NativeProviderPrepareBorrow,
         NativeProviderPreparePlanner,
+        NativeProviderRegistryRequiresLegacyRead,
     )
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
     from tobkiri_host.admission import DurableResourceLedger, ResourceAmount, ResourceReservation
@@ -4908,8 +4908,10 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         "capabilities": ["ai.stream", "ai.generate"],
     }
     borrowed: list[NativeProviderPrepareBorrow] = []
+    oversized_observations: list[bool] = []
     rejected_native_amounts: list[int] = []
     revocations: list[str] = []
+    fixture_registry_limit = 1024 * 1024
     if launcher_mode == "unfunded":
         reserve = DurableResourceLedger.reserve
 
@@ -4939,16 +4941,24 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         borrowed.append(borrow)
         if launcher_mode == "inapplicable":
             raise native_provider_prepare_ipc.NativeProviderPrepareUnavailable()
-        count = 3 if borrow.frozen_plan is not None else 2
-        observations = [json.loads(borrow.read_legacy_registry()) for _ in range(count)]
+        frozen = borrow.frozen_plan
+        count = 3 if frozen is not None else 2
+        observations = []
+        for _ in range(count):
+            borrow.assert_current()
+            with registry.path.open("rb") as stream:
+                borrow.assert_current()
+                raw = stream.read(fixture_registry_limit + 1)
+            borrow.assert_current()
+            if len(raw) > fixture_registry_limit:
+                oversized_observations.append(frozen is not None)
+                raise NativeProviderRegistryRequiresLegacyRead()
+            observations.append(json.loads(raw))
         assert [document["revision"] for document in observations] == [1] * count
         assert all(document == observations[0] for document in observations)
-        with pytest.raises(PermissionError, match="reads are exhausted"):
-            borrow.read_legacy_registry()
-        if borrow.frozen_plan is not None:
-            assert borrow.publishes
-            assert borrow.frozen_plan["request_digest"] == canonical_digest(connection)
-            assert borrow.frozen_plan["expected_revision"] == 1
+        if frozen is not None:
+            assert frozen["request_digest"] == canonical_digest(connection)
+            assert frozen["expected_revision"] == 1
             if launcher_mode == "retired-publication":
                 with server._lifecycle_lock:
                     server._native_provider_prepare_instance = "0" * 32
@@ -4998,7 +5008,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         if launcher_mode == "oversized-registry":
             # JSON whitespace preserves this original-format document and its revision.
             with registry.path.open("ab") as stream:
-                stream.write(b" " * DOCUMENT_LIMIT)
+                stream.write(b" " * fixture_registry_limit)
         before = registry.path.read_bytes()
         cookie, csrf, origin = _authenticate(server)
 
@@ -5074,6 +5084,12 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
                 post, path, {"phase": "resume", "effect_id": effect["effect_id"]},
             )
             assert result["data"]["state"] == expected_state, result
+        for borrow in borrowed[expected_borrows:]:
+            with pytest.raises(PermissionError, match="borrow is unavailable"):
+                borrow.assert_current()
+        assert oversized_observations == (
+            [False, True] if launcher_mode == "oversized-registry" else []
+        )
         if failed_closed:
             assert registry.path.read_bytes() == before
             assert len(borrowed) == 2

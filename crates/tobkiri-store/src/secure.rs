@@ -929,7 +929,7 @@ impl OwnedFileSnapshot {
         name: &std::ffi::CStr,
     ) -> Result<(), StoreError> {
         let current = stat_entry(directory, name).map_err(existing_source_recheck_error)?;
-        if checked_file_identity(&current)? != self.identity()
+        if !same_source_entry(&current, &self.metadata)?
             || !same_source_metadata(&self.metadata, &self.file.metadata()?)
         {
             return Err(existing_source_changed());
@@ -948,6 +948,16 @@ pub(crate) fn read_existing_owned_at(
     name: &std::ffi::CStr,
     max: usize,
 ) -> Result<(Vec<u8>, OwnedFileSnapshot), StoreError> {
+    read_existing_owned_at_with_allocation_error(directory, name, max, || StoreError::Quota)
+}
+
+#[cfg(unix)]
+pub(crate) fn read_existing_owned_at_with_allocation_error(
+    directory: &File,
+    name: &std::ffi::CStr,
+    max: usize,
+    allocation_error: impl FnOnce() -> StoreError,
+) -> Result<(Vec<u8>, OwnedFileSnapshot), StoreError> {
     let entry = stat_entry(directory, name).map_err(existing_source_error)?;
     let owner = unsafe { libc::geteuid() };
     if entry.st_mode & libc::S_IFMT != libc::S_IFREG || entry.st_uid != owner || entry.st_nlink != 1
@@ -956,7 +966,6 @@ pub(crate) fn read_existing_owned_at(
             "source must be an owned regular single-link file".into(),
         ));
     }
-    let identity = checked_file_identity(&entry)?;
     // A nonregular entry may replace the checked name before openat.
     // Keep FIFO opens nonblocking and prevent acquiring a terminal.
     let fd = unsafe {
@@ -973,21 +982,24 @@ pub(crate) fn read_existing_owned_at(
     }
     let mut file = unsafe { File::from_raw_fd(fd) };
     let before = file.metadata()?;
-    if (before.dev(), before.ino()) != identity
-        || !before.is_file()
-        || before.uid() != owner
-        || before.nlink() != 1
-    {
+    if !same_source_entry(&entry, &before)? {
         return Err(existing_source_changed());
     }
-    let expected = usize::try_from(before.len())
+    let Some(expected) = usize::try_from(before.len())
         .ok()
         .filter(|length| *length <= max)
-        .ok_or(StoreError::Quota)?;
+    else {
+        OwnedFileSnapshot {
+            file,
+            metadata: before,
+        }
+        .verify_current(directory, name)?;
+        return Err(StoreError::Quota);
+    };
     let mut bytes = Vec::new();
     bytes
         .try_reserve_exact(expected)
-        .map_err(|_| StoreError::Quota)?;
+        .map_err(|_| allocation_error())?;
     bytes.resize(expected, 0);
     if let Err(error) = file.read_exact(&mut bytes) {
         if error.kind() == std::io::ErrorKind::UnexpectedEof {
@@ -1006,6 +1018,23 @@ pub(crate) fn read_existing_owned_at(
     };
     snapshot.verify_current(directory, name)?;
     Ok((bytes, snapshot))
+}
+
+#[cfg(unix)]
+fn same_source_entry(named: &libc::stat, opened: &std::fs::Metadata) -> Result<bool, StoreError> {
+    let matches = checked_file_identity(named)? == (opened.dev(), opened.ino())
+        && i128::from(named.st_mode) == i128::from(opened.mode())
+        && named.st_uid == opened.uid()
+        && i128::from(named.st_nlink) == i128::from(opened.nlink())
+        && i128::from(named.st_size) == i128::from(opened.len());
+    // The production Unix targets expose nanosecond timestamps on fstatat.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let matches = matches
+        && i128::from(named.st_mtime) == i128::from(opened.mtime())
+        && i128::from(named.st_mtime_nsec) == i128::from(opened.mtime_nsec())
+        && i128::from(named.st_ctime) == i128::from(opened.ctime())
+        && i128::from(named.st_ctime_nsec) == i128::from(opened.ctime_nsec());
+    Ok(matches)
 }
 
 #[cfg(unix)]
