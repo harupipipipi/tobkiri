@@ -1,4 +1,4 @@
-//! Effect-free routing and Gateway stream, usage, and tool intent projections.
+//! Effect-free routing and Gateway data projections.
 
 use std::{
     cmp::Ordering,
@@ -12,6 +12,9 @@ use ordered_python_compat::{
 
 #[cfg(all(feature = "component", target_arch = "wasm32"))]
 mod component;
+mod pipeline;
+
+pub use pipeline::{decide_failover, prepare_request};
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 

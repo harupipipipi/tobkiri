@@ -299,16 +299,24 @@ impl Start<'_> {
                     routing.stream_result,
                     routing.usage_cost,
                     routing.tool_intents,
+                    routing.pipeline,
                     routing.role,
                 ) {
-                    (false, false, false, role) => AiGatewayDataOperation::Route(role),
-                    (true, false, false, OriginalModelResolveRole::Stream) => {
-                        AiGatewayDataOperation::StreamResult
+                    (false, false, false, AiPipelineStart::Off, role) => {
+                        AiGatewayDataOperation::Route(role)
                     }
+                    (
+                        true,
+                        false,
+                        false,
+                        AiPipelineStart::Off,
+                        OriginalModelResolveRole::Stream,
+                    ) => AiGatewayDataOperation::StreamResult,
                     (
                         false,
                         true,
                         false,
+                        AiPipelineStart::Off,
                         role @ (OriginalModelResolveRole::Generate
                         | OriginalModelResolveRole::Stream),
                     ) => AiGatewayDataOperation::UsageCost(role),
@@ -316,9 +324,20 @@ impl Start<'_> {
                         false,
                         false,
                         true,
+                        AiPipelineStart::Off,
                         role @ (OriginalModelResolveRole::Generate
                         | OriginalModelResolveRole::Stream),
                     ) => AiGatewayDataOperation::ToolIntents(role),
+                    (false, false, false, AiPipelineStart::Prepare, role) => {
+                        AiGatewayDataOperation::RequestPrepare(role)
+                    }
+                    (
+                        false,
+                        false,
+                        false,
+                        AiPipelineStart::Failover,
+                        OriginalModelResolveRole::Generate,
+                    ) => AiGatewayDataOperation::Failover,
                     _ => bail!("AI Gateway DATA operation does not match its role"),
                 };
                 return Ok(RequestStart::AiGatewayData {
@@ -426,6 +445,18 @@ struct AiRoutingStart {
     usage_cost: bool,
     #[serde(default)]
     tool_intents: bool,
+    #[serde(default)]
+    pipeline: AiPipelineStart,
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum AiPipelineStart {
+    #[default]
+    #[serde(skip)]
+    Off,
+    Prepare,
+    Failover,
 }
 
 #[derive(Clone, Deserialize)]
@@ -2742,6 +2773,57 @@ mod tests {
                 input_bytes: 12,
             })
         ));
+    }
+
+    #[test]
+    fn ai_pipeline_start_preserves_each_signed_role_and_selects_one_operation() {
+        let start = |role, flags| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12{flags}}}"#
+            ))
+        };
+        for (role, expected) in [
+            ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
+            ("quote-stream", OriginalModelResolveRole::QuoteStream),
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start(role, r#","pipeline":"prepare""#);
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::RequestPrepare(role),
+                    input_bytes: 12,
+                }) if role == expected
+            ));
+        }
+        let frame = start("generate", r#","pipeline":"failover""#);
+        assert!(matches!(
+            parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start(),
+            Ok(RequestStart::AiGatewayData {
+                operation: AiGatewayDataOperation::Failover,
+                input_bytes: 12,
+            })
+        ));
+        for (role, flags) in [
+            ("quote-generate", r#","pipeline":"failover""#),
+            ("quote-stream", r#","pipeline":"failover""#),
+            ("stream", r#","pipeline":"failover""#),
+            ("stream", r#","pipeline":"prepare","stream_result":true"#),
+            ("generate", r#","pipeline":"prepare","usage_cost":true"#),
+            ("generate", r#","pipeline":"failover","tool_intents":true"#),
+            ("generate", r#","pipeline":"off""#),
+            ("generate", r#","pipeline":true"#),
+            ("generate", r#","pipeline":null"#),
+            ("generate", r#","pipeline":"prepare","pipeline":"failover""#),
+        ] {
+            let frame = start(role, flags);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
     }
 
     #[test]

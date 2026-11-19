@@ -1874,6 +1874,8 @@ def capture_production_dispatch(
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
     from ..native_provider_prepare_ipc import (
+        AI_PIPELINE_FAILOVER_INPUT_FIELDS,
+        AI_PIPELINE_PREPARE_REQUIRED_FIELDS,
         AI_ROUTING_MINIMUM_MEMORY,
         AI_TOOL_INTENTS_INPUT_FIELDS,
         AI_USAGE_COST_INPUT_FIELDS,
@@ -1890,6 +1892,7 @@ def capture_production_dispatch(
         SAVED_TURN_READ_MINIMUM_MEMORY,
         SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY,
         SAVED_TURN_START_MINIMUM_MEMORY,
+        AiPipelineStep,
         ConversationGetCaller,
         ModelResolveRole,
         NativeAiRoutingFailure,
@@ -1923,6 +1926,7 @@ def capture_production_dispatch(
         NativeSavedTurnStartRequest,
         SavedReceiptCaller,
         SavedTurnStartAction,
+        capture_launcher_ai_pipeline_evaluator,
         capture_launcher_ai_routing_evaluator,
         capture_launcher_ai_stream_result_normalizer,
         capture_launcher_ai_tool_intents_normalizer,
@@ -1958,6 +1962,7 @@ def capture_production_dispatch(
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
+    native_ai_pipeline_evaluator = capture_launcher_ai_pipeline_evaluator()
     native_ai_stream_result_normalizer = capture_launcher_ai_stream_result_normalizer()
     native_ai_tool_intents_normalizer = capture_launcher_ai_tool_intents_normalizer()
     native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
@@ -5662,6 +5667,16 @@ def capture_production_dispatch(
         role: f"{tool_bridge_pack}.ai-tool-intent-normalize.{role}"
         for role in ("generate", "stream")
     }
+    pipeline_pack = "rumi_ai_pipeline_pack"
+    prepare_operations = {
+        role: f"{pipeline_pack}.ai-request-prepare.{role}"
+        for role in ("generate", "stream")
+    }
+    failover_operation = f"{pipeline_pack}.ai-failover-decide.generate"
+    pipeline_operations: dict[str, AiPipelineStep] = {
+        **dict.fromkeys(prepare_operations.values(), "prepare"),
+        failover_operation: "failover",
+    }
 
     def ai_gateway_child_kind(operation_id: str) -> str:
         if operation_id == stream_operation:
@@ -5670,6 +5685,8 @@ def capture_production_dispatch(
             return "AI Usage Cost"
         if operation_id in tool_intent_operations.values():
             return "AI tool intent normalization"
+        if operation_id in pipeline_operations:
+            return "AI pipeline"
         return "AI routing"
 
     append_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge, _CapturedPlanEdge] | None = None
@@ -5684,6 +5701,7 @@ def capture_production_dispatch(
         or native_ai_stream_result_normalizer is not None
         or native_ai_usage_cost_calculator is not None
         or native_ai_tool_intents_normalizer is not None
+        or native_ai_pipeline_evaluator is not None
         or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
@@ -5705,7 +5723,8 @@ def capture_production_dispatch(
              or native_ai_routing_evaluator is not None
              or native_ai_stream_result_normalizer is not None
              or native_ai_usage_cost_calculator is not None
-             or native_ai_tool_intents_normalizer is not None)
+             or native_ai_tool_intents_normalizer is not None
+             or native_ai_pipeline_evaluator is not None)
             and turn_edge is not None
             and orchestration_edge is not None
         ):
@@ -5783,6 +5802,28 @@ def capture_production_dispatch(
                         ai_routing_routes[gateway_principal, tool_intent_operation] = (
                             role, (tool_intent_edge, *parents),
                         )
+                if native_ai_pipeline_evaluator is not None:
+                    prepare_operation = prepare_operations[call_kind]
+                    prepare_edge = select_original_chat_edge(
+                        {gateway_principal}, pipeline_pack,
+                        "tobkiri.service.ai.request.prepare.v1", prepare_operation,
+                        f"{pipeline_pack}.ai-pipeline.prepare", EffectClass.PRIVILEGED,
+                    )
+                    if prepare_edge is not None:
+                        ai_routing_routes[gateway_principal, prepare_operation] = (
+                            role, (prepare_edge, *parents),
+                        )
+                    if role == "generate":
+                        failover_edge = select_original_chat_edge(
+                            {gateway_principal}, pipeline_pack,
+                            "tobkiri.service.ai.failover.decide.v1", failover_operation,
+                            f"{pipeline_pack}.ai-pipeline.failover",
+                            EffectClass.PRIVILEGED,
+                        )
+                        if failover_edge is not None:
+                            ai_routing_routes[gateway_principal, failover_operation] = (
+                                role, (failover_edge, *parents),
+                            )
 
     def saved_append_lineage(
         context: RequestContext,
@@ -6073,18 +6114,25 @@ def capture_production_dispatch(
         operation_id: str,
     ) -> tuple[ModelResolveRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         route = ai_routing_routes.get((context.caller_principal.value, operation_id))
+        if route is None:
+            return None
         if operation_id == stream_operation:
-            expected_fields = {"request_id", "provider_attempt", "value"}
+            matches_input = payload.keys() == {"request_id", "provider_attempt", "value"}
         elif operation_id in usage_operations.values():
-            expected_fields = AI_USAGE_COST_INPUT_FIELDS
+            matches_input = payload.keys() == AI_USAGE_COST_INPUT_FIELDS
         elif operation_id in tool_intent_operations.values():
-            expected_fields = AI_TOOL_INTENTS_INPUT_FIELDS
+            matches_input = payload.keys() == AI_TOOL_INTENTS_INPUT_FIELDS
+        elif operation_id in prepare_operations.values():
+            # The Gateway spreads its input into the signed Prepare child.
+            matches_input = AI_PIPELINE_PREPARE_REQUIRED_FIELDS <= payload.keys()
+        elif operation_id == failover_operation:
+            matches_input = payload.keys() == AI_PIPELINE_FAILOVER_INPUT_FIELDS
         else:
-            expected_fields = {
+            matches_input = payload.keys() == {
                 "models", "execution_providers", "health", "requirements",
                 "decision_time",
             }
-        if route is None or set(payload) != expected_fields:
+        if not matches_input:
             return None
         role, (router_edge, *parent_edges) = route
         ancestors = match_saved_gateway_ancestors(parent, parent_edges)
@@ -6112,6 +6160,7 @@ def capture_production_dispatch(
         stream_result = contribution.operation_id == stream_operation
         usage_cost = contribution.operation_id in usage_operations.values()
         tool_intents = contribution.operation_id in tool_intent_operations.values()
+        pipeline = pipeline_operations.get(contribution.operation_id)
         kind = ai_gateway_child_kind(contribution.operation_id)
 
         def invoke(
@@ -6184,6 +6233,7 @@ def capture_production_dispatch(
                     stream_result=stream_result,
                     usage_cost=usage_cost,
                     tool_intents=tool_intents,
+                    pipeline=pipeline,
                 ))
             except (
                 NativeProviderPrepareUnavailable,
@@ -6848,6 +6898,7 @@ def capture_production_dispatch(
             ("AI stream normalization", native_ai_stream_result_normalizer),
             ("AI Usage Cost", native_ai_usage_cost_calculator),
             ("AI tool intent normalization", native_ai_tool_intents_normalizer),
+            ("AI pipeline", native_ai_pipeline_evaluator),
         ):
             if evaluator is None:
                 continue

@@ -32,6 +32,22 @@ interface tool-intents {
   normalize: func(request: string) -> result<string, error>;
 }
 
+interface request-prepare {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Prepare provider-neutral Gateway request data, including opaque references.
+  /// An empty result leaves preparation to the original pipeline provider.
+  prepare: func(request: string) -> result<string, error>;
+}
+
+interface failover {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Evaluate the supplied replay-safety evidence as a Gateway decision.
+  /// An empty result leaves the decision to the original pipeline provider.
+  decide: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
@@ -39,4 +55,6 @@ world pack {
   export stream-result;
   export usage-cost;
   export tool-intents;
+  export request-prepare;
+  export failover;
 }

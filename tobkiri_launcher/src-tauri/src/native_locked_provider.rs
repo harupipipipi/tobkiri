@@ -15,8 +15,9 @@ use tobkiri_core::{
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
-    OriginalAiRoutingSelection, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
-    OriginalToolIntentsChoice, OriginalUsageCostChoice,
+    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalRequestPrepareChoice,
+    OriginalSavedLocalChatChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
+    OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -198,6 +199,26 @@ impl NativeApplicationSources {
     pub(crate) fn tool_intents_bundle<'pin>(
         &self,
         choice: &'pin OriginalToolIntentsChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(choice.pins())], budget)
+    }
+
+    /// Capture the signed Bundle documents behind one Gateway request-preparation grant.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn request_prepare_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalRequestPrepareChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(choice.pins())], budget)
+    }
+
+    /// Capture the signed Bundle documents behind the original Generate failover grant.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn failover_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalFailoverChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
         self.ordinary_ai_bundle([Some(choice.pins())], budget)

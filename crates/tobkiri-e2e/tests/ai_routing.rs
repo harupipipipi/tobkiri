@@ -168,5 +168,61 @@ async fn ai_routing_uses_verified_wasm_port() -> Result<()> {
             .await?
             .is_empty()
     );
+
+    let shape = ShapeRef::parse("local.ai-routing.request-prepare@1.0")?;
+    let operation = OpName::parse("prepare")?;
+    let prepare = r#"{"request_id":" fixture-prepare ","decision_time":10,"messages":[{"role":"user","content":"こんにちは"}],"parameters":{"max_tokens":24},"requirements":{"preferred_model_id":"org/local","unknown_present":true,"modalities":["text"]},"model_reference":"daily","resolve_only":true}"#;
+    let reply: Value = serde_json::from_str(&invoke(&shape, &operation, prepare).await?)?;
+    ensure!(
+        reply
+            == json!({
+                "request_id": "fixture-prepare",
+                "decision_time": 10.0,
+                "deadline": 70.0,
+                "messages": [{"role":"user","content":"こんにちは"}],
+                "input": null,
+                "parameters": {"max_tokens":24},
+                "tools": [],
+                "requirements": {"preferred_model_id":"org/local","modalities":["text"]},
+                "credential_handle": null,
+                "idempotency_key": null,
+                "allow_failover": false,
+                "policy_revision": "",
+                "conversation_id": null,
+                "profile_id": null,
+                "model_profile_id": null,
+                "model_reference": "daily",
+            })
+    );
+    let expired = r#"{"request_id":"fixture-prepare","decision_time":10,"deadline":10}"#;
+    ensure!(invoke(&shape, &operation, expired).await?.is_empty());
+    let invalid_ref =
+        r#"{"request_id":"fixture-prepare","decision_time":10,"credential_handle":"fixture"}"#;
+    ensure!(invoke(&shape, &operation, invalid_ref).await?.is_empty());
+
+    let shape = ShapeRef::parse("local.ai-routing.failover@1.0")?;
+    let operation = OpName::parse("decide")?;
+    let failover = r#"{"allow_failover":true,"idempotency_key":"fixture-turn","tools":[],"error_code":"provider_unavailable","attempt":1,"candidate_count":2,"deadline":20,"decision_time":10}"#;
+    let reply: Value = serde_json::from_str(&invoke(&shape, &operation, failover).await?)?;
+    ensure!(
+        reply
+            == json!({
+                "allowed": true,
+                "checks": {
+                    "explicitly_allowed": true,
+                    "idempotency_bound": true,
+                    "tool_free": true,
+                    "retryable_error": true,
+                    "candidate_available": true,
+                    "deadline_remaining": true,
+                },
+                "reason": "replay_safe_failover",
+            })
+    );
+    let tool_bound = failover.replace(r#""tools":[]"#, r#""tools":[{"name":"notes.lookup"}]"#);
+    let reply: Value = serde_json::from_str(&invoke(&shape, &operation, &tool_bound).await?)?;
+    ensure!(reply["allowed"] == false);
+    ensure!(reply["checks"]["tool_free"] == false);
+    ensure!(reply["reason"] == "tool_free");
     Ok(())
 }

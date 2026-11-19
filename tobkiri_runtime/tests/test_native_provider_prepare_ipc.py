@@ -3784,7 +3784,7 @@ def test_ai_usage_cost_preserves_the_signed_payload_and_result(
         assert calculate(request) == expected
 
 
-@pytest.mark.parametrize("kind", ["usage-cost", "tool-intents"])
+@pytest.mark.parametrize("kind", ["usage-cost", "tool-intents", "pipeline"])
 @pytest.mark.parametrize(
     ("phase", "tag", "payload", "expected"),
     [
@@ -3822,11 +3822,16 @@ def test_ai_gateway_child_limits_protocol_fallback_to_preflight_and_live_decline
         capture = ipc.capture_launcher_ai_usage_cost_calculator
         signed_input = dict.fromkeys(ipc.AI_USAGE_COST_INPUT_FIELDS)
         variant = {"usage_cost": True}
-    else:
+    elif kind == "tool-intents":
         env = ipc._AI_TOOL_INTENTS_ENV
         capture = ipc.capture_launcher_ai_tool_intents_normalizer
         signed_input = {"request_id": "request", "intents": []}
         variant = {"tool_intents": True}
+    else:
+        env = ipc._AI_PIPELINE_ENV
+        capture = ipc.capture_launcher_ai_pipeline_evaluator
+        signed_input = {"request_id": "request", "decision_time": 10}
+        variant = {"pipeline": "prepare"}
     monkeypatch.setenv(env, "1")
     with _served(monkeypatch, serve), pytest.raises(expected) as failure:
         evaluate = capture()
@@ -3869,3 +3874,120 @@ def test_ai_usage_cost_result_rejects_invalid_types_and_nonfinite_revisions(
     assert ipc._decode_ai_usage_cost(json.dumps(unknown).encode()) == unknown
     with pytest.raises(ipc._ProtocolError, match="AI Usage Cost result is invalid"):
         ipc._decode_ai_usage_cost(json.dumps({**unknown, **replace_fields}).encode())
+
+
+@pytest.mark.parametrize(
+    ("role", "step"),
+    [
+        ("generate", "prepare"), ("stream", "prepare"), ("quote-generate", "prepare"),
+        ("quote-stream", "prepare"), ("generate", "failover"),
+    ],
+)
+def test_ai_pipeline_borrows_only_its_signed_gateway_input(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole, step: ipc.AiPipelineStep,
+) -> None:
+    from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
+        create_failover_operation,
+        create_prepare_operation,
+    )
+
+    if step == "prepare":
+        signed_input = {
+            "request_id": " request-例 ", "decision_time": 17.5, "messages": [],
+            "model_reference": {"profile_id": "daily"}, "resolve_only": role.startswith("quote-"),
+            "delivery_mode": "incremental" if role == "quote-stream" else "buffered",
+            "credential_handle": "opaque:fixture",
+        }
+        expected = create_prepare_operation(None)(step, signed_input)
+    else:
+        signed_input = {
+            "allow_failover": True, "idempotency_key": "bound", "tools": [],
+            "error_code": "quota", "attempt": 1, "candidate_count": 2,
+            "deadline": 20.0, "decision_time": 17.5,
+        }
+        expected = create_failover_operation(None)("decide", signed_input)
+        assert expected["allowed"] is True
+    body_input = json.dumps(signed_input, ensure_ascii=False, separators=(",", ":")).encode()
+    request = replace(_ai_routing_request(_Borrow(), role, signed_input), pipeline=step)
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        assert json.loads(body)["ai_route"] == {
+            "role": role, "input_bytes": len(body_input), "pipeline": step,
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, body_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.delenv(ipc._AI_PIPELINE_ENV, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_ai_pipeline_evaluator() is None
+        monkeypatch.setenv(ipc._AI_PIPELINE_ENV, "1")
+        monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+        evaluate = ipc.capture_launcher_ai_pipeline_evaluator()
+        route = ipc.capture_launcher_ai_routing_evaluator()
+        assert evaluate is not None and route is not None
+        with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+            route(request)
+        for invalid in (
+            replace(request, pipeline=None), replace(request, pipeline="unknown"),
+            replace(request, stream_result=True), replace(request, usage_cost=True),
+            replace(request, tool_intents=True), replace(request, input={}),
+        ):
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                evaluate(invalid)
+        with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+            evaluate(replace(request, input={
+                **signed_input, "decision_time": float("inf"),
+            }))
+        with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+            evaluate(replace(request, input={
+                **signed_input, "decision_time": "x" * (1024 * 1024),
+            }))
+        if step == "failover":
+            for invalid_role in ("stream", "quote-generate", "quote-stream"):
+                with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                    evaluate(replace(request, role=invalid_role))
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                evaluate(replace(request, input={**signed_input, "execute": True}))
+        assert evaluate(request) == expected
+
+
+@pytest.mark.parametrize("step", ["prepare", "failover"])
+def test_ai_pipeline_result_rejects_extra_fields_and_inconsistent_values(
+    step: ipc.AiPipelineStep,
+) -> None:
+    from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
+        create_failover_operation,
+        create_prepare_operation,
+    )
+
+    if step == "prepare":
+        inputs = {"request_id": "request", "decision_time": 10, "credential_handle": "opaque:a"}
+        request = replace(_ai_routing_request(_Borrow(), "generate", inputs), pipeline=step)
+        expected = create_prepare_operation(None)(step, inputs)
+
+        def decode(body: bytes) -> dict[str, Any]:
+            return ipc._decode_ai_pipeline_prepare(body, request)
+
+        changes = [
+            {"request_id": "different"}, {"deadline": 10}, {"deadline": True},
+            {"credential_handle": "opaque:other"}, {"credential_handle": None},
+            {"requirements": []}, {"allow_failover": "true"},
+        ]
+    else:
+        expected = create_failover_operation(None)("decide", {})
+        decode = ipc._decode_ai_pipeline_failover
+        changes = [
+            {"allowed": True}, {"allowed": 0}, {"reason": "idempotency_bound"},
+            {"checks": {**expected["checks"], "tool_free": 1}},
+            {"checks": {**expected["checks"], "execute": False}},
+        ]
+    assert decode(json.dumps(expected).encode()) == expected
+    for change in [*changes, {"authority_granted": True}]:
+        with pytest.raises(ipc._ProtocolError, match="result is invalid"):
+            decode(json.dumps({**expected, **change}).encode())

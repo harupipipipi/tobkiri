@@ -44,6 +44,7 @@ _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
 _AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
 _AI_TOOL_INTENTS_ENV = "TOBKIRI_NATIVE_AI_TOOL_INTENTS"
+_AI_PIPELINE_ENV = "TOBKIRI_NATIVE_AI_PIPELINE"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -88,6 +89,21 @@ AI_USAGE_COST_INPUT_FIELDS = frozenset({
     "usage", "pricing", "usage_provenance", "pricing_revision",
 })
 AI_TOOL_INTENTS_INPUT_FIELDS = frozenset({"request_id", "intents"})
+AI_PIPELINE_PREPARE_REQUIRED_FIELDS = frozenset({"request_id", "decision_time"})
+AI_PIPELINE_FAILOVER_INPUT_FIELDS = frozenset({
+    "allow_failover", "idempotency_key", "tools", "error_code", "attempt",
+    "candidate_count", "deadline", "decision_time",
+})
+_AI_PIPELINE_PREPARE_RESULT_FIELDS = frozenset({
+    "request_id", "decision_time", "deadline", "messages", "input",
+    "parameters", "tools", "requirements", "credential_handle", "idempotency_key",
+    "allow_failover", "policy_revision", "conversation_id", "profile_id",
+    "model_profile_id", "model_reference",
+})
+_AI_PIPELINE_FAILOVER_CHECKS = (
+    "explicitly_allowed", "idempotency_bound", "tool_free", "retryable_error",
+    "candidate_available", "deadline_remaining",
+)
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -400,6 +416,7 @@ class NativeConversationConfirmationRequest:
 
 
 ModelResolveRole = Literal["quote-generate", "quote-stream", "generate", "stream"]
+AiPipelineStep = Literal["prepare", "failover"]
 
 
 @dataclass(frozen=True)
@@ -427,6 +444,7 @@ class NativeAiRoutingRequest:
     stream_result: bool = False
     usage_cost: bool = False
     tool_intents: bool = False
+    pipeline: AiPipelineStep | None = None
 
 
 _NativeBorrow = (
@@ -667,6 +685,18 @@ def capture_launcher_ai_tool_intents_normalizer() -> (
     return partial(_invoke_ai_route, launcher, stream_result=False, tool_intents=True)
 
 
+def capture_launcher_ai_pipeline_evaluator() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for pure pipeline steps."""
+    if os.environ.get(_AI_PIPELINE_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=False, pipeline=True)
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -850,6 +880,8 @@ def _start_payload(
             frame["ai_route"]["usage_cost"] = True
         elif borrow.tool_intents:
             frame["ai_route"]["tool_intents"] = True
+        elif borrow.pipeline is not None:
+            frame["ai_route"]["pipeline"] = borrow.pipeline
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -960,9 +992,25 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
                 or borrow.role not in ("generate", "stream")
             )
         )
+        or (
+            borrow.pipeline is not None
+            and (
+                borrow.pipeline not in ("prepare", "failover")
+                or borrow.stream_result or borrow.usage_cost or borrow.tool_intents
+                or (borrow.pipeline == "failover" and borrow.role != "generate")
+            )
+        )
         or not isinstance(borrow.input, Mapping)
         or (borrow.usage_cost and borrow.input.keys() != AI_USAGE_COST_INPUT_FIELDS)
         or (borrow.tool_intents and borrow.input.keys() != AI_TOOL_INTENTS_INPUT_FIELDS)
+        or (
+            borrow.pipeline == "prepare"
+            and not AI_PIPELINE_PREPARE_REQUIRED_FIELDS <= borrow.input.keys()
+        )
+        or (
+            borrow.pipeline == "failover"
+            and borrow.input.keys() != AI_PIPELINE_FAILOVER_INPUT_FIELDS
+        )
     ):
         raise NativeAiRoutingFailure("invalid")
     try:
@@ -1229,6 +1277,59 @@ def _decode_ai_routing(payload: bytes) -> dict[str, Any]:
         or any(type(item) is not dict for item in result["candidates"])
         or any(type(item) is not dict for item in result["excluded"])
         or result["selected"] != next(iter(result["candidates"]), None)
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_pipeline_prepare(
+    payload: bytes, borrow: NativeAiRoutingRequest,
+) -> dict[str, Any]:
+    invalid = "native AI request prepare result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or result.keys() != _AI_PIPELINE_PREPARE_RESULT_FIELDS
+        or type(result["request_id"]) is not str
+        or not result["request_id"]
+        or result["request_id"] != str(borrow.input["request_id"]).strip()
+        or type(result["decision_time"]) not in (int, float)
+        or type(result["deadline"]) not in (int, float)
+        or result["deadline"] <= result["decision_time"]
+        or type(result["messages"]) is not list
+        or type(result["parameters"]) is not dict
+        or type(result["tools"]) is not list
+        or type(result["requirements"]) is not dict
+        or type(result["allow_failover"]) is not bool
+        or type(result["policy_revision"]) is not str
+    ):
+        raise _ProtocolError(invalid)
+    handle = result["credential_handle"]
+    if handle != borrow.input.get("credential_handle") or (
+        handle is not None
+        and (type(handle) is not str or not handle.startswith(("credential:", "opaque:")))
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_pipeline_failover(payload: bytes) -> dict[str, Any]:
+    invalid = "native AI failover result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or result.keys() != {"allowed", "checks", "reason"}
+        or type(result["checks"]) is not dict
+        or result["checks"].keys() != set(_AI_PIPELINE_FAILOVER_CHECKS)
+        or any(type(value) is not bool for value in result["checks"].values())
+    ):
+        raise _ProtocolError(invalid)
+    reason = next(
+        (key for key in _AI_PIPELINE_FAILOVER_CHECKS if not result["checks"][key]),
+        "replay_safe_failover",
+    )
+    if result["reason"] != reason or result["allowed"] is not (
+        reason == "replay_safe_failover"
     ):
         raise _ProtocolError(invalid)
     return result
@@ -1897,6 +1998,10 @@ class _Exchange:
                         plan = _decode_ai_usage_cost(payload)
                     elif borrow.tool_intents:
                         plan = _decode_ai_tool_intents(payload, borrow)
+                    elif borrow.pipeline == "prepare":
+                        plan = _decode_ai_pipeline_prepare(payload, borrow)
+                    elif borrow.pipeline == "failover":
+                        plan = _decode_ai_pipeline_failover(payload)
                     else:
                         plan = _decode_ai_routing(payload)
                 else:
@@ -2016,11 +2121,13 @@ def _invoke_ai_route(
     stream_result: bool,
     usage_cost: bool = False,
     tool_intents: bool = False,
+    pipeline: bool = False,
 ) -> dict[str, Any]:
     if (
         borrow.stream_result is not stream_result
         or borrow.usage_cost is not usage_cost
         or borrow.tool_intents is not tool_intents
+        or (borrow.pipeline is not None) is not pipeline
     ):
         raise NativeAiRoutingFailure("invalid")
     return _invoke(launcher, borrow, operation="ai_route")

@@ -288,6 +288,29 @@ static AI_TOOL_INTENTS_STREAM: Route = Route {
     ..AI_TOOL_INTENTS_GENERATE
 };
 
+static AI_REQUEST_PREPARE_GENERATE: Route = Route {
+    pack: "rumi_ai_pipeline_pack",
+    function: "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+    contract: "tobkiri.service.ai.request.prepare.v1",
+    operation: "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+    variant: "rumi_ai_pipeline_pack.ai-pipeline.prepare.python",
+    execution: PYTHON_HOST,
+};
+
+static AI_REQUEST_PREPARE_STREAM: Route = Route {
+    operation: "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+    ..AI_REQUEST_PREPARE_GENERATE
+};
+
+static AI_FAILOVER_GENERATE: Route = Route {
+    pack: "rumi_ai_pipeline_pack",
+    function: "rumi_ai_pipeline_pack.ai-pipeline.failover",
+    contract: "tobkiri.service.ai.failover.decide.v1",
+    operation: "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+    variant: "rumi_ai_pipeline_pack.ai-pipeline.failover.python",
+    execution: PYTHON_HOST,
+};
+
 static PROVIDER_GENERATE: Route = Route {
     pack: "rumi_provider_adapters_pack",
     function: "rumi_provider_adapters_pack.provider.compatibility.generate",
@@ -1032,6 +1055,61 @@ impl<'a> OriginalToolIntentsChoice<'a> {
     }
 }
 
+/// The signed ordinary saved grants to an original Gateway request-preparation operation.
+pub struct OriginalRequestPrepareChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalRequestPrepareChoice<'a> {
+    /// Select the complete chain for the exact Gateway caller and operation.
+    /// Verify every returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalModelResolveRole,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_request_prepare_records(active.records(), budget, role)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// Ordered grants from Shell to the original request-preparation operation.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
+/// The signed ordinary Generate chain to the original failover-decision operation.
+pub struct OriginalFailoverChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalFailoverChoice<'a> {
+    /// Select the original Gateway Generate grant used for failover decisions.
+    /// Verify every returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_failover_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// Ordered grants from Shell to the original Generate failover-decision operation.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1332,6 +1410,44 @@ fn select_saved_role_records(
             return Ok(None);
         }
     };
+    select_ordinary_gateway_child(active, budget, role, child)
+}
+
+fn select_request_prepare_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalModelResolveRole,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let child = match role {
+        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::Generate => {
+            &AI_REQUEST_PREPARE_GENERATE
+        }
+        OriginalModelResolveRole::QuoteStream | OriginalModelResolveRole::Stream => {
+            &AI_REQUEST_PREPARE_STREAM
+        }
+    };
+    select_ordinary_gateway_child(active, budget, role, child)
+}
+
+fn select_failover_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    // The original Gateway returns its streaming failure before consulting failover.
+    select_ordinary_gateway_child(
+        active,
+        budget,
+        OriginalModelResolveRole::Generate,
+        &AI_FAILOVER_GENERATE,
+    )
+}
+
+fn select_ordinary_gateway_child(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalModelResolveRole,
+    child: &'static Route,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
@@ -1683,6 +1799,12 @@ fn charge(budget: &Arc<dyn AllocationBudget>, work: usize) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static AI_FAILOVER_STREAM: Route = Route {
+        operation: "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+        ..AI_FAILOVER_GENERATE
+    };
+
     use serde_json::{Value, json};
     use tobkiri_canon::AllocationError;
 
@@ -1991,6 +2113,48 @@ mod tests {
                 "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
                 "sha256:65a9e1a0fafefe735fdc1494ed454f695a32e60d8c269bcb9ecf4597e64b62be",
             ),
+            (
+                &AI_REQUEST_PREPARE_GENERATE,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:dd380f85c4f21c8404cce2edfce59b384c968c43a92663642f6c3e59bae17c81",
+                "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+                "sha256:1fe94d8fb4d36baaed8cb007ebbd9806ea91c116f94b385a4118196637a3e76e",
+            ),
+            (
+                &AI_REQUEST_PREPARE_STREAM,
+                GATEWAY_QUOTE_CALLER,
+                "authority-ref:3aab30da8bb7e59a5c890bf0b703c6074738f63c36aaae99162d60750a8d6094",
+                "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+                "sha256:d2eabb89cc3ee99bc66d29dbf314e2f320e28021122d575c2da83e8d0ceeeeaf",
+            ),
+            (
+                &AI_REQUEST_PREPARE_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:d38626b7966e42b8a9f2c834d66dfe69111ab62d6b9dc4fcb8dcdda5e12585a6",
+                "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+                "sha256:1fe94d8fb4d36baaed8cb007ebbd9806ea91c116f94b385a4118196637a3e76e",
+            ),
+            (
+                &AI_REQUEST_PREPARE_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:92f1d626fd8130b7e6850e8a84b71af3cd6351e2e782f05b4d44344cb23f62aa",
+                "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+                "sha256:d2eabb89cc3ee99bc66d29dbf314e2f320e28021122d575c2da83e8d0ceeeeaf",
+            ),
+            (
+                &AI_FAILOVER_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:0fe90adffe58d0ba387c5e3c589f7da715bb21731da482fc3ef7b633c7813b99",
+                "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+                "sha256:4c6e753476bb584f4e32cdbf05e55ff7babd3e87632fe20035718a5978f6812e",
+            ),
+            (
+                &AI_FAILOVER_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:64afc8239d6e5b7d7d8d071692566782de976ec9a7313473abe1be628362d748",
+                "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+                "sha256:49b503091bb37f7f3a8a0ec8e3a2242df94d09f2d494edf2a88f7b8720241d8b",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -2164,6 +2328,9 @@ mod tests {
     const USAGE_COST_STREAM_ROW: usize = 35;
     const TOOL_INTENTS_GENERATE_ROW: usize = 36;
     const TOOL_INTENTS_STREAM_ROW: usize = 37;
+    const REQUEST_PREPARE_ROWS: std::ops::Range<usize> = 38..42;
+    const FAILOVER_GENERATE_ROW: usize = 42;
+    const FAILOVER_STREAM_ROW: usize = 43;
 
     fn select_saved_local_chat(
         records: &Value,
@@ -2202,6 +2369,87 @@ mod tests {
             [TOOL_INTENTS_GENERATE_ROW, TOOL_INTENTS_STREAM_ROW],
             GATEWAY_QUOTE_ROW..=USAGE_COST_STREAM_ROW,
         );
+    }
+
+    #[test]
+    fn request_prepare_grants_require_each_exact_gateway_role_and_operation() {
+        let select = |fixture: &Value, role| {
+            let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_request_prepare_records((&profile, &lock, &plan), &budget, role)
+        };
+        let fixture = records();
+        for ((role, child_row), (gateway_row, child_route)) in OriginalModelResolveRole::ALL
+            .into_iter()
+            .zip(REQUEST_PREPARE_ROWS)
+            .zip([
+                (GATEWAY_QUOTE_ROW, &AI_REQUEST_PREPARE_GENERATE),
+                (GATEWAY_QUOTE_ROW, &AI_REQUEST_PREPARE_STREAM),
+                (LOCAL_CHAT_GENERATE_ROWS[0], &AI_REQUEST_PREPARE_GENERATE),
+                (LOCAL_CHAT_STREAM_ROWS[0], &AI_REQUEST_PREPARE_STREAM),
+            ])
+        {
+            let [turn, orchestration, gateway, child] = select(&fixture, role).unwrap().unwrap();
+            assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
+            assert_eq!(turn.function_id(), SAVED_TURN.function);
+            assert_eq!(orchestration.caller_function_id(), turn.function_id());
+            assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
+            assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+            assert_eq!(gateway.function_id(), role.gateway_route().function);
+            assert_eq!(child.caller_function_id(), gateway.function_id());
+            assert_eq!(child.function_id(), child_route.function);
+            assert_eq!(child.contract_id(), child_route.contract);
+            assert_eq!(child.operation_id(), child_route.operation);
+
+            for row in [
+                SAVED_TURN_SETTLEMENT_ROW,
+                SAVED_ORCHESTRATION_ROW,
+                gateway_row,
+                child_row,
+            ] {
+                let mut changed = fixture.clone();
+                changed["profile"]["requested_edges"][row]["authority_mode"] =
+                    json!("interactive_only");
+                assert!(matches!(select(&changed, role), Err(Inconsistent(_))));
+                changed["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+                assert!(select(&changed, role).unwrap().is_none());
+                if row == child_row {
+                    for sibling in OriginalModelResolveRole::ALL {
+                        assert_eq!(
+                            select(&changed, sibling).unwrap().is_some(),
+                            sibling != role
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failover_grant_requires_the_generate_leaf_even_with_a_signed_stream_leaf() {
+        let select = |fixture: &Value| {
+            let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_failover_records((&profile, &lock, &plan), &budget)
+        };
+        let mut fixture = records();
+        let [_, _, gateway, failover] = select(&fixture).unwrap().unwrap();
+        assert_eq!(gateway.function_id(), GATEWAY_GENERATE_CALLER);
+        assert_eq!(failover.caller_function_id(), gateway.function_id());
+        assert_eq!(failover.function_id(), AI_FAILOVER_GENERATE.function);
+        assert_eq!(failover.contract_id(), AI_FAILOVER_GENERATE.contract);
+        assert_eq!(failover.operation_id(), AI_FAILOVER_GENERATE.operation);
+
+        assert_eq!(
+            fixture["plan"]["bindings"][FAILOVER_STREAM_ROW]["operation_id"],
+            AI_FAILOVER_STREAM.operation
+        );
+        fixture["profile"]["requested_edges"][FAILOVER_GENERATE_ROW]["authority_mode"] =
+            json!("interactive_only");
+        assert!(matches!(select(&fixture), Err(Inconsistent(_))));
+        fixture["plan"]["bindings"][FAILOVER_GENERATE_ROW]["authority_mode"] =
+            json!("interactive_only");
+        assert!(select(&fixture).unwrap().is_none());
     }
 
     fn assert_exact_ordinary_gateway_chains(

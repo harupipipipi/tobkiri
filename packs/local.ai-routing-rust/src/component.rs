@@ -4,7 +4,9 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::local::ai_routing::{routing, stream_result, tool_intents, usage_cost};
+use exports::local::ai_routing::{
+    failover, request_prepare, routing, stream_result, tool_intents, usage_cost,
+};
 use tobkiri::core::types::Error;
 
 struct Pack;
@@ -38,6 +40,18 @@ impl usage_cost::Guest for Pack {
 impl tool_intents::Guest for Pack {
     fn normalize(request: String) -> Result<String, Error> {
         Ok(crate::normalize_tool_intents(&request).unwrap_or_default())
+    }
+}
+
+impl request_prepare::Guest for Pack {
+    fn prepare(request: String) -> Result<String, Error> {
+        Ok(crate::prepare_request(&request).unwrap_or_default())
+    }
+}
+
+impl failover::Guest for Pack {
+    fn decide(request: String) -> Result<String, Error> {
+        Ok(crate::decide_failover(&request).unwrap_or_default())
     }
 }
 
