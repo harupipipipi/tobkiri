@@ -375,6 +375,14 @@ def test_voice_chain_end_to_end(
     operations_by_role = {
         "workflow-text": ("rumi_ai_gateway_pack.ai-gateway.text-generate",),
         "workflow-messages": ("rumi_ai_gateway_pack.ai-gateway.messages-generate",),
+        "workflow-text-adapter": (
+            "rumi_provider_adapters_pack.provider-generate",
+            "rumi_ai_gateway_pack.ai-gateway.text-generate",
+        ),
+        "workflow-messages-adapter": (
+            "rumi_provider_adapters_pack.provider-generate",
+            "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+        ),
         "workflow-audio-transcribe": (
             "rumi_provider_adapters_pack.provider-audio-transcribe",
             "rumi_ai_modality_pack.ai-transcribe",
@@ -393,6 +401,7 @@ def test_voice_chain_end_to_end(
         ).snapshot()
 
     snapshot.supports_workflow = True
+    snapshot.supports_workflow_adapter = True
     if native_registry:
         monkeypatch.setattr(
             ipc, "capture_launcher_provider_snapshot_reader", lambda: snapshot,
@@ -540,7 +549,8 @@ def test_voice_chain_end_to_end(
         if native_registry:
             assert [read.role for read, _ in registry_reads] == [
                 "workflow-audio-transcribe", "workflow-text",
-                "workflow-audio-speech", "workflow-messages",
+                "workflow-text-adapter", "workflow-audio-speech",
+                "workflow-messages", "workflow-messages-adapter",
             ]
             for read, dispatches in registry_reads:
                 envelope = dispatches[-1]

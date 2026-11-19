@@ -2075,11 +2075,20 @@ def test_workflow_provider_snapshot_carries_the_exact_entry(
         monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "5")
         reader = ipc.capture_launcher_provider_snapshot_reader()
         assert reader is not None and reader.supports_workflow and reader.supports_query
+        assert not reader.supports_workflow_adapter
+        if role in ipc._WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES:
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                reader(request)
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "6")
+            reader = ipc.capture_launcher_provider_snapshot_reader()
+            assert reader is not None and reader.supports_workflow_adapter
+            assert reader.supports_workflow and reader.supports_query
         assert reader(request) == result
 
 
 @pytest.mark.parametrize(("role", "entry"), [
     ("workflow-text", None), ("workflow-messages", "run.get"), ("generate", "run.advance"),
+    ("workflow-text-adapter", None), ("workflow-messages-adapter", "run.resume"),
 ])
 def test_workflow_provider_snapshot_rejects_mismatched_entry(role, entry) -> None:
     borrow = _Borrow()

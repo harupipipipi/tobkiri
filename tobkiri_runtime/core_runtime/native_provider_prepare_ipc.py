@@ -490,6 +490,7 @@ ProjectedProviderSnapshotRole = Literal[
 ]
 WorkflowProviderSnapshotRole = Literal[
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
+    "workflow-text-adapter", "workflow-messages-adapter",
 ]
 WorkflowSnapshotEntry = Literal[
     "run.advance", "run.cancel", "run.selected", "run.step.execute",
@@ -499,8 +500,10 @@ ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | ProjectedProviderSnapshotRole
     | WorkflowProviderSnapshotRole
 )
+_WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES = ("workflow-text-adapter", "workflow-messages-adapter")
 _WORKFLOW_PROVIDER_SNAPSHOT_ROLES = (
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
+    *_WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES,
 )
 WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES: tuple[WorkflowSnapshotEntry, ...] = (
     "run.advance", "run.cancel", "run.selected", "run.step.execute",
@@ -754,6 +757,7 @@ class _LauncherProviderSnapshot:
     supports_projected: bool
     supports_query: bool
     supports_workflow: bool
+    supports_workflow_adapter: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -765,6 +769,8 @@ class _LauncherProviderSnapshot:
                 and request.role in _QUERY_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_workflow
                 and request.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_workflow_adapter
+                and request.role in _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES)
         ):
             raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
@@ -773,7 +779,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2", "3", "4", "5"):
+    if version not in ("1", "2", "3", "4", "5", "6"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -781,9 +787,10 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
     return _LauncherProviderSnapshot(
         launcher,
         supports_gateway=version != "1",
-        supports_projected=version in ("3", "4", "5"),
-        supports_query=version in ("4", "5"),
-        supports_workflow=version == "5",
+        supports_projected=version in ("3", "4", "5", "6"),
+        supports_query=version in ("4", "5", "6"),
+        supports_workflow=version in ("5", "6"),
+        supports_workflow_adapter=version == "6",
     )
 
 
