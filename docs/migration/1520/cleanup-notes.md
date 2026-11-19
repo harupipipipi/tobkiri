@@ -6185,6 +6185,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Commandデータソース2件の公開応答が元の所有者と一致し、接続先と資格情報を含まないことを
   確認した。各読み取りは0.38〜0.40秒。Launcherの起動はfixtureを使用した。
 
+- `3d47446ed` と `fddfd197d` は、Workflow のテキスト生成と Messages API の Gateway、
+  および音声認識と音声合成の Adapter が行う Registry 読み取りを Rust＋Wasm へつないだ。
+  Launcher は元の Shell から Workflow への入口と、各呼び出し元の署名済み Grant を確認する。
+  Host は同じ Profile、Broker の親 Lease と期限、Registry に割り当てた個別の容量予約を
+  照合する。旧 Launcher または署名済み経路に該当しない呼び出しは従来の経路を使う。
+- `core-host` 構成の型検査と、Launcher の IPC・ジョブ・サービスの分離試験91件、追加の署名選択
+  試験2件が通過した。macOS の実ソケットと配布用 Wasm を使い、署名済み Workflow の
+  `run.advance` から4種類の読み取りを実行した。元の Registry 応答とすべて一致し、所要時間は
+  1.03〜1.42秒だった。Launcher のプロセス管理と外部 Provider への通信には試験用の実装を
+  使用した。
+- Host IPC、従来とネイティブの Workflow、Gateway と音声 Adapter の関連102件が通過した。
+  `426980433` は、旧モデルの資格情報ハンドルを Provider に渡すと想定していたテストを、
+  現在の Provider 接続が資格情報を管理する仕様に揃えた。
+- [前回の DMG CI](https://github.com/harupipipipi/tobkiri/actions/runs/44595543404) では、従来 Launcher
+  構成のテスト用証明を作る2か所で `provider_snapshot` の初期化が欠けていた。両方に初期値を追加し、
+  Workflow の呼び出し元と入口を個別に照合するテストを DMG の CI に組み込んだ。
+- Workflow のテキスト生成と Messages API は、Gateway の後に共通の汎用生成 Adapter
+  `rumi_provider_adapters_pack.provider.compatibility.generate` も Registry を独自に読む。
+  次の移植では、同じ Adapter に通じる二つの親 Gateway を区別し、それぞれの元の
+  署名済み権限を照合する。他の旧経路も移植と検証を終えてから、Python の共通読み取りを廃止する。
+
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
 - [PR #1521の追加レビュー](https://github.com/harupipipipi/tobkiri/pull/1521#pullrequestreview-5980274898)
