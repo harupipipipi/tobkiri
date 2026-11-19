@@ -6036,7 +6036,7 @@ def capture_production_dispatch(
         reservation = envelope.resource_reservation_id
         if (
             len({item.lease.token for item in chain}) != len(chain)
-            or len({item.resource_reservation_id for item in chain}) != len(chain)
+            or any(reservation == item.resource_reservation_id for item in ancestors)
             or any(
                 child.deadline_monotonic > parent.deadline_monotonic
                 for child, parent in zip(chain, ancestors)

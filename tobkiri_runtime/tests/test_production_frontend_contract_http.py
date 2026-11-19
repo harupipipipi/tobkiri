@@ -8384,8 +8384,10 @@ def test_signed_saved_gateway_response_borrows_own_role(
         assert request.deadline_monotonic == envelope.deadline_monotonic
         assert request.runtime_instance == server._native_provider_prepare_instance
         assert len({item.lease.token for item in lineage}) == 3
-        assert None not in {item.resource_reservation_id for item in lineage}
-        assert len({item.resource_reservation_id for item in lineage}) == 3
+        assert envelope.resource_reservation_id and all(
+            envelope.resource_reservation_id != parent.resource_reservation_id
+            for parent in lineage[:-1]
+        )
         for parent, child in zip(lineage, lineage[1:]):
             assert child.context.caller_principal == parent.target_principal
             assert child.deadline_monotonic <= parent.deadline_monotonic

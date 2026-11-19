@@ -2407,7 +2407,11 @@ def _ai_gateway_result_fixture(
         **value, "tool_intents": [],
     }
     if role == "stream":
-        additions = {"tool_intents": [], "events": [], "attempts": []}
+        additions = {
+            "tool_intents": [],
+            "events": [{"type": "finish", "finish_reason": "stop"}],
+            "attempts": [{"attempt": 1, "error_code": "unavailable"}],
+        }
         payload.update(additions)
         result.update(additions, delivery_mode="buffered")
     else:
@@ -2467,7 +2471,9 @@ def test_ai_gateway_result_uses_its_own_route_and_preserves_lossless_json(
         for value in ({1: "json key"}, ("tuple",), "x" * ipc._AI_ROUTING_LIMIT):
             with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
                 project(replace(borrow, input={**borrow.input, "value": value}))
-        assert project(borrow) == result
+        projected = project(borrow)
+        assert projected == result
+        assert projected["output"][-1].hex() == "-0x0.0p+0"
 
 
 @pytest.mark.parametrize("terminal", [
