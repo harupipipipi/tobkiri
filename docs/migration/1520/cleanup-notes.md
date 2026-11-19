@@ -4054,10 +4054,29 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元のShell→Saved Turn→Saved Orchestrationの2段だけを物理確認する処理を既存追記と共用した。
   追記は引き続きMessage Manageの3段目も必須。権限欠損・不正、Calendar呼出元の隔離を含む
   選択試験23件と、分離環境でのLauncher関連ソースの型検査が通過した。
-  InstallされたLauncherからこのPackを呼ぶ経路は後続。現行のBrokerは同じSaved principalを
+  当時のBrokerは同じSaved principalを
   通常送信とCalendarで使い、物理backendの証跡をprincipal単位で保持する。
   元の論理経路と承認を保ったまま、VMの割当て前に実際のWasm実行境界を選び、各続行で
   元のHostのpreflightと子dispatch、完了ダイジェスト、取消を保持する必要がある。
+  `4c77ee5a6` で、5本目の `local.saved-orchestration` をレシートv3でmacOS CI/E2E版に
+  同梱する。v1とv2も引き続き読み取れる。起動時は元の通常送信の2段の署名・Bundleと、
+  リソースのdigest、版、権限なしの固定WITを照合する。各要求でも稼働中のProfileと
+  同じアーカイブを再確認する。
+  IPCは稼働中の相手プロセス、runtime instance、epoch、起動証明を確認してから
+  最大4 MiBの本体を受け、既存のLIVEと取消を継承する。互換応答を使えるのは本体受信前。
+  認可を示すものは稼働証明であり、プロトコル対応を示す環境変数は存在の目印として使う。
+  新しいポートの上限は成功値のUTF-8で計上し、既存JSONをWITの文字列へ再直列化しない。
+  WITに宣言された結果型、funded allocation、既存の期限と取消を維持する。そのJSONは
+  Hostが確認したのち、元の続行とBrokerの承認に渡すデータ。
+  元のSetup記録の2段のpinと元の物理Bundleを確認した上で、固定CPythonから実Unix socket、
+  Launcherワーカー、v3、Wasmまでを分離環境で検証した。通常・続行、36 KiB入力、不正入力、
+  証明なし、稼働登録なし、epochまたはruntime instance不一致の8ケースが通過。
+  Tauri管理状態はfixture。分離macOS試験85件、Python IPC 292件が通過した。
+  配布・DMG試験112件とサブテスト12件、およびレシートと物理パスの分離Rust試験16件が
+  通過し、実アーカイブのv3を読み取り専用のDMGにマウントして照合した。
+  v3で既存Conversationの実ストア3件も通過。実Core＋Wasmは前回の50ケースと最大画像、
+  さらにWIT文字列として二重にエスケープすると4 MiBを超える正当なツール履歴も受理した。
+  通常のBrokerがVMを割り当てる前にこの経路を選ぶ実行境界の接続は後続。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは
