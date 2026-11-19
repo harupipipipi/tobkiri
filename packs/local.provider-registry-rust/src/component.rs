@@ -16,13 +16,16 @@ use crate::{
         validate_legacy_local_configuration,
     },
     failure::{SourceError, SourceResult},
-    host::{MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly},
+    host::{
+        MANAGE_OPERATION, READONLY_RESOURCE_OPERATION, invoke_manage, invoke_readonly,
+        provider_connection_snapshot,
+    },
     registry::Registry,
     routing,
     state::{Clock, DocumentStore, object, put, text},
 };
 use exports::local::provider_registry::configuration::LocalConnection;
-use ordered_python_compat::{CodecError, PyValue, dumps, loads};
+use ordered_python_compat::{CodecError, PyValue, dumps, dumps_bounded, loads};
 use tobkiri::core::{
     clock, flow,
     types::{CallbackHandle, Error, ErrorCode},
@@ -57,6 +60,41 @@ impl exports::local::provider_registry::resource::Guest for Pack {
         .map_err(source_error)?;
         encode_reply(&reply)
     }
+}
+
+impl exports::local::provider_registry::legacy_resource::Guest for Pack {
+    fn snapshot(document: Option<String>, settings_projection: bool) -> Result<String, Error> {
+        legacy_snapshot(
+            &current_profile()?,
+            document.as_deref(),
+            settings_projection,
+        )
+    }
+}
+
+fn legacy_snapshot(
+    profile: &str,
+    document: Option<&str>,
+    settings_projection: bool,
+) -> Result<String, Error> {
+    let mut registry = Registry::new(
+        &text(profile),
+        ObservedRegistry([document].into_iter()),
+        ObservationClock,
+    )
+    .map_err(source_error)?;
+    let snapshot = registry.snapshot().map_err(source_error)?;
+    let reply = if settings_projection {
+        provider_connection_snapshot(&snapshot).map_err(source_error)?
+    } else {
+        snapshot
+    };
+    // Core validates the envelope without interpreting Python's numeric values.
+    let owner = dumps_bounded(&reply, MAX_DOCUMENT_BYTES).map_err(codec_error)?;
+    let envelope = object([("owner_result", text(owner))]);
+    let encoded = dumps_bounded(&envelope, MAX_DOCUMENT_BYTES).map_err(codec_error)?;
+    core_json(&encoded)?;
+    Ok(encoded)
 }
 
 impl exports::local::provider_registry::manage::Guest for Pack {
@@ -178,9 +216,9 @@ impl Clock for ObservationClock {
     }
 }
 
-struct ObservedRegistry<'a>(std::array::IntoIter<Option<&'a str>, 2>);
+struct ObservedRegistry<'a, const N: usize>(std::array::IntoIter<Option<&'a str>, N>);
 
-impl DocumentStore for ObservedRegistry<'_> {
+impl<const N: usize> DocumentStore for ObservedRegistry<'_, N> {
     fn read(&mut self) -> SourceResult<Option<PyValue>> {
         self.0
             .next()
@@ -413,6 +451,68 @@ fn utc_timestamp(ms: u64) -> SourceResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot_owner(encoded: &str) -> String {
+        let reply = loads(encoded).unwrap();
+        let fields = reply.as_object().unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "owner_result");
+        fields[0].1.as_str().unwrap().to_owned()
+    }
+
+    #[test]
+    fn legacy_snapshot_matches_original_raw_and_settings_owner_replies() {
+        const DOCUMENT: &str = include_str!(
+            "../evidence/original-python/cases/ui-redacted-versus-raw-host-readers/actions/host-ui-reader.store-before.json"
+        );
+        const RAW: &str = include_str!(
+            "../evidence/original-python/cases/ui-redacted-versus-raw-host-readers/actions/raw-snapshot.result.json"
+        );
+        const SETTINGS: &str = include_str!(
+            "../evidence/original-python/cases/ui-redacted-versus-raw-host-readers/actions/host-ui-reader.result.json"
+        );
+
+        for (projection, expected) in [(false, RAW), (true, SETTINGS)] {
+            let reply = legacy_snapshot("defaults", Some(DOCUMENT), projection).unwrap();
+            assert_eq!(snapshot_owner(&reply), expected.trim());
+        }
+
+        let document = DOCUMENT.replace(
+            "\"private_note\": \"synthetic-private-marker\"",
+            r#""private_note": {"decimal": -0.0, "exponent": 2e-7, "wide": 9007199254740993}"#,
+        );
+        let raw = legacy_snapshot("defaults", Some(&document), false).unwrap();
+        let settings = legacy_snapshot("defaults", Some(&document), true).unwrap();
+        assert!(snapshot_owner(&raw).contains(
+            r#""private_note":{"decimal":-0.0,"exponent":2e-07,"wide":9007199254740993}"#
+        ));
+        assert_eq!(snapshot_owner(&settings), SETTINGS.trim());
+    }
+
+    #[test]
+    fn legacy_snapshot_preserves_empty_state_and_profile_binding() {
+        let raw = legacy_snapshot("defaults", None, false).unwrap();
+        let settings = legacy_snapshot("defaults", None, true).unwrap();
+        assert_eq!(
+            snapshot_owner(&raw),
+            r#"{"version":"rumi.provider-registry.store.v1","profile_id":"defaults","revision":0,"providers":[]}"#
+        );
+        assert_eq!(
+            snapshot_owner(&settings),
+            r#"{"revision":0,"providers":[]}"#
+        );
+        for projection in [false, true] {
+            let error = legacy_snapshot(
+                "defaults",
+                Some(
+                    r#"{"version":"rumi.provider-registry.store.v1","profile_id":"foreign","revision":0,"providers":{}}"#,
+                ),
+                projection,
+            )
+            .unwrap_err();
+            assert!(matches!(error.code, ErrorCode::Denied));
+        }
+    }
 
     #[test]
     fn core_milliseconds_become_original_utc_seconds() {

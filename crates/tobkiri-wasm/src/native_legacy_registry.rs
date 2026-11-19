@@ -88,6 +88,16 @@ const STAGE_COMMIT: RegistryExport = RegistryExport {
     reads: 4,
     clock: RegistryClock::Required,
 };
+const PROVIDER_SNAPSHOT: RegistryExport = RegistryExport {
+    pack: PROVIDER_PACK,
+    shape: "local.provider-registry.legacy-resource@1.0",
+    interface: "local:provider-registry/legacy-resource@1.0.0",
+    function: "snapshot",
+    error_subject: "legacy Provider Registry snapshot",
+    parameters: &["document", "settings-projection"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 const MODEL_LIST: RegistryExport = RegistryExport {
     pack: MODEL_PACK,
     shape: "local.model-registry.legacy-settings@1.0",
@@ -181,6 +191,10 @@ enum RegistryInput<'a> {
         plan: Option<&'a CoreValue>,
         read: LegacyProviderRegistryRead,
     },
+    ProviderSnapshot {
+        document: Option<&'a str>,
+        settings_projection: bool,
+    },
     ModelList(Option<&'a str>),
     DocumentLookup {
         document: Option<&'a str>,
@@ -226,6 +240,13 @@ pub type LegacyRegistryRead =
     Box<dyn FnMut(&Arc<dyn AllocationBudget>) -> Result<Option<CoreBuffer>> + Send>;
 
 pub use LegacyRegistryRead as LegacyProviderRegistryRead;
+
+/// Verify the private read-only Provider Registry declaration from the receipt.
+pub fn verify_legacy_provider_snapshot_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &PROVIDER_SNAPSHOT)?;
+    declared_registry_function(pack, &PROVIDER_SNAPSHOT)?;
+    Ok(())
+}
 
 /// Verify a receipt-checked Pack's fixed Model Save declaration at Launch.
 /// The native invocation still checks the Component's actual imports and export.
@@ -370,6 +391,27 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 request,
                 plan,
                 read,
+            },
+        )
+        .await
+    }
+
+    /// Project the active Profile's saved connections or redacted settings from
+    /// the native caller's fixed, physical Provider Registry observation.
+    pub async fn read_legacy_provider_snapshot(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: Option<&str>,
+        settings_projection: bool,
+    ) -> Result<CoreValue> {
+        self.invoke_legacy_registry(
+            pack,
+            profile_id,
+            &PROVIDER_SNAPSHOT,
+            RegistryInput::ProviderSnapshot {
+                document,
+                settings_projection,
             },
         )
         .await
@@ -572,6 +614,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
             RegistryInput::ModelSave { .. }
+            | RegistryInput::ProviderSnapshot { .. }
             | RegistryInput::DocumentLookup { .. }
             | RegistryInput::ConversationStage { .. } => true,
         };
@@ -640,6 +683,16 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             RegistryInput::ModelList(document) => {
                 model_parameters = [optional_document(document, &owners)?];
                 (&model_parameters, None)
+            }
+            RegistryInput::ProviderSnapshot {
+                document,
+                settings_projection,
+            } => {
+                two_parameters = [
+                    optional_document(document, &owners)?,
+                    Val::Bool(settings_projection),
+                ];
+                (&two_parameters, None)
             }
             RegistryInput::DocumentLookup {
                 document,
@@ -851,8 +904,13 @@ fn declared_registry_function<'a>(
         );
     }
     if returns_owner_result(export) {
+        let expected_second = if export.shape == PROVIDER_SNAPSHOT.shape {
+            WitType::Bool
+        } else {
+            WitType::String
+        };
         ensure!(
-            optional_string(&function.params[0].1) && function.params[1].1 == WitType::String,
+            optional_string(&function.params[0].1) && function.params[1].1 == expected_second,
             "legacy owner lookup parameter ABI differs"
         );
     }
@@ -877,6 +935,7 @@ fn returns_owner_result(export: &RegistryExport) -> bool {
         CONVERSATION_LINKED_CONTEXT.shape,
         CONVERSATION_RECEIPT.shape,
         MODEL_RESOLVE.shape,
+        PROVIDER_SNAPSHOT.shape,
     ]
     .contains(&export.shape)
 }
@@ -1290,7 +1349,7 @@ fn request_abi(ty: &WitType) -> bool {
 
 fn valid_parameter(actual: &Type, declared: &WitType) -> bool {
     match (actual, declared) {
-        (Type::String, WitType::String | WitType::Json) => true,
+        (Type::String, WitType::String | WitType::Json) | (Type::Bool, WitType::Bool) => true,
         (Type::Option(actual), WitType::Option(declared)) => {
             valid_parameter(&actual.ty(), declared)
         }

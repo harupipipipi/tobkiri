@@ -201,6 +201,7 @@ impl NativeRegistry {
 /// The original owner read is fixed by native operation, never by guest input.
 #[derive(Clone, Copy)]
 pub(crate) enum LegacyReadDocument {
+    Provider,
     Model,
     Conversation,
 }
@@ -218,6 +219,9 @@ pub(crate) fn read_legacy_document(
         .map_err(CoreError::from)?;
     let root = open_legacy_registry_root(root)?;
     let bytes = match document {
+        LegacyReadDocument::Provider => {
+            root.read_legacy_provider_registry(&profile, DOCUMENT_LIMIT)
+        }
         LegacyReadDocument::Model => root.read_legacy_model_registry(&profile, DOCUMENT_LIMIT),
         LegacyReadDocument::Conversation => {
             root.read_legacy_conversation_store(&profile, DOCUMENT_LIMIT)

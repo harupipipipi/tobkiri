@@ -527,27 +527,20 @@ enum NativeLegacyCall<'a> {
 }
 
 #[cfg(unix)]
-async fn native_legacy_configuration(
-    core: &Arc<Core>,
-    expected: &tobkiri_profile::PackPin,
-    profile: &str,
-    root: &Path,
-    (request, operation): (&Value, NativeLegacyCall<'_>),
-    mut observe: impl FnMut() -> Result<Option<String>> + Send + 'static,
-    expected_reads: usize,
-) -> Result<Value> {
+mod original_source {
+    use super::*;
     use std::collections::BTreeMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::path::PathBuf;
 
-    enum NoDeclaration {}
+    pub(super) enum NoDeclaration {}
     impl NativeArtifactDeclaration for NoDeclaration {
         fn digest(&self) -> &str {
             match *self {}
         }
     }
 
-    struct OriginalSource {
-        root: std::path::PathBuf,
+    pub(super) struct OriginalSource {
+        root: PathBuf,
         declarations: BTreeMap<String, NoDeclaration>,
     }
     impl NativeDeclaredArtifactSource for OriginalSource {
@@ -562,10 +555,30 @@ async fn native_legacy_configuration(
         }
     }
 
-    let mut inspection = core.inspect_declared_artifacts(OriginalSource {
-        root: root.to_path_buf(),
-        declarations: BTreeMap::new(),
-    })?;
+    impl OriginalSource {
+        pub(super) fn new(root: &Path) -> Self {
+            Self {
+                root: root.to_path_buf(),
+                declarations: BTreeMap::new(),
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn native_legacy_configuration(
+    core: &Arc<Core>,
+    expected: &tobkiri_profile::PackPin,
+    profile: &str,
+    root: &Path,
+    (request, operation): (&Value, NativeLegacyCall<'_>),
+    mut observe: impl FnMut() -> Result<Option<String>> + Send + 'static,
+    expected_reads: usize,
+) -> Result<Value> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mut inspection =
+        core.inspect_declared_artifacts(original_source::OriginalSource::new(root))?;
     let budget = inspection.allocation_budget()?.clone();
     let registry = if let NativeLegacyCall::PrepareFromFile(user_data)
     | NativeLegacyCall::Publish { user_data, .. } = &operation
@@ -664,6 +677,100 @@ async fn native_legacy_configuration(
             })?;
     }
     Ok(serde_json::from_slice(output.as_bytes())?)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires a staged Provider Registry Pack archive"]
+async fn original_provider_snapshot_reads_physical_owner_with_exact_projection() -> Result<()> {
+    const DOCUMENT: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-evidence-and-ui-time-projection/actions/host-ui-projection.store-before.json"
+    );
+    const SETTINGS: &str = include_str!(
+        "../../../packs/local.provider-registry-rust/evidence/original-python/cases/health-evidence-and-ui-time-projection/actions/host-ui-projection.result.json"
+    );
+    const RELATIVE: &str =
+        "packs/rumi_provider_registry_pack/profiles/defaults/provider_registry.store.json";
+    let directory = physical_temp()?;
+    let data = directory.path().join("owner");
+    let original = DataRoot::open(&data)?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(directory.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let expected = registry::pack(PACK)?;
+    let archive = expected
+        .pin
+        .source
+        .strip_prefix("file:")
+        .context("Pack file")?;
+    let read = |profile: &'static str, settings| {
+        let (core, data, pin, source_root) = (&core, &data, &expected.pin, directory.path());
+        async move {
+            let mut inspection =
+                core.inspect_declared_artifacts(original_source::OriginalSource::new(source_root))?;
+            let result: Result<_> = async {
+                let mut file = std::fs::File::open(archive)?;
+                let length = file.metadata()?.len();
+                let pack = inspection.verify_pack_archive(&mut file, length)?;
+                ensure!(pack.hash == pin.sha256);
+                tobkiri_wasm::verify_legacy_provider_snapshot_declaration(&pack)?;
+                Ok(inspection
+                    .read_legacy_provider_snapshot(&pack, data, profile, settings)
+                    .await?)
+            }
+            .await;
+            inspection.finish().await?;
+            let result = result?;
+            let owner = result
+                .get_key("owner_result")
+                .context("Provider owner reply")?;
+            Ok::<_, anyhow::Error>(
+                owner
+                    .as_str()
+                    .context("opaque Provider owner reply")?
+                    .to_owned(),
+            )
+        }
+    };
+
+    ensure!(read("defaults", true).await? == r#"{"revision":0,"providers":[]}"#);
+    ensure!(!data.join("packs").exists());
+    original.write_atomic(RELATIVE, DOCUMENT.as_bytes())?;
+    let input: Value = serde_json::from_str(DOCUMENT)?;
+    let raw: Value = serde_json::from_str(&read("defaults", false).await?)?;
+    let records: Vec<_> = input["providers"]
+        .as_object()
+        .context("fixture records")?
+        .values()
+        .cloned()
+        .collect();
+    ensure!(
+        raw == json!({
+            "version": input["version"], "profile_id": "defaults", "revision": input["revision"],
+            "providers": records,
+        })
+    );
+    let projected: Value = serde_json::from_str(&read("defaults", true).await?)?;
+    let expected_projection: Value = serde_json::from_str(SETTINGS)?;
+    ensure!(projected == expected_projection);
+    ensure!(std::fs::read(data.join(RELATIVE))? == DOCUMENT.as_bytes());
+
+    let other = read("other", false).await?;
+    ensure!(serde_json::from_str::<Value>(&other)?["providers"] == json!([]));
+    let owner_file = data.join(RELATIVE);
+    let replaced = owner_file.with_file_name("provider-registry-fixture.json");
+    std::fs::rename(&owner_file, &replaced)?;
+    std::os::unix::fs::symlink(&replaced, &owner_file)?;
+    let error = read("defaults", false).await.expect_err("owner symlink");
+    ensure!(matches!(
+        error.downcast_ref::<NativeArtifactError>(),
+        Some(NativeArtifactError::Core(CoreError::Store(
+            StoreError::Denied(_)
+        )))
+    ));
+    ensure!(std::fs::read(&replaced)? == DOCUMENT.as_bytes());
+    Ok(())
 }
 
 async fn verify_local_commit(

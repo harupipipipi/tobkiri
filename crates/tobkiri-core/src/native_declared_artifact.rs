@@ -93,6 +93,8 @@ pub enum NativeArtifactError {
     ProviderRegistryPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
     #[error("{0}")]
     ProviderRejected(#[from] LegacyRegistryError),
+    #[error("native Provider Registry snapshot failed")]
+    ProviderSnapshot(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Model Registry projection failed")]
     ModelSettings(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("native Model Registry resolution failed")]
@@ -619,6 +621,38 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
             Err(error) => NativeArtifactError::ConversationAppend(error.into()),
+        })
+    }
+
+    /// Read the original Provider Registry in place and project it through the
+    /// fixed Pack export. The caller selects the original admitted operation's
+    /// view. The guest only receives the Profile and bounded owner bytes.
+    pub async fn read_legacy_provider_snapshot(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        settings_projection: bool,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        self.require_ready()?;
+        if pack.manifest.id.as_str() != "local.provider-registry" {
+            return Err(NativeArtifactError::Denied);
+        }
+        let framed = self
+            .read_original_document(root, profile_id, LegacyReadDocument::Provider)
+            .await?;
+        let document = original_document_text(&framed, |error| {
+            NativeArtifactError::ProviderSnapshot(Box::new(error))
+        })?;
+        self.require_live()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let snapshot = store
+            .read_legacy_provider_snapshot(pack, profile_id, document, settings_projection)
+            .await;
+        self.require_live()?;
+        snapshot.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ProviderRejected(rejected),
+            Err(error) => NativeArtifactError::ProviderSnapshot(error.into()),
         })
     }
 

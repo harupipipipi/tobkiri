@@ -11,6 +11,14 @@ interface %resource {
   snapshot: func(payload: json) -> result<json, error>;
 }
 
+interface legacy-resource {
+  use tobkiri:core/types@1.2.0.{error, json};
+
+  /// Snapshot the active Profile's original Registry document supplied by Core.
+  /// Apply the redacted settings projection only when requested.
+  snapshot: func(document: option<string>, settings-projection: bool) -> result<json, error>;
+}
+
 interface manage {
   use tobkiri:core/types@1.2.0.{json, error};
 
@@ -94,6 +102,7 @@ world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export %resource;
+  export legacy-resource;
   export manage;
   export routing;
   export configuration;

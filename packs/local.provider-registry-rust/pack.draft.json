@@ -17,6 +17,12 @@
       "wit": "wit/pack.wit"
     },
     {
+      "name": "local.provider-registry.legacy-resource",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
+    },
+    {
       "name": "local.provider-registry.manage",
       "version": "1.0",
       "kind": "port",
@@ -75,6 +81,11 @@
     "provides": [
       {
         "shape": "local.provider-registry.resource",
+        "version": "1.0",
+        "optional": false
+      },
+      {
+        "shape": "local.provider-registry.legacy-resource",
         "version": "1.0",
         "optional": false
       },
@@ -161,6 +172,7 @@
     "wit/legacy-configuration-commit.shape.json",
     "wit/legacy-configuration-live.shape.json",
     "wit/legacy-configuration.shape.json",
+    "wit/legacy-resource.shape.json",
     "wit/manage.shape.json",
     "wit/pack.wit",
     "wit/resource.shape.json",
