@@ -133,11 +133,24 @@ class ModelAccessResourceHostFactoryV4:
                     or not payload["provider_instance_id"].strip()
                 ):
                     raise PermissionError("model access payload is invalid")
-                invocation.assert_current()
-                registry = ProviderRegistry(
-                    context.profile_id, user_data_root=context.user_data_root
-                )
-                snapshot = registry.snapshot()
+
+                registry: ProviderRegistry | None = None
+
+                def read_snapshot() -> Mapping[str, Any]:
+                    nonlocal registry
+                    invocation.assert_current()
+                    read = getattr(invocation, "model_access_registry_snapshot", None)
+                    if read is not None:
+                        snapshot = read()
+                        if snapshot is not None:
+                            return snapshot
+                    if registry is None:
+                        registry = ProviderRegistry(
+                            context.profile_id, user_data_root=context.user_data_root
+                        )
+                    return registry.snapshot()
+
+                snapshot = read_snapshot()
                 identity = payload["provider_instance_id"]
                 connection = _connection(snapshot, identity)
                 official = is_official_openrouter(connection)
@@ -181,7 +194,7 @@ class ModelAccessResourceHostFactoryV4:
                 ):
                     raise ValueError("model catalog result is invalid")
                 # Re-read after discovery to reject deletion or policy changes during dispatch.
-                current = registry.snapshot()
+                current = read_snapshot()
                 if current != snapshot:
                     raise PermissionError("provider registry changed during catalog discovery")
                 result = project_model_access_catalog(snapshot, identity, catalog)

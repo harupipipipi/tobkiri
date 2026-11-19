@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -21,6 +22,7 @@ from tests.test_production_frontend_contract_http import (
     _authenticate,
     _captured_production_server,
     _contract,
+    _publish_native_runtime_fixture,
     _request,
 )
 
@@ -70,6 +72,91 @@ class _ModelsResponse:
 
     def read(self, limit: int) -> bytes:
         return self.body[:limit]
+
+
+@pytest.mark.parametrize("delete_during_discovery", [False, True], ids=["live", "changed"])
+def test_native_model_access_rechecks_registry_under_the_catalog_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_catalog_cache: None,
+    delete_during_discovery: bool,
+) -> None:
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied
+    from tobkiri_host.broker import RequestEnvelope
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    calls: list[ipc.NativeProviderSnapshotRequest] = []
+    dispatches: list[RequestEnvelope] = []
+    catalog_requests = []
+
+    def native_snapshot(request: ipc.NativeProviderSnapshotRequest) -> Mapping[str, Any]:
+        request.assert_current()
+        calls.append(request)
+        return ProviderRegistry(
+            request.context.profile_id, user_data_root=tmp_path / "user-data",
+        ).snapshot()
+
+    def open_models(request: Any, **kwargs: Any) -> _ModelsResponse:
+        catalog_requests.append(request)
+        if delete_during_discovery:
+            registry.delete("connection/work", expected_revision=1)
+        return _ModelsResponse([{"id": "vendor/model", "name": "Synthetic model"}])
+
+    native_snapshot.supports_model_access = True
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_provider_snapshot_reader", lambda: native_snapshot,
+    )
+    monkeypatch.setattr(urllib.request, "urlopen", open_models)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, credential_store_factory=host_credential_store_factory,
+    ) as (server, session, _authority):
+        registry = _seed(tmp_path)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            dispatches.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        headers = _headers(server)
+        target = {"profile_id": "defaults", "provider_instance_id": "connection/work"}
+        status, read = _post(server, headers, _READ, target)
+        assert status == 200, read
+        assert read["data"]["registry_revision"] == 1
+        assert _MARKER not in json.dumps(read)
+        status, catalog = _post(server, headers, "/api/ai/provider-model-access/catalog", {
+            **target, "discovery_filters": {"output_modalities": ["text"]},
+        })
+        if delete_during_discovery:
+            assert status != 200, catalog
+            assert registry.snapshot()["providers"] == []
+        else:
+            assert status == 200, catalog
+            assert catalog["data"]["models"] == [
+                {"model_id": "vendor/model", "display_name": "Synthetic model"},
+            ]
+        assert _MARKER not in json.dumps(catalog)
+
+        assert [call.role for call in calls] == [
+            "model-access-read", "model-access-catalog", "model-access-catalog",
+        ]
+        read_envelope, catalog_envelope, confirmation_envelope = (
+            next(envelope for envelope in dispatches if envelope.context is call.context)
+            for call in calls
+        )
+        assert read_envelope.resource_reservation_id is not None
+        assert catalog_envelope.resource_reservation_id is not None
+        assert read_envelope.resource_reservation_id != catalog_envelope.resource_reservation_id
+        assert catalog_envelope is confirmation_envelope
+        assert calls[1].deadline_monotonic == calls[2].deadline_monotonic
+        assert len(catalog_requests) == 1
+        assert all(
+            name.lower() not in {"authorization", "cookie"}
+            for name in catalog_requests[0].headers
+        )
+        for call in calls:
+            with pytest.raises((AuthorityDenied, PermissionError)):
+                call.assert_current()
 
 
 @pytest.mark.parametrize("models", [[{"id": "vendor/model", "name": "Synthetic model"}], []])

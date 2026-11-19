@@ -1950,6 +1950,7 @@ def capture_production_dispatch(
         ConversationGetCaller,
         ConversationCompletePhase,
         ModelResolveRole,
+        ModelAccessProviderSnapshotRole,
         NativeAiRoutingFailure,
         NativeAiRoutingRequest,
         NativeApplicationPresentationRequest,
@@ -4319,6 +4320,18 @@ def capture_production_dispatch(
                 guard=self.assert_current,
             )
 
+        def model_access_registry_snapshot(self) -> Mapping[str, Any] | None:
+            """Borrow the original Model Access operation's own Registry read."""
+            envelope = self._envelope
+            source = native_model_access_snapshot_source(
+                envelope.context, envelope.payload, envelope.operation_id,
+            )
+            if source is None:
+                return None
+            role, edge = source
+            result, _ = borrow_native_provider_snapshot(self, role, edge, None)
+            return result
+
         def contract_client(
             self,
             *,
@@ -5194,6 +5207,23 @@ def capture_production_dispatch(
                 if read is not None:
                     projected_snapshot_routes[read.caller.principal_id] = (role, read, query)
 
+    model_access_snapshot_routes: dict[
+        str, tuple[ModelAccessProviderSnapshotRole, _CapturedPlanEdge]
+    ] = {}
+    if getattr(native_provider_snapshot_reader, "supports_model_access", False) is True:
+        model_access_operations: tuple[tuple[ModelAccessProviderSnapshotRole, str], ...] = (
+            ("model-access-read", "read"), ("model-access-catalog", "catalog"),
+        )
+        for role, name in model_access_operations:
+            operation = f"rumi_provider_registry_pack.{role}"
+            edge = select_original_chat_edge(
+                desktop_shell_principal_ids, "rumi_provider_registry_pack",
+                _MODEL_PROVIDER_CONTRACT, operation,
+                f"rumi_provider_registry_pack.model-access.{name}", EffectClass.PRIVILEGED,
+            )
+            if edge is not None:
+                model_access_snapshot_routes[operation] = role, edge
+
     native_model_save_edge: _CapturedPlanEdge | None = None
     if native_model_save_writer is not None or supports_projected_snapshot:
         manage = select_original_chat_edge(
@@ -5447,9 +5477,80 @@ def capture_production_dispatch(
             return route.role, route.registry, parent, None
         return None
 
+    def native_model_access_snapshot_source(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        operation_id: str,
+    ) -> tuple[ModelAccessProviderSnapshotRole, _CapturedPlanEdge] | None:
+        source = model_access_snapshot_routes.get(operation_id)
+        if source is None or native_provider_runtime is None:
+            return None
+        role, edge = source
+        required = {"profile_id", "provider_instance_id"}
+        allowed = required | ({"discovery_filters"} if role == "model-access-catalog" else set())
+        connection_id = payload.get("provider_instance_id")
+        if (
+            context.caller_principal.value != edge.caller.principal_id
+            or parent_invocation_scopes.lookup(context.caller_session_id) is not None
+            or payload.get("profile_id") != context.profile_id
+            or not required <= payload.keys() <= allowed
+            or not isinstance(connection_id, str) or not connection_id.strip()
+        ):
+            return None
+        return source
+
+    def borrow_native_provider_snapshot(
+        invocation: _HostInvocation,
+        role: ProviderSnapshotRole,
+        edge: _CapturedPlanEdge,
+        parent: CapturedInvocationScopeV4 | None,
+        workflow_entry: WorkflowSnapshotEntry | None = None,
+    ) -> tuple[Mapping[str, Any] | None, Callable[[], None]]:
+        envelope = invocation.envelope
+        context = envelope.context
+        pinned = native_provider_runtime
+        if (
+            native_provider_snapshot_reader is None or pinned is None
+            or not matches_captured_edge(envelope, edge)
+            or invocation.parent_invocation is not parent
+            or (parent is not None and (
+                envelope.lease.token == parent.envelope.lease.token
+                or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+                or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+            ))
+        ):
+            raise AuthorityDenied("native Provider snapshot lineage changed")
+
+        def guard() -> None:
+            invocation.assert_current()
+            if (
+                native_provider_runtime is not pinned
+                or parent_invocation_scopes.lookup(context.caller_session_id) is not parent
+            ):
+                raise AuthorityDenied("native Provider snapshot capture changed")
+            pinned[1]()
+            production_admission.native_resources(envelope.resource_reservation_id)
+
+        guard()
+        resources = production_admission.native_resources(envelope.resource_reservation_id)
+        if resources.memory_bytes < PROVIDER_SNAPSHOT_MINIMUM_MEMORY:
+            return None, guard
+        try:
+            result = native_provider_snapshot_reader(NativeProviderSnapshotRequest(
+                context=context,
+                runtime_instance=pinned[0],
+                deadline_monotonic=envelope.deadline_monotonic,
+                assert_current=guard,
+                role=role,
+                workflow_entry=workflow_entry,
+            ))
+        except (NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead):
+            result = None
+        guard()
+        return result, guard
+
     def wrap_native_provider_snapshot(
         contribution: HostProviderContributionV4,
-        reader: Callable[[NativeProviderSnapshotRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
         """Use Wasm for the independently admitted Registry GET."""
 
@@ -5466,51 +5567,13 @@ def capture_production_dispatch(
             if source is None:
                 return contribution.invoke(operation_id, payload, invocation)
             role, edge, parent, workflow_entry = source
-            pinned = native_provider_runtime
-            if (
-                pinned is None
-                or not matches_captured_edge(envelope, edge)
-                or envelope.operation_id != operation_id
-                or payload is not envelope.payload
-                or invocation.parent_invocation is not parent
-                or (parent is not None and (
-                    envelope.lease.token == parent.envelope.lease.token
-                    or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
-                    or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
-                ))
-            ):
+            if envelope.operation_id != operation_id or payload is not envelope.payload:
                 raise AuthorityDenied("native Provider snapshot lineage changed")
-
-            def guard() -> None:
-                invocation.assert_current()
-                if (
-                    native_provider_runtime is not pinned
-                    or parent_invocation_scopes.lookup(context.caller_session_id) is not parent
-                ):
-                    raise AuthorityDenied("native Provider snapshot capture changed")
-                pinned[1]()
-                production_admission.native_resources(envelope.resource_reservation_id)
-
-            guard()
-            resources = production_admission.native_resources(envelope.resource_reservation_id)
-            if resources.memory_bytes >= PROVIDER_SNAPSHOT_MINIMUM_MEMORY:
-                try:
-                    result = reader(NativeProviderSnapshotRequest(
-                        context=context,
-                        runtime_instance=pinned[0],
-                        deadline_monotonic=envelope.deadline_monotonic,
-                        assert_current=guard,
-                        role=role,
-                        workflow_entry=workflow_entry,
-                    ))
-                except (
-                    NativeProviderPrepareUnavailable, NativeProviderRegistryRequiresLegacyRead,
-                ):
-                    pass
-                else:
-                    guard()
-                    return result
-                guard()
+            result, guard = borrow_native_provider_snapshot(
+                invocation, role, edge, parent, workflow_entry,
+            )
+            if result is not None:
+                return result
             result = contribution.invoke(operation_id, payload, invocation)
             guard()
             return result
@@ -8031,8 +8094,13 @@ def capture_production_dispatch(
                 for edge in snapshot_edges if edge.resolved_binding in captured_bindings
             }
             native_provider_snapshot_bindings.update(snapshot_bindings)
+            native_provider_snapshot_bindings.update(
+                ((*edge.binding_key[1:], edge.target.principal_id), edge.resolved_binding)
+                for _, edge in model_access_snapshot_routes.values()
+                if edge.resolved_binding in captured_bindings
+            )
             contributions = tuple(
-                wrap_native_provider_snapshot(item, native_provider_snapshot_reader)
+                wrap_native_provider_snapshot(item)
                 if item.key in snapshot_bindings else item
                 for item in contributions
             )
@@ -8347,7 +8415,8 @@ def capture_production_dispatch(
             binding,
             PROVIDER_SNAPSHOT_MINIMUM_MEMORY,
             lambda context, payload, operation_id=binding.operation.operation_id:
-                native_provider_snapshot_source(context, payload, operation_id) is not None,
+                native_provider_snapshot_source(context, payload, operation_id) is not None
+                or native_model_access_snapshot_source(context, payload, operation_id) is not None,
         )
         for binding in native_provider_snapshot_bindings.values()
     )

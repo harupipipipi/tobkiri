@@ -100,6 +100,10 @@ class HostProviderInvocationContextV4(Protocol):
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
 
+    def model_access_registry_snapshot(self) -> Mapping[str, Any] | None:
+        """Read the current Registry for the original bound Model Access operation."""
+        return None
+
     def post_saved_local_chat(
         self,
         connection: Mapping[str, Any],

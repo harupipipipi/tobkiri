@@ -18687,7 +18687,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.model-access.catalog",
-          "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
+          "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
           "operation_ids": [
             "rumi_provider_registry_pack.model-access-catalog"
           ]
@@ -18711,7 +18711,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.model-access.read",
-          "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
+          "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
           "operation_ids": [
             "rumi_provider_registry_pack.model-access-read"
           ]
@@ -18894,12 +18894,12 @@
             {
               "entrypoint_id": "rumi_provider_registry_pack.model-access-catalog",
               "id": "rumi_provider_registry_pack.model-access-catalog",
-              "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53"
+              "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247"
             },
             {
               "entrypoint_id": "rumi_provider_registry_pack.model-access-read",
               "id": "rumi_provider_registry_pack.model-access-read",
-              "implementation_digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53"
+              "implementation_digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247"
             },
             {
               "entrypoint_id": "provider-registry-resource",
@@ -19015,7 +19015,7 @@
           "path": "runtime/model_access_presentation.py"
         },
         {
-          "digest": "sha256:d572598e9e433ae8662b3617a5ba4a2cdf7a5978794c6eb14e45b143635aeb53",
+          "digest": "sha256:b8f9c88550aee390bd04881e752bb92de2b9a415de1affaa58ced782ed71f247",
           "kind": "executable",
           "path": "runtime/model_access_resource.py"
         },

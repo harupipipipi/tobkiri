@@ -2086,9 +2086,49 @@ def test_workflow_provider_snapshot_carries_the_exact_entry(
         assert reader(request) == result
 
 
+@pytest.mark.parametrize("role", ipc._MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES)
+def test_model_access_provider_snapshot_is_a_v7_raw_borrow(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelAccessProviderSnapshotRole,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, role,
+    )
+    result = {
+        "version": "rumi.provider-registry.store.v1",
+        "profile_id": borrow.context.profile_id,
+        "revision": 1,
+        "providers": [{"metadata": {"cost": 0.125}}],
+    }
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == 1
+        assert json.loads(frame)["provider_snapshot"] == {"role": role}
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, json.dumps(result).encode())
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        for version in ("4", "6"):
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, version)
+            reader = ipc.capture_launcher_provider_snapshot_reader()
+            assert reader is not None and not reader.supports_model_access
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                reader(request)
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "7")
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_model_access
+        assert reader.supports_workflow_adapter and reader.supports_query
+        assert reader(request) == result
+
+
 @pytest.mark.parametrize(("role", "entry"), [
     ("workflow-text", None), ("workflow-messages", "run.get"), ("generate", "run.advance"),
     ("workflow-text-adapter", None), ("workflow-messages-adapter", "run.resume"),
+    ("model-access-catalog", "run.advance"),
 ])
 def test_workflow_provider_snapshot_rejects_mismatched_entry(role, entry) -> None:
     borrow = _Borrow()

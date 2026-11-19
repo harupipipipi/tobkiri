@@ -488,6 +488,7 @@ GatewayProviderSnapshotRole = Literal[
 ProjectedProviderSnapshotRole = Literal[
     "shell-settings", "model-save", "model-search", "command-datasource",
 ]
+ModelAccessProviderSnapshotRole = Literal["model-access-read", "model-access-catalog"]
 WorkflowProviderSnapshotRole = Literal[
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
     "workflow-text-adapter", "workflow-messages-adapter",
@@ -498,8 +499,9 @@ WorkflowSnapshotEntry = Literal[
 ]
 ProviderSnapshotRole = (
     SavedLocalChatRole | GatewayProviderSnapshotRole | ProjectedProviderSnapshotRole
-    | WorkflowProviderSnapshotRole
+    | WorkflowProviderSnapshotRole | ModelAccessProviderSnapshotRole
 )
+_MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES = ("model-access-read", "model-access-catalog")
 _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES = ("workflow-text-adapter", "workflow-messages-adapter")
 _WORKFLOW_PROVIDER_SNAPSHOT_ROLES = (
     "workflow-text", "workflow-messages", "workflow-audio-transcribe", "workflow-audio-speech",
@@ -758,6 +760,7 @@ class _LauncherProviderSnapshot:
     supports_query: bool
     supports_workflow: bool
     supports_workflow_adapter: bool
+    supports_model_access: bool
 
     def __call__(self, request: NativeProviderSnapshotRequest) -> Mapping[str, Any]:
         if (
@@ -771,6 +774,8 @@ class _LauncherProviderSnapshot:
                 and request.role in _WORKFLOW_PROVIDER_SNAPSHOT_ROLES)
             or (not self.supports_workflow_adapter
                 and request.role in _WORKFLOW_ADAPTER_PROVIDER_SNAPSHOT_ROLES)
+            or (not self.supports_model_access
+                and request.role in _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES)
         ):
             raise NativeProviderPrepareUnavailable("native Registry read role is unavailable")
         return _invoke(self.launcher, request, operation="provider_snapshot")
@@ -779,7 +784,7 @@ class _LauncherProviderSnapshot:
 def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | None:
     """Capture the managed endpoint's exact Provider owner read capability."""
     version = os.environ.get(_PROVIDER_SNAPSHOT_ENV)
-    if version not in ("1", "2", "3", "4", "5", "6"):
+    if version not in ("1", "2", "3", "4", "5", "6", "7"):
         return None
     launcher = _capture_launcher()
     if launcher is None:
@@ -787,10 +792,11 @@ def capture_launcher_provider_snapshot_reader() -> _LauncherProviderSnapshot | N
     return _LauncherProviderSnapshot(
         launcher,
         supports_gateway=version != "1",
-        supports_projected=version in ("3", "4", "5", "6"),
-        supports_query=version in ("4", "5", "6"),
-        supports_workflow=version in ("5", "6"),
-        supports_workflow_adapter=version == "6",
+        supports_projected=version in ("3", "4", "5", "6", "7"),
+        supports_query=version in ("4", "5", "6", "7"),
+        supports_workflow=version in ("5", "6", "7"),
+        supports_workflow_adapter=version in ("6", "7"),
+        supports_model_access=version == "7",
     )
 
 
@@ -1156,6 +1162,7 @@ def _start_payload(
                     borrow.role not in _SAVED_LOCAL_CHAT_ROLES
                     and borrow.role not in GATEWAY_PROVIDER_SNAPSHOT_ROLES.values()
                     and borrow.role not in _PROJECTED_PROVIDER_SNAPSHOT_ROLES
+                    and borrow.role not in _MODEL_ACCESS_PROVIDER_SNAPSHOT_ROLES
                 )
             ))
         ):
