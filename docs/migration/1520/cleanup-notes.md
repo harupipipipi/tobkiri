@@ -5917,3 +5917,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   レシートが従来の読取り結果と一致し、読取りの前後で会話ファイルの全バイトが変わらない
   ことを確認した。既存結果でターンを確定し、2回目の再照合でも再推論・再追記はなかった。
   App、resolver、推論応答はfixture。配布DMGとGUIはこの試験の対象外。
+
+## 053: Side Chatの会話ストア確定と内側のTurn読取り
+
+- `704ab7e95` はSide Chatの送信と再照合で、Conversation Storeの確定と、その内側で行う
+  Turn読取りを既存のWasmに接続した。保存ターンの親を辿る処理をレシート読取りと共用し、
+  Profile、turn、子会話と現在有効なリースを照合する。確定処理は内側で取得した確定済み
+  Turnを使い、保存結果が不明になった後の二重書込みを防ぐ。
+- `416b558e8` のLauncherは、Shell → Side Chat → Saved Turn / Reconcile → Conversation
+  Storeの確定 → Turn Resourceの署名を確認する。保存前と読取り前に、元のBundleと対象Pack、
+  実行カタログを再検証する。IPCで通常チャットとSide Chatの4種類の呼出し元を共通に判定し、
+  レシート・確定・読取りはそれぞれの証明で許可する。従来の入力形式とバイト上限を維持する。
+- PythonのIPC 80件、署名済みHTTP 2件、Rustの署名経路と権限の回帰、IPC 55件、
+  Launcherジョブ30件、Tauriテストの型検査、CIワークフローの契約テスト16件が通過した。
+  macOSでは署名済みHTTPを実Launcherソケットとv7の実Wasmまで
+  通し、Side Chatの送信と再照合の両方でTurn読取りと確定を確認した。Turn読取りの前後で
+  SQLiteの全バイトが一致し、2回目の確定で会話ファイルが変わらず、推論は1回だった。
+  App、配布物のresolver、推論応答はfixture。
+- 先行コミット `350517a72` の [配布CI](https://github.com/harupipipipi/tobkiri/actions/runs/44527643512)
+  は元のLauncherからのネイティブSetupの境界、署名済みWasmの梱包、macOS Launcherの
+  コールドブート、arm64 DMGの作成とマウント後の収録物の照合を通過した。このDMGはCI専用で
+  互換PythonとPackVM関連の資産を含む。通常のGUIから実1Bモデルで会話する検証と、
+  製品から互換ランタイムを外す作業は継続する。
