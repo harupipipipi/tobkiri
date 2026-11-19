@@ -7612,6 +7612,196 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
             assert not legacy_reads and len(provider_requests) == count
 
 
+def test_signed_saved_stream_normalizes_with_its_own_native_borrow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the signed Normalizer child with neither native routing nor local chat."""
+    import io
+    from types import SimpleNamespace
+
+    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap import production_v4
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_ai_stream_pack.runtime.normalizer import (
+        create_stream_normalize_operation,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.models import EffectClass
+
+    root = tmp_path / "user-data"
+    store = ConversationStore("defaults", user_data_root=root)
+    normalizer_function = "rumi_ai_stream_pack.ai-stream.normalize"
+    normalizer_operation = "rumi_ai_stream_pack.ai-stream-normalize"
+    normalizer_contract = "tobkiri.service.ai.stream.normalize.v1"
+    turn_operations = {
+        "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+        "rumi_ai_gateway_pack.ai-gateway.stream", normalizer_operation,
+    }
+    mode = "native"
+    chain: list[RequestEnvelope] = []
+    requests: list[ipc.NativeAiRoutingRequest] = []
+    legacy_payloads: list[Mapping[str, object]] = []
+    provider_requests: list[Mapping[str, object]] = []
+    oracle = create_stream_normalize_operation(None)
+    load_factory = production_v4._load_verified_host_provider_factory
+
+    def observe_normalizer_factory(pack_root, function_id, bindings):
+        factory, backend_id = load_factory(pack_root, function_id, bindings)
+        if function_id != normalizer_function:
+            return factory, backend_id
+        assert all(binding.operation.effect_class is EffectClass.PRIVILEGED
+                   for binding in bindings)
+
+        def observe(contribution):
+            def invoke(operation, payload, invocation):
+                legacy_payloads.append(payload)
+                return contribution.invoke(operation, payload, invocation)
+
+            return replace(contribution, invoke=invoke)
+
+        def capture(context):
+            original = factory.capture(context)
+            return replace(original, contributions=tuple(map(
+                observe, original.contributions,
+            )))
+
+        return SimpleNamespace(function_id=function_id, capture=capture), backend_id
+
+    def normalize(request: ipc.NativeAiRoutingRequest) -> Mapping[str, object]:
+        request.assert_current()
+        requests.append(request)
+        assert [item.operation_id for item in chain] == [
+            "rumi_turn_runtime_pack.turn-saved", "saved_complete",
+            "rumi_ai_gateway_pack.ai-gateway.stream", normalizer_operation,
+        ]
+        assert len({item.lease.token for item in chain}) == 4
+        assert len({item.resource_reservation_id for item in chain}) == 4
+        for parent, child in zip(chain, chain[1:]):
+            assert child.context.caller_principal == parent.target_principal
+            assert child.deadline_monotonic <= parent.deadline_monotonic
+        envelope = chain[-1]
+        assert envelope.contract_id == normalizer_contract
+        assert request.context is envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.role == "stream" and request.stream_result is True
+        assert request.input is envelope.payload
+        assert set(request.input) == {"request_id", "provider_attempt", "value"}
+        assert request.input["request_id"] == chain[-2].payload["request_id"]
+        assert request.input["provider_attempt"] == 1
+        assert request.input["value"]["output"] == "Reply"
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "compatibility":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode in {"denied", "unavailable"}:
+            raise ipc.NativeAiRoutingFailure(mode)
+        return oracle("normalize", request.input)
+
+    def open_provider(request, *, timeout, **lifetime):
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        body = json.loads(request.data)
+        assert body["stream"] is True
+        provider_requests.append(body)
+        chunk = {"choices": [{"delta": {"content": "Reply"}, "finish_reason": "stop"}]}
+        return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(ipc, "capture_launcher_ai_stream_result_normalizer", lambda: normalize)
+    monkeypatch.setattr(production_v4, "_load_verified_host_provider_factory",
+                        observe_normalizer_factory)
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, _authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        ModelRegistry("defaults", user_data_root=root).save({
+            "model_profile_id": "daily", "model_id": "organization/raw-model",
+            "parameters": {"max_tokens": 16},
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        }, expected_revision=0)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            if envelope.operation_id in turn_operations:
+                chain.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        cookie, csrf, origin = _authenticate(server)
+
+        def post_turn(turn: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+            status, response, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": turn}, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, response
+
+        instance = server._native_provider_prepare_instance
+        for mode in ("native", "inapplicable", "compatibility", "stale", "denied",
+                     "unavailable"):
+            chain.clear()
+            requests.clear()
+            legacy_payloads.clear()
+            count = len(provider_requests)
+            store.create({"id": mode, "model_reference": "daily"},
+                         expected_revision=store.snapshot()["revision"])
+            turn = {"turn_id": mode, "conversation_id": mode,
+                    "conversation_revision": 1, "content": "Hello"}
+            try:
+                status, response = post_turn(turn)
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            assert len(requests) == 1 and len(provider_requests) == count + 1, response
+            with pytest.raises(PermissionError):
+                requests[0].assert_current()
+            if mode in {"stale", "denied", "unavailable"}:
+                assert status != 200 or response["data"]["status"] != "completed"
+                assert not legacy_payloads
+                continue
+            assert status == 200 and response["data"]["status"] == "completed", response
+            assert [item["content"] for item in store.get(mode)["messages"]] == [
+                "Hello", "Reply",
+            ]
+            if mode == "native":
+                assert not legacy_payloads
+            else:
+                assert len(legacy_payloads) == 1 and legacy_payloads[0] is requests[0].input
+            status, replay = post_turn(turn)
+            assert status == 200 and replay["data"]["status"] == "existing", replay
+            assert len(requests) == 1 and len(provider_requests) == count + 1
+
+        child = chain[-1]
+        context = replace(child.context, request_id=f"request.{uuid.uuid4().hex}")
+        scope = session.effect_scope_for(
+            child.contract_id, child.operation_id, child.payload, context,
+        )
+        result = session.broker.invoke(
+            InvocationFrame(
+                contract_id=child.contract_id, version_range=None,
+                operation_id=child.operation_id, payload=child.payload,
+            ), context, effect_scope=scope,
+        )
+        assert result == oracle("normalize", child.payload)
+        assert len(requests) == 1 and len(legacy_payloads) == 1
+
+
 @pytest.mark.parametrize(
     "native_source, native_policy",
     [(False, False), (True, False), (True, True)],

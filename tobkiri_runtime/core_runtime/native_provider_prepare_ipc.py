@@ -41,6 +41,7 @@ _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
+_AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -409,7 +410,7 @@ class NativeModelResolveRequest:
 
 @dataclass(frozen=True)
 class NativeAiRoutingRequest:
-    """Borrow one live signed Gateway routing invocation."""
+    """Borrow one live signed Gateway routing or stream normalization invocation."""
 
     context: RequestContext
     runtime_instance: str
@@ -417,6 +418,7 @@ class NativeAiRoutingRequest:
     assert_current: Callable[[], None]
     role: ModelResolveRole
     input: Mapping[str, Any]
+    stream_result: bool = False
 
 
 _NativeBorrow = (
@@ -618,7 +620,19 @@ def capture_launcher_ai_routing_evaluator() -> (
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, operation="ai_route")
+    return partial(_invoke_ai_route, launcher, stream_result=False)
+
+
+def capture_launcher_ai_stream_result_normalizer() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for stream normalization."""
+    if os.environ.get(_AI_STREAM_RESULT_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=True)
 
 
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
@@ -798,6 +812,8 @@ def _start_payload(
         if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
             raise _ProtocolError("native AI routing input size is invalid")
         frame["ai_route"] = {"role": borrow.role, "input_bytes": body_input_bytes}
+        if borrow.stream_result:
+            frame["ai_route"]["stream_result"] = True
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -896,6 +912,7 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
     if (
         type(borrow.role) is not str
         or borrow.role not in ("quote-generate", "quote-stream", "generate", "stream")
+        or (borrow.stream_result and borrow.role != "stream")
         or not isinstance(borrow.input, Mapping)
     ):
         raise NativeAiRoutingFailure("invalid")
@@ -1165,6 +1182,46 @@ def _decode_ai_routing(payload: bytes) -> dict[str, Any]:
         or result["selected"] != next(iter(result["candidates"]), None)
     ):
         raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_stream_result(
+    payload: bytes, borrow: NativeAiRoutingRequest,
+) -> dict[str, Any]:
+    invalid = "native AI stream normalization result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if type(result) is not dict or set(result) != {"events"}:
+        raise _ProtocolError(invalid)
+    events = result["events"]
+    if type(events) is not list or not events:
+        raise _ProtocolError(invalid)
+    request_id = borrow.input.get("request_id")
+    provider_attempt = borrow.input.get("provider_attempt")
+    if not isinstance(request_id, str) or type(provider_attempt) is not int:
+        raise _ProtocolError(invalid)
+    request_id = request_id.strip()
+    terminal_types = {"finish", "error"}
+    event_types = terminal_types | {
+        "text_delta", "thinking_delta", "tool_intent_delta", "usage",
+    }
+    event_keys = {
+        "request_id", "sequence", "type", "delta", "tool_intent", "usage",
+        "finish_reason", "error_code", "provider_attempt",
+    }
+    for sequence, event in enumerate(events):
+        if (
+            type(event) is not dict
+            or set(event) != event_keys
+            or event["request_id"] != request_id
+            or type(event["provider_attempt"]) is not int
+            or event["provider_attempt"] != provider_attempt
+            or type(event["sequence"]) is not int
+            or event["sequence"] != sequence
+            or type(event["type"]) is not str
+            or event["type"] not in event_types
+            or (event["type"] in terminal_types) != (sequence == len(events) - 1)
+        ):
+            raise _ProtocolError(invalid)
     return result
 
 
@@ -1718,8 +1775,11 @@ class _Exchange:
                     plan = _decode_model_resolve(payload, borrow.identifier)
                 elif isinstance(borrow, NativeModelSaveRequest):
                     plan = _decode_model_save(payload)
-                elif self.ai_routing:
-                    plan = _decode_ai_routing(payload)
+                elif isinstance(borrow, NativeAiRoutingRequest):
+                    plan = (
+                        _decode_ai_stream_result(payload, borrow)
+                        if borrow.stream_result else _decode_ai_routing(payload)
+                    )
                 else:
                     plan = _decode_plan(payload, self.plan_limit)
                 wait_seconds()
@@ -1828,6 +1888,14 @@ def _exchange_saved_local_chat(
             ):
                 raise _ProtocolError(_CONNECTION_ERROR) from None
             raise
+
+
+def _invoke_ai_route(
+    launcher: _Launcher, borrow: NativeAiRoutingRequest, *, stream_result: bool,
+) -> dict[str, Any]:
+    if borrow.stream_result is not stream_result:
+        raise NativeAiRoutingFailure("invalid")
+    return _invoke(launcher, borrow, operation="ai_route")
 
 
 @overload

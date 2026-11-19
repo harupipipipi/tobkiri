@@ -2346,10 +2346,16 @@ def _served_saved_orchestration(
 @contextmanager
 def _served_ai_routing(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+    *, stream_result: bool = False,
 ) -> Iterator[Callable[[ipc.NativeAiRoutingRequest], Mapping[str, Any]]]:
-    monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+    if stream_result:
+        monkeypatch.setenv(ipc._AI_STREAM_RESULT_ENV, "1")
+        capture = ipc.capture_launcher_ai_stream_result_normalizer
+    else:
+        monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+        capture = ipc.capture_launcher_ai_routing_evaluator
     with _served(monkeypatch, serve):
-        evaluate = ipc.capture_launcher_ai_routing_evaluator()
+        evaluate = capture()
         assert evaluate is not None
         yield evaluate
 
@@ -2366,6 +2372,59 @@ def _ai_routing_request(
         role=role,
         input=payload if payload is not None else {"decision_time": 100.25},
     )
+
+
+def _ai_stream_request(borrow: _Borrow) -> ipc.NativeAiRoutingRequest:
+    return replace(_ai_routing_request(borrow, "stream", {
+        "request_id": " stream.fixture ",
+        "provider_attempt": 2,
+        "value": {"events": [{"type": "finish", "usage": {"cost": 6.5}}]},
+    }), stream_result=True)
+
+
+_STREAM_RESULT = {"events": [{
+    "request_id": "stream.fixture", "sequence": 0, "type": "finish",
+    "delta": None, "tool_intent": None, "usage": {"cost": 6.5},
+    "finish_reason": None, "error_code": None, "provider_attempt": 2,
+}]}
+
+
+def test_ai_stream_result_uses_its_own_opt_in_and_preserves_signed_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _ai_stream_request(_Borrow())
+    expected_input = json.dumps(dict(borrow.input), separators=(",", ":")).encode()
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(body)
+        assert start.pop("ai_route") == {
+            "role": "stream", "input_bytes": len(expected_input), "stream_result": True,
+        }
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, expected_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(_STREAM_RESULT).encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.delenv(ipc._AI_ROUTING_ENV, raising=False)
+    with _served_ai_routing(monkeypatch, serve, stream_result=True) as normalize:
+        assert ipc.capture_launcher_ai_routing_evaluator() is None
+        monkeypatch.delenv(ipc._AI_STREAM_RESULT_ENV)
+        monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+        assert ipc.capture_launcher_ai_stream_result_normalizer() is None
+        evaluate = ipc.capture_launcher_ai_routing_evaluator()
+        assert evaluate is not None
+        with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+            evaluate(borrow)
+        with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+            normalize(replace(borrow, role="generate"))
+        assert normalize(borrow) == _STREAM_RESULT
 
 
 @pytest.mark.parametrize("role", ["quote-generate", "quote-stream", "generate", "stream"])
@@ -2410,12 +2469,15 @@ def test_ai_routing_contract_preserves_signed_input_and_finite_result(
         assert evaluate(_ai_routing_request(borrow, role, payload)) == expected
 
 
+@pytest.mark.parametrize("stream_result", [False, True], ids=["routing", "normalizer"])
 @pytest.mark.parametrize(
     ("phase", "tag", "payload", "expected"),
     [
         ("start", 10, b"", ipc.NativeProviderPrepareUnavailable),
         ("start", 8, b"legacy-read-required", ipc._ProtocolError),
         ("body", 8, b"legacy-read-required", ipc._ProtocolError),
+        ("start", 8, b"denied", ipc.NativeAiRoutingFailure),
+        ("start", 8, b"unavailable", ipc.NativeAiRoutingFailure),
         ("live", 8, b"legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
         ("live", 8, b"invalid", ipc.NativeAiRoutingFailure),
         ("live", 8, b"denied", ipc.NativeAiRoutingFailure),
@@ -2427,7 +2489,7 @@ def test_ai_routing_contract_preserves_signed_input_and_finite_result(
 )
 def test_ai_routing_accepts_only_preflight_inapplicability_and_live_decline(
     monkeypatch: pytest.MonkeyPatch, phase: str, tag: int, payload: bytes,
-    expected: type[RuntimeError],
+    expected: type[RuntimeError], stream_result: bool,
 ) -> None:
     def serve(peer: socket.socket) -> None:
         assert _receive(peer)[0] == ipc._START
@@ -2441,33 +2503,41 @@ def test_ai_routing_accepts_only_preflight_inapplicability_and_live_decline(
         assert peer.recv(1) == b""
 
     with (
-        _served_ai_routing(monkeypatch, serve) as evaluate,
+        _served_ai_routing(monkeypatch, serve, stream_result=stream_result) as evaluate,
         pytest.raises(expected) as failure,
     ):
-        evaluate(_ai_routing_request(_Borrow()))
+        borrow = _Borrow()
+        evaluate(_ai_stream_request(borrow) if stream_result else _ai_routing_request(borrow))
     if isinstance(failure.value, ipc.NativeAiRoutingFailure):
         assert failure.value.code == payload.decode()
 
 
+@pytest.mark.parametrize("stream_result", [False, True], ids=["routing", "normalizer"])
 def test_ai_routing_declines_unrepresentable_input_before_connection(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, stream_result: bool,
 ) -> None:
-    monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+    if stream_result:
+        monkeypatch.setenv(ipc._AI_STREAM_RESULT_ENV, "1")
+        capture = ipc.capture_launcher_ai_stream_result_normalizer
+    else:
+        monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+        capture = ipc.capture_launcher_ai_routing_evaluator
     monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
     monkeypatch.setenv(ipc._OWNER_ENV, _owner())
     monkeypatch.setattr(ipc.os, "getppid", os.getpid)
-    evaluate = ipc.capture_launcher_ai_routing_evaluator()
+    evaluate = capture()
     assert evaluate is not None
+    fixture = _Borrow()
+    borrow = _ai_stream_request(fixture) if stream_result else _ai_routing_request(fixture)
     with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
-        evaluate(_ai_routing_request(
-            _Borrow(), payload={"models": ["x" * (1024 * 1024)]},
-        ))
+        evaluate(replace(borrow, input={**borrow.input, "large": "x" * (1024 * 1024)}))
     with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
-        evaluate(_ai_routing_request(_Borrow(), payload={"decision_time": math.inf}))
+        evaluate(replace(borrow, input={**borrow.input, "float": math.inf}))
 
 
+@pytest.mark.parametrize("stream_result", [False, True], ids=["routing", "normalizer"])
 def test_ai_routing_rejects_reply_after_live_revocation(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, stream_result: bool,
 ) -> None:
     borrow = _Borrow()
     receive = ipc._Exchange.receive
@@ -2487,15 +2557,15 @@ def test_ai_routing_rejects_reply_after_live_revocation(
         _send(peer, ipc._CHECK)
         assert _receive(peer) == (ipc._LIVE, b"")
         result = b'{"selected":null,"candidates":[],"excluded":[],"deterministic":true}'
-        _send(peer, ipc._PLAN, result)
+        _send(peer, ipc._PLAN, json.dumps(_STREAM_RESULT).encode() if stream_result else result)
         assert peer.recv(1) == b""
 
     monkeypatch.setattr(ipc._Exchange, "receive", receive_and_revoke)
     with (
-        _served_ai_routing(monkeypatch, serve) as evaluate,
+        _served_ai_routing(monkeypatch, serve, stream_result=stream_result) as evaluate,
         pytest.raises(PermissionError, match="fixture lease revoked"),
     ):
-        evaluate(_ai_routing_request(borrow))
+        evaluate(_ai_stream_request(borrow) if stream_result else _ai_routing_request(borrow))
 
 
 def test_saved_orchestration_capture_requires_managed_opt_in(

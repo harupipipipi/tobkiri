@@ -1922,6 +1922,7 @@ def capture_production_dispatch(
         SavedReceiptCaller,
         SavedTurnStartAction,
         capture_launcher_ai_routing_evaluator,
+        capture_launcher_ai_stream_result_normalizer,
         capture_launcher_conversation_append_writer,
         capture_launcher_conversation_confirmation_writer,
         capture_launcher_conversation_get_reader,
@@ -1953,6 +1954,7 @@ def capture_production_dispatch(
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
+    native_ai_stream_result_normalizer = capture_launcher_ai_stream_result_normalizer()
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_append_writer = capture_launcher_conversation_append_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
@@ -5644,6 +5646,7 @@ def capture_production_dispatch(
     ai_routing_routes: dict[
         tuple[str, str], tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
     ] = {}
+    stream_operation = "rumi_ai_stream_pack.ai-stream-normalize"
     append_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge, _CapturedPlanEdge] | None = None
     append_function = "rumi_conversation_store_pack.conversation-store.message-manage"
     append_operation = (
@@ -5653,6 +5656,7 @@ def capture_production_dispatch(
     if (
         native_model_resolve_reader is not None
         or native_ai_routing_evaluator is not None
+        or native_ai_stream_result_normalizer is not None
         or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
@@ -5671,7 +5675,8 @@ def capture_production_dispatch(
                 append_edges = message_edge, orchestration_edge, turn_edge
         if (
             (native_model_resolve_reader is not None
-             or native_ai_routing_evaluator is not None)
+             or native_ai_routing_evaluator is not None
+             or native_ai_stream_result_normalizer is not None)
             and turn_edge is not None
             and orchestration_edge is not None
         ):
@@ -5715,6 +5720,16 @@ def capture_production_dispatch(
                     if router_edge is not None:
                         ai_routing_routes[gateway_principal, router_operation] = (
                             role, (router_edge, *parents),
+                        )
+                if role == "stream" and native_ai_stream_result_normalizer is not None:
+                    stream_edge = select_original_chat_edge(
+                        {gateway_principal}, "rumi_ai_stream_pack",
+                        "tobkiri.service.ai.stream.normalize.v1", stream_operation,
+                        "rumi_ai_stream_pack.ai-stream.normalize", EffectClass.PRIVILEGED,
+                    )
+                    if stream_edge is not None:
+                        ai_routing_routes[gateway_principal, stream_operation] = (
+                            role, (stream_edge, *parents),
                         )
 
     def saved_append_lineage(
@@ -6006,9 +6021,12 @@ def capture_production_dispatch(
         operation_id: str,
     ) -> tuple[ModelResolveRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         route = ai_routing_routes.get((context.caller_principal.value, operation_id))
-        if route is None or set(payload) != {
+        expected_fields = {"request_id", "provider_attempt", "value"} if (
+            operation_id == stream_operation
+        ) else {
             "models", "execution_providers", "health", "requirements", "decision_time",
-        }:
+        }
+        if route is None or set(payload) != expected_fields:
             return None
         role, (router_edge, *parent_edges) = route
         ancestors = match_saved_gateway_ancestors(parent, parent_edges)
@@ -6033,13 +6051,16 @@ def capture_production_dispatch(
         contribution: HostProviderContributionV4,
         evaluator: Callable[[NativeAiRoutingRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
+        stream_result = contribution.operation_id == stream_operation
+        kind = "AI stream normalization" if stream_result else "AI routing"
+
         def invoke(
             operation_id: str,
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
             if type(invocation) is not _HostInvocation:
-                raise AuthorityDenied("native AI routing context is unavailable")
+                raise AuthorityDenied(f"native {kind} context is unavailable")
             envelope = invocation.envelope
             lineage = ai_routing_lineage(
                 envelope.context, payload, invocation.parent_invocation, operation_id,
@@ -6061,7 +6082,7 @@ def capture_production_dispatch(
                 )
                 or any(reservation == item.resource_reservation_id for item in ancestors)
             ):
-                raise AuthorityDenied("native AI routing lineage changed")
+                raise AuthorityDenied(f"native {kind} lineage changed")
 
             def guard() -> None:
                 invocation.assert_current()
@@ -6070,14 +6091,14 @@ def capture_production_dispatch(
                         child.context.caller_session_id,
                     )
                     if retained is None or retained.envelope is not parent:
-                        raise AuthorityDenied("native AI routing parent changed")
+                        raise AuthorityDenied(f"native {kind} parent changed")
                 if (
                     native_provider_runtime is not runtime
                     or parent_invocation_scopes.lookup(
                         ancestors[-1].context.caller_session_id,
                     ) is not None
                 ):
-                    raise AuthorityDenied("native AI routing capture changed")
+                    raise AuthorityDenied(f"native {kind} capture changed")
                 runtime[1]()
                 production_admission.native_resources(reservation)
 
@@ -6100,6 +6121,7 @@ def capture_production_dispatch(
                     assert_current=guard,
                     role=role,
                     input=payload,
+                    stream_result=stream_result,
                 ))
             except (
                 NativeProviderPrepareUnavailable,
@@ -6109,9 +6131,9 @@ def capture_production_dispatch(
             except NativeAiRoutingFailure as error:
                 guard()
                 if error.code == "invalid":
-                    raise ValueError("AI routing input is invalid") from None
+                    raise ValueError(f"{kind} input is invalid") from None
                 if error.code == "denied":
-                    raise PermissionError("AI routing is denied") from None
+                    raise PermissionError(f"{kind} is denied") from None
                 raise
             guard()
             return result
@@ -6759,15 +6781,23 @@ def capture_production_dispatch(
                 if item.key in resolve_bindings else item
                 for item in contributions
             )
-        if native_ai_routing_evaluator is not None:
+        for stream_result, evaluator in (
+            (False, native_ai_routing_evaluator),
+            (True, native_ai_stream_result_normalizer),
+        ):
+            if evaluator is None:
+                continue
             routing_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
                 for _role, (edge, *_parents) in ai_routing_routes.values()
-                if edge.resolved_binding in captured_bindings
+                if (
+                    (edge.binding_key[2] == stream_operation) is stream_result
+                    and edge.resolved_binding in captured_bindings
+                )
             }
             native_ai_routing_bindings.update(routing_bindings)
             contributions = tuple(
-                wrap_native_ai_routing(item, native_ai_routing_evaluator)
+                wrap_native_ai_routing(item, evaluator)
                 if item.key in routing_bindings else item
                 for item in contributions
             )
