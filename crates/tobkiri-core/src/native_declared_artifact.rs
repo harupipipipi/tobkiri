@@ -26,10 +26,12 @@ use tobkiri_canon::{
     ids::{OpName, ProfileId, ShapeRef},
 };
 use tobkiri_gate::{
-    CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
-    NativeSetupReservation,
+    CapacityKind, ControlKind, ControlReservation, CoreCancellation, CoreControl,
+    NativeSetupInvocation, NativeSetupReservation,
 };
-use tobkiri_manifest::{VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog};
+use tobkiri_manifest::{
+    PackHash, VerifiedPack, source::SourceCatalog, verify_tpk_reader_in_catalog,
+};
 use tobkiri_wasm::{
     LegacyRegistryError, NativeDataIo, NativeDataIoError, NativeInspectionOutput,
     NativeReadOnlyPort, NativeSetupStore,
@@ -141,8 +143,50 @@ type Held<S> = ControlHandle<Work<S>>;
 
 enum LegacyConversationLookup<'a> {
     Conversation(&'a str),
-    LinkedContext(&'a str),
+    LinkedContext { id: &'a str, prepare_parent: bool },
     SavedReceipt(&'a str),
+}
+
+struct LegacyConversationRead {
+    reply: CoreValue,
+    parent: Option<LegacyConversationParentRead>,
+    reused: bool,
+}
+
+/// Move-only owner DATA for one independently authorized original parent GET.
+/// The second read must still observe the current fixed Conversation Store.
+pub struct LegacyConversationParentRead {
+    control: CoreControl,
+    deadline: Instant,
+    root: CoreBuffer,
+    profile: CoreBuffer,
+    parent: CoreBuffer,
+    pack_digest: PackHash,
+    document_digest: Digest,
+    reply: CoreValue,
+}
+
+fn retained_parent_id(raw: &str) -> Option<&str> {
+    #[derive(serde::Deserialize)]
+    struct OwnerReply<'a> {
+        #[serde(borrow)]
+        conversation: OwnerIdentity<'a>,
+    }
+    #[derive(serde::Deserialize)]
+    struct OwnerIdentity<'a> {
+        id: &'a str,
+    }
+    let id = serde_json::from_str::<OwnerReply<'_>>(raw)
+        .ok()?
+        .conversation
+        .id;
+    let mut bytes = id.bytes();
+    (id.len() <= 256
+        && bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)))
+    .then_some(id)
 }
 
 /// Move-only native action owned by Core or its trusted native composition.
@@ -587,8 +631,10 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             root,
             profile_id,
             LegacyConversationLookup::Conversation(conversation_id),
+            None,
         )
         .await
+        .map(|read| read.reply)
     }
 
     /// Take one fresh owner snapshot for trusted linked context inspection.
@@ -604,9 +650,58 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             pack,
             root,
             profile_id,
-            LegacyConversationLookup::LinkedContext(conversation_id),
+            LegacyConversationLookup::LinkedContext {
+                id: conversation_id,
+                prepare_parent: false,
+            },
+            None,
         )
         .await
+        .map(|read| read.reply)
+    }
+
+    /// Prepare optional reusable parent DATA from the child's owner snapshot.
+    /// The returned candidate holds its own funded immutable copy of the parent reply.
+    pub async fn prepare_legacy_linked_conversation_read(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        conversation_id: &str,
+    ) -> Result<(CoreValue, Option<LegacyConversationParentRead>), NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::LinkedContext {
+                id: conversation_id,
+                prepare_parent: true,
+            },
+            None,
+        )
+        .await
+        .map(|read| (read.reply, read.parent))
+    }
+
+    /// Perform the independently authorized parent GET and report whether it
+    /// reused prepared DATA. On a miss, use the ordinary GET on the new observation.
+    pub async fn get_legacy_conversation_with_candidate(
+        &mut self,
+        pack: &VerifiedPack,
+        root: &Path,
+        profile_id: &str,
+        conversation_id: &str,
+        candidate: LegacyConversationParentRead,
+    ) -> Result<(CoreValue, bool), NativeArtifactError> {
+        self.lookup_legacy_conversation(
+            pack,
+            root,
+            profile_id,
+            LegacyConversationLookup::Conversation(conversation_id),
+            Some(candidate),
+        )
+        .await
+        .map(|read| (read.reply, read.reused))
     }
 
     /// Read original saved evidence in the active Profile. Settlement and
@@ -623,8 +718,10 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             root,
             profile_id,
             LegacyConversationLookup::SavedReceipt(turn_id),
+            None,
         )
         .await
+        .map(|read| read.reply)
     }
 
     async fn lookup_legacy_conversation(
@@ -633,11 +730,23 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         root: &Path,
         profile_id: &str,
         lookup: LegacyConversationLookup<'_>,
-    ) -> Result<CoreValue, NativeArtifactError> {
+        candidate: Option<LegacyConversationParentRead>,
+    ) -> Result<LegacyConversationRead, NativeArtifactError> {
         self.require_ready()?;
         if pack.manifest.id.as_str() != "local.saved-conversation" {
             return Err(NativeArtifactError::Denied);
         }
+        let prepare_budget = if matches!(
+            lookup,
+            LegacyConversationLookup::LinkedContext {
+                prepare_parent: true,
+                ..
+            }
+        ) {
+            Some(self.allocation_budget()?.clone())
+        } else {
+            None
+        };
         let framed = self
             .read_original_document(root, profile_id, LegacyReadDocument::Conversation)
             .await?;
@@ -645,6 +754,26 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             NativeArtifactError::ConversationRegistry(Box::new(error))
         })?;
         self.require_live()?;
+        let invocation = &self.work.get().invocation;
+        if let (LegacyConversationLookup::Conversation(id), Some(candidate)) = (&lookup, candidate)
+            && candidate.control.same_account(invocation.control())
+            && Instant::now() < candidate.deadline
+            && candidate.root.as_bytes() == root.as_os_str().as_encoded_bytes()
+            && candidate.profile.as_bytes() == profile_id.as_bytes()
+            && candidate.parent.as_bytes() == id.as_bytes()
+            && candidate.pack_digest == pack.hash
+            && document
+                .is_some_and(|text| Digest::hash(text.as_bytes()) == candidate.document_digest)
+        {
+            tobkiri_wasm::verify_legacy_conversation_read_declaration(pack)
+                .map_err(|error| NativeArtifactError::ConversationRegistry(error.into()))?;
+            self.require_live()?;
+            return Ok(LegacyConversationRead {
+                reply: candidate.reply,
+                parent: None,
+                reused: true,
+            });
+        }
         let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
         let result = match lookup {
             LegacyConversationLookup::Conversation(id) => {
@@ -652,7 +781,7 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
                     .get_legacy_conversation(pack, profile_id, document, id)
                     .await
             }
-            LegacyConversationLookup::LinkedContext(id) => {
+            LegacyConversationLookup::LinkedContext { id, .. } => {
                 store
                     .get_legacy_linked_conversation_context(pack, profile_id, document, id)
                     .await
@@ -664,9 +793,35 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
             }
         };
         self.require_live()?;
-        result.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+        let reply = result.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
             Err(error) => NativeArtifactError::ConversationRegistry(error.into()),
+        })?;
+        let parent = (|| {
+            let budget = prepare_budget.as_ref()?;
+            let parent_read = reply.get_key("parent_read")?;
+            let raw = parent_read.as_str()?;
+            let id = retained_parent_id(raw)?;
+            let parent_result = CoreValue::string(raw, budget).ok()?;
+            let parent_result =
+                CoreValue::object_shared([Ok(("owner_result", parent_result))].into_iter(), budget)
+                    .ok()?;
+            Some(LegacyConversationParentRead {
+                control: invocation.control().clone(),
+                deadline: invocation.deadline().ok()?,
+                root: CoreBuffer::copy_from(root.as_os_str().as_encoded_bytes(), budget).ok()?,
+                profile: CoreBuffer::copy_from(profile_id.as_bytes(), budget).ok()?,
+                parent: CoreBuffer::copy_from(id.as_bytes(), budget).ok()?,
+                pack_digest: pack.hash.clone(),
+                document_digest: Digest::hash(document?.as_bytes()),
+                reply: parent_result,
+            })
+        })();
+        self.require_live()?;
+        Ok(LegacyConversationRead {
+            reply,
+            parent,
+            reused: false,
         })
     }
 

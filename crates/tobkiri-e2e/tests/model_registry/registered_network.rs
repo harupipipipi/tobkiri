@@ -12,7 +12,11 @@ use std::{
 };
 use support::registry::{PROVIDER_COMMIT, PROVIDER_CONFIGURATION};
 use tobkiri_canon::ids::ProfileId;
+#[cfg(unix)]
+use tobkiri_core::{CoreValue, LegacyConversationParentRead, NativeArtifactInspection};
 use tobkiri_core::{ProfileStartBinding, RuntimeOwner, UiAttachment};
+#[cfg(unix)]
+use tobkiri_manifest::VerifiedPack;
 use tobkiri_manifest::{
     PackManifest, PortDeclaration, Ports, RuntimeConfig, RuntimeSpec, ShapeDefinition, ShapeKind,
     UiDefinition,
@@ -305,8 +309,6 @@ struct LiveConversationFixture<'a> {
 #[cfg(unix)]
 enum OriginalConversationLookup {
     Conversation,
-    LinkedContext,
-    LinkedParentRead,
     SavedReceipt,
 }
 
@@ -359,31 +361,35 @@ impl<'a> LiveConversationFixture<'a> {
         Ok((file, length))
     }
 
-    async fn lookup(&self, id: &str, lookup: OriginalConversationLookup) -> Result<String> {
-        let mut inspection = self
+    fn inspection(&self) -> Result<(NativeArtifactInspection<Source>, VerifiedPack)> {
+        let inspection = self
             .core
             .inspect_declared_artifacts(Source::new(self.root))?;
         let (mut archive, length) = self.archive()?;
         let pack = inspection.verify_pack_archive(&mut archive, length)?;
         ensure!(pack.hash == self.pin.sha256);
-        let outcome: Result<String> = async {
+        Ok((inspection, pack))
+    }
+
+    fn result_text(result: &CoreValue, key: &str) -> Result<String> {
+        let wire = result
+            .get_key(key)
+            .context("missing Conversation owner result")?;
+        Ok(wire
+            .as_str()
+            .context("Conversation owner result was not text")?
+            .to_owned())
+    }
+
+    async fn lookup(&self, id: &str, lookup: OriginalConversationLookup) -> Result<String> {
+        let (mut inspection, pack) = self.inspection()?;
+        let outcome: Result<CoreValue> = async {
             let profile_id = self.profile.as_str();
-            let result_key = match lookup {
-                OriginalConversationLookup::LinkedParentRead => "parent_read",
-                _ => "owner_result",
-            };
             let result = match lookup {
                 OriginalConversationLookup::Conversation => {
                     tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
                     inspection
                         .get_legacy_conversation(&pack, &self.data, profile_id, id)
-                        .await?
-                }
-                OriginalConversationLookup::LinkedContext
-                | OriginalConversationLookup::LinkedParentRead => {
-                    tobkiri_wasm::verify_legacy_conversation_linked_context_declaration(&pack)?;
-                    inspection
-                        .get_legacy_linked_conversation_context(&pack, &self.data, profile_id, id)
                         .await?
                 }
                 OriginalConversationLookup::SavedReceipt => {
@@ -393,17 +399,58 @@ impl<'a> LiveConversationFixture<'a> {
                         .await?
                 }
             };
-            let wire = result
-                .get_key(result_key)
-                .context("missing Conversation owner result")?;
-            let wire = wire
-                .as_str()
-                .context("Conversation owner result was not text")?;
-            Ok(wire.to_owned())
+            Ok(result)
         }
         .await;
         inspection.finish().await?;
-        outcome
+        Self::result_text(&outcome?, "owner_result")
+    }
+
+    async fn prepare_parent_read(&self) -> Result<(Value, String, LegacyConversationParentRead)> {
+        let (mut inspection, pack) = self.inspection()?;
+        let outcome: Result<_> = async {
+            tobkiri_wasm::verify_legacy_conversation_linked_context_declaration(&pack)?;
+            Ok(inspection
+                .prepare_legacy_linked_conversation_read(
+                    &pack,
+                    &self.data,
+                    self.profile.as_str(),
+                    "child",
+                )
+                .await?)
+        }
+        .await;
+        inspection.finish().await?;
+        let (result, candidate) = outcome?;
+        Ok((
+            serde_json::from_str(&Self::result_text(&result, "owner_result")?)?,
+            Self::result_text(&result, "parent_read")?,
+            candidate.context("missing linked parent read candidate")?,
+        ))
+    }
+
+    async fn get_with_candidate(
+        &self,
+        id: &str,
+        candidate: LegacyConversationParentRead,
+    ) -> Result<(String, bool)> {
+        let (mut inspection, pack) = self.inspection()?;
+        let outcome: Result<_> = async {
+            tobkiri_wasm::verify_legacy_conversation_read_declaration(&pack)?;
+            Ok(inspection
+                .get_legacy_conversation_with_candidate(
+                    &pack,
+                    &self.data,
+                    self.profile.as_str(),
+                    id,
+                    candidate,
+                )
+                .await?)
+        }
+        .await;
+        inspection.finish().await?;
+        let (result, reused) = outcome?;
+        Ok((Self::result_text(&result, "owner_result")?, reused))
     }
 }
 
@@ -420,6 +467,7 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
     let live = LiveConversationFixture::import(&core, root.path(), &profile).await?;
     let owner = DataRoot::open(&live.data)?;
     let relative = live.relative_path();
+    let file = live.data.join(&relative);
     let mut document = json!({
         "version": "rumi.conversation-store.v1", "profile_id": "defaults", "revision": 7,
         "conversations": {
@@ -445,19 +493,17 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
         parent["conversation_revision"] = json!(revision);
         let bytes = serde_json::to_vec(&document)?;
         owner.write_atomic(&relative, &bytes)?;
-        let result: Value = serde_json::from_str(
-            &live
-                .lookup("child", OriginalConversationLookup::LinkedContext)
-                .await?,
-        )?;
+        let (result, parent_read, candidate) = live.prepare_parent_read().await?;
         ensure!(result["conversation"] == live.get("child").await?["conversation"]);
         ensure!(
-            live.lookup("child", OriginalConversationLookup::LinkedParentRead)
-                .await?
+            parent_read
                 == live
                     .lookup("parent", OriginalConversationLookup::Conversation)
                     .await?
         );
+        let (actual, reused) = live.get_with_candidate("parent", candidate).await?;
+        ensure!(reused, "the unchanged owner should reuse the parent read");
+        ensure!(actual == parent_read);
         ensure!(
             result["parent_context"]
                 == json!({
@@ -466,8 +512,57 @@ async fn original_saved_linked_context_reads_the_physical_owner() -> Result<()> 
                     "group_id": null, "tags": null, "metadata": {"thinking_level": "low"},
                 })
         );
-        ensure!(fs::read(live.data.join(&relative))? == bytes);
+        ensure!(fs::read(&file)? == bytes);
     }
+
+    let (_, parent_read, candidate) = live.prepare_parent_read().await?;
+    // Change the bytes in place without changing the file length or declared revisions.
+    document["conversations"]["parent"]["model_reference"] = json!("m-current");
+    let bytes = serde_json::to_vec(&document)?;
+    ensure!(fs::metadata(&file)?.len() == bytes.len() as u64);
+    fs::write(&file, &bytes)?;
+    let (actual, reused) = live.get_with_candidate("parent", candidate).await?;
+    ensure!(!reused, "changed owner bytes require a fresh read");
+    ensure!(actual != parent_read);
+    ensure!(
+        actual
+            == live
+                .lookup("parent", OriginalConversationLookup::Conversation)
+                .await?
+    );
+    let actual: Value = serde_json::from_str(&actual)?;
+    ensure!(actual["conversation"]["conversation_revision"] == 8);
+    ensure!(actual["conversation"]["model_reference"] == "m-current");
+
+    let (_, _, candidate) = live.prepare_parent_read().await?;
+    let (actual, reused) = live.get_with_candidate("child", candidate).await?;
+    ensure!(!reused, "the candidate only applies to the parent ID");
+    ensure!(
+        actual
+            == live
+                .lookup("child", OriginalConversationLookup::Conversation)
+                .await?
+    );
+
+    let (_, _, candidate) = live.prepare_parent_read().await?;
+    let original = file.with_file_name("conversations-original.json");
+    fs::rename(&file, &original)?;
+    std::os::unix::fs::symlink(&original, &file)?;
+    let error = live
+        .get_with_candidate("parent", candidate)
+        .await
+        .expect_err("a symlink must fail the owner file check");
+    ensure!(
+        matches!(
+            error.downcast_ref::<NativeArtifactError>(),
+            Some(NativeArtifactError::Core(CoreError::Store(
+                tobkiri_store::StoreError::Denied(_)
+            )))
+        ),
+        "expected a file fence denial, got {error:#}"
+    );
+    ensure!(fs::symlink_metadata(&file)?.is_symlink());
+    ensure!(fs::read(&original)? == bytes);
     Ok(())
 }
 

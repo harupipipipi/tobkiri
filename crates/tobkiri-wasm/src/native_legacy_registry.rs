@@ -607,6 +607,10 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         ensure_active(store.data_mut())?;
         // Validate both the hashed WIT shape and the actual executable's type
         // before instantiating anything or accepting an invocation of the host.
+        if export.shape == CONVERSATION_LINKED_CONTEXT.shape {
+            let original = declared_registry_function(pack, &CONVERSATION_GET)?;
+            verify_registry_export(engine, &component, &original.params, &CONVERSATION_GET)?;
+        }
         let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
         let model_parameters;
         let two_parameters;
@@ -952,26 +956,19 @@ pub(super) fn read_component(
     })?)
 }
 
-fn registry_linker<T: Send + 'static>(
+fn verify_registry_export(
     engine: &Engine,
     component: &Component,
     parameters: &[(String, WitType)],
     export: &RegistryExport,
-    owners: &crate::AllocationOwners,
-) -> Result<Linker<NativeState<T>>> {
+) -> Result<()> {
     let ty = component.component_type();
-    let flow = instance_type(ty.get_import(engine, FLOW).map(|item| item.ty))?;
     let interface = instance_type(ty.get_export(engine, export.interface).map(|item| item.ty))?;
     let function = function_type(
         interface
             .get_export(engine, export.function)
             .map(|item| item.ty),
     )?;
-    let profile = function_type(flow.get_export(engine, PROFILE).map(|item| item.ty))?;
-    ensure!(
-        profile.params().len() == 0 && valid_result(&profile),
-        "legacy Provider current-profile ABI differs"
-    );
     ensure!(
         function.params().len() == parameters.len() && valid_result(&function),
         "legacy Provider prepare ABI differs"
@@ -982,6 +979,24 @@ fn registry_linker<T: Send + 'static>(
             "legacy Provider prepare parameter ABI differs"
         );
     }
+    Ok(())
+}
+
+fn registry_linker<T: Send + 'static>(
+    engine: &Engine,
+    component: &Component,
+    parameters: &[(String, WitType)],
+    export: &RegistryExport,
+    owners: &crate::AllocationOwners,
+) -> Result<Linker<NativeState<T>>> {
+    let ty = component.component_type();
+    let flow = instance_type(ty.get_import(engine, FLOW).map(|item| item.ty))?;
+    let profile = function_type(flow.get_export(engine, PROFILE).map(|item| item.ty))?;
+    ensure!(
+        profile.params().len() == 0 && valid_result(&profile),
+        "legacy Provider current-profile ABI differs"
+    );
+    verify_registry_export(engine, component, parameters, export)?;
     if export.reads != 0 {
         let callback = function_type(flow.get_export(engine, CALLBACK).map(|item| item.ty))?;
         let mut arguments = callback.params();
