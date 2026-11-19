@@ -142,13 +142,20 @@ impl RoleArguments {
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
-        use tobkiri_harness_native::OriginalProviderSnapshotRole::Adapter;
+        use tobkiri_harness_native::OriginalProviderSnapshotRole::{
+            Adapter, ModelAccessCatalog, ModelAccessRead,
+        };
         use tobkiri_harness_native::OriginalSavedLocalChatRole::{
             Generate, SideChatGenerate, SideChatStream, Stream,
         };
         self.native_registry = NativeRegistryEnvironment {
             provider_snapshot_version: proof.and_then(|proof| {
-                if proof.permits_model_access_provider_snapshot() {
+                if [ModelAccessRead, ModelAccessCatalog]
+                    .into_iter()
+                    .any(|role| proof.permits_model_access_projection(role))
+                {
+                    Some("8")
+                } else if proof.permits_model_access_provider_snapshot() {
                     Some("7")
                 } else if proof.permits_workflow_adapter_provider_snapshot() {
                     Some("6")
@@ -4671,6 +4678,19 @@ mod tests {
                 role,
             )
         });
+        let [model_access_read_projection, model_access_catalog_projection, unrelated_projection] =
+            [
+                OriginalProviderSnapshotRole::ModelAccessRead,
+                OriginalProviderSnapshotRole::ModelAccessCatalog,
+                OriginalProviderSnapshotRole::ShellSettings,
+            ]
+            .map(|role| {
+                VerifiedRegistryLaunch::test_model_access_projection_proof(
+                    side_chat.identity.clone(),
+                    "catalog",
+                    role,
+                )
+            });
         for (proof, expected_turn_start, expected_snapshot) in [
             (None, false, None),
             (Some(&append), false, None),
@@ -4688,6 +4708,9 @@ mod tests {
             (Some(&workflow_messages_adapter_snapshot), false, Some("6")),
             (Some(&model_access_read_snapshot), false, Some("7")),
             (Some(&model_access_catalog_snapshot), false, Some("7")),
+            (Some(&model_access_read_projection), false, Some("8")),
+            (Some(&model_access_catalog_projection), false, Some("8")),
+            (Some(&unrelated_projection), false, Some("3")),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()

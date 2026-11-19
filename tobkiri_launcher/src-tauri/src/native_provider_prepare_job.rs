@@ -37,7 +37,10 @@ use tobkiri_harness_native::{
     OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
-use tobkiri_wasm::{LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT};
+use tobkiri_wasm::{
+    verify_legacy_provider_model_access_declaration, LegacyLocalChatHttpError, NativeDataIoError,
+    LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
+};
 
 use super::{
     caught,
@@ -76,6 +79,7 @@ type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
 const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded original Provider snapshot sent to the managed Host.
 pub(crate) const PROVIDER_SNAPSHOT_REPLY_LIMIT: usize = 1024 * 1024;
+const MODEL_ACCESS_PROJECTION_INPUT_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded CPython Conversation read result accepted by the Host.
 pub(crate) const CONVERSATION_READ_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum terminal evidence and result JSON in the Conversation confirmation exchange.
@@ -98,6 +102,38 @@ pub(crate) const APPLICATION_PRESENTATION_RESULT_LIMIT: usize = 1024 * 1024;
 pub(crate) const CONVERSATION_COMPLETE_RESULT_LIMIT: usize = 4 * 1024 * 1024;
 /// Maximum original Gateway DATA input and result JSON.
 pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
+
+/// The read-only phases of the original Model Access operations.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ModelAccessProjectionPhase {
+    Policy,
+    PrepareCatalog,
+    ProjectCatalog,
+}
+
+impl ModelAccessProjectionPhase {
+    /// Select the original snapshot grant required for this phase.
+    pub(crate) fn role(self) -> OriginalProviderSnapshotRole {
+        match self {
+            Self::Policy => OriginalProviderSnapshotRole::ModelAccessRead,
+            Self::PrepareCatalog | Self::ProjectCatalog => {
+                OriginalProviderSnapshotRole::ModelAccessCatalog
+            }
+        }
+    }
+
+    /// Bound the body before the Host can send it and the job reserves capacity.
+    pub(crate) fn check_input_size(size: usize) -> Result<(), SavedOrchestrationStepError> {
+        if size == 0 {
+            return Err(SavedOrchestrationStepError::Invalid);
+        }
+        if size > MODEL_ACCESS_PROJECTION_INPUT_LIMIT {
+            return Err(SavedOrchestrationStepError::Capacity);
+        }
+        Ok(())
+    }
+}
 
 /// The two original, effect-free Conversation completion operations.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -188,6 +224,11 @@ pub(crate) enum NativeRegistryRequest {
     ProviderSnapshot {
         role: OriginalProviderSnapshotRole,
     },
+    ModelAccessProjection {
+        phase: ModelAccessProjectionPhase,
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     ModelSave {
         request: Vec<u8>,
         provider: Vec<u8>,
@@ -277,6 +318,9 @@ impl NativeRegistryRequest {
             Self::Provider { .. } => proof.provider_prepare.is_some(),
             Self::ModelList => proof.model_settings.is_some(),
             Self::ProviderSnapshot { role } => proof.permits_provider_snapshot(*role),
+            Self::ModelAccessProjection { phase, .. } => {
+                proof.permits_model_access_projection(phase.role())
+            }
             Self::ModelSave { .. } => proof.model_save.is_some(),
             Self::ConversationGet { caller, .. } => proof.permits_conversation_read(*caller),
             Self::LinkedConversationContext { .. } | Self::LinkedConversationRead { .. } => {
@@ -318,7 +362,9 @@ impl NativeRegistryRequest {
     fn uses_funded_input(&self) -> bool {
         matches!(
             self,
-            Self::ApplicationPresentation { .. } | Self::ConversationComplete { .. }
+            Self::ApplicationPresentation { .. }
+                | Self::ConversationComplete { .. }
+                | Self::ModelAccessProjection { .. }
         )
     }
 
@@ -326,6 +372,10 @@ impl NativeRegistryRequest {
         let (request, extra) = match self {
             Self::Provider { request, apply } => (request, apply.as_ref()),
             Self::ModelList | Self::ProviderSnapshot { .. } => return Ok(0),
+            Self::ModelAccessProjection { input_bytes, .. } => {
+                ModelAccessProjectionPhase::check_input_size(*input_bytes)?;
+                return Ok(*input_bytes);
+            }
             Self::ModelSave { request, provider } => (request, Some(provider)),
             Self::ConversationConfirmation {
                 conversation_id,
@@ -1001,6 +1051,45 @@ async fn run(
                             &config.user_data_dir,
                             &identity.profile_id,
                             uses_provider_settings_projection(role),
+                        )
+                        .await
+                        .map_err(provider_snapshot_error)?;
+                    return decode_owner_read_reply(
+                        output,
+                        &graph,
+                        PROVIDER_SNAPSHOT_REPLY_LIMIT,
+                        ProviderSnapshotRequiresLegacyRead,
+                    );
+                }
+                NativeRegistryRequest::ModelAccessProjection {
+                    phase,
+                    input_bytes,
+                    receive_input,
+                } => {
+                    require_current_source()?;
+                    let _funding = input_funding
+                        .take()
+                        .context("Model Access projection input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    if input.len() != input_bytes || input.capacity() > input_bytes {
+                        return Err(SavedOrchestrationStepError::Invalid.into());
+                    }
+                    revalidate()?;
+                    let request = require_model_access_projection_phase(&input, phase)?;
+                    let pack = reacquire_provider_snapshot_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        phase.role(),
+                        checkpoint,
+                    )?;
+                    verify_legacy_provider_model_access_declaration(&pack)?;
+                    revalidate()?;
+                    let output = inspection
+                        .project_legacy_provider_model_access(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                            request,
                         )
                         .await
                         .map_err(provider_snapshot_error)?;
@@ -2121,6 +2210,27 @@ fn provider_snapshot_error(error: NativeArtifactError) -> anyhow::Error {
     }
 }
 
+fn require_model_access_projection_phase(
+    input: &[u8],
+    expected: ModelAccessProjectionPhase,
+) -> Result<&str, SavedOrchestrationStepError> {
+    #[derive(Deserialize)]
+    struct PhaseBinding {
+        phase: ModelAccessProjectionPhase,
+    }
+
+    let request = std::str::from_utf8(input).map_err(|_| SavedOrchestrationStepError::Invalid)?;
+    if !request.trim_start().starts_with('{') {
+        return Err(SavedOrchestrationStepError::Invalid);
+    }
+    let binding: PhaseBinding =
+        serde_json::from_str(request).map_err(|_| SavedOrchestrationStepError::Invalid)?;
+    if binding.phase != expected {
+        return Err(SavedOrchestrationStepError::Invalid);
+    }
+    Ok(request)
+}
+
 fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
     match &error {
         NativeArtifactError::TooLarge => ModelRegistryRequiresLegacyRead.into(),
@@ -2860,6 +2970,90 @@ mod tests {
                     .downcast::<SavedOrchestrationStepError>()
                     .unwrap(),
                 expected
+            );
+        }
+    }
+
+    #[test]
+    fn model_access_projection_funds_input_under_its_exact_read_only_proof() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use ModelAccessProjectionPhase::{Policy, PrepareCatalog, ProjectCatalog};
+        use OriginalProviderSnapshotRole::{ModelAccessCatalog, ModelAccessRead};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        let roles = [ModelAccessRead, ModelAccessCatalog];
+        let raw_proofs = roles.map(|role| {
+            VerifiedRegistryLaunch::test_provider_snapshot_proof(identity.clone(), "catalog", role)
+        });
+        let projection_proofs = roles.map(|role| {
+            VerifiedRegistryLaunch::test_model_access_projection_proof(
+                identity.clone(),
+                "catalog",
+                role,
+            )
+        });
+        for (phase, expected_role) in [
+            (Policy, ModelAccessRead),
+            (PrepareCatalog, ModelAccessCatalog),
+            (ProjectCatalog, ModelAccessCatalog),
+        ] {
+            let make_request = |input_bytes| NativeRegistryRequest::ModelAccessProjection {
+                phase,
+                input_bytes,
+                receive_input: Box::new(|_| panic!("admission cannot read the body")),
+            };
+            let request = make_request(MODEL_ACCESS_PROJECTION_INPUT_LIMIT);
+            assert_eq!(phase.role(), expected_role);
+            for ((role, raw_proof), projection_proof) in
+                roles.into_iter().zip(&raw_proofs).zip(&projection_proofs)
+            {
+                assert!(!request.has_launch_proof(raw_proof));
+                assert_eq!(
+                    request.has_launch_proof(projection_proof),
+                    role == expected_role
+                );
+            }
+            assert!(request.uses_funded_input());
+            assert!(!request.requires_publication_permit());
+            assert_eq!(
+                request.input_capacity().unwrap(),
+                MODEL_ACCESS_PROJECTION_INPUT_LIMIT
+            );
+        }
+    }
+
+    #[test]
+    fn model_access_projection_binds_the_body_phase_and_preserves_the_original_json() {
+        use ModelAccessProjectionPhase::{Policy, PrepareCatalog, ProjectCatalog};
+
+        let body = r#"{"catalog":{"nested":{"phase":"policy","number":9007199254740993}},"provider_instance_id":"connection/work","phase":"project-catalog"}"#;
+        assert_eq!(
+            require_model_access_projection_phase(body.as_bytes(), ProjectCatalog).unwrap(),
+            body
+        );
+        for phase in [Policy, PrepareCatalog] {
+            assert_eq!(
+                require_model_access_projection_phase(body.as_bytes(), phase),
+                Err(SavedOrchestrationStepError::Invalid)
+            );
+        }
+        for invalid in [
+            b"null".as_slice(),
+            br#"["policy"]"#,
+            br#"{"catalog":{"phase":"policy"}}"#,
+            br#"{"phase":"policy","phase":"prepare-catalog"}"#,
+            br#"{"phase":"policy","ph\u0061se":"prepare-catalog"}"#,
+            br#"{"phase":"policy"}{}"#,
+            b"{\"phase\":\"policy\",\"provider_instance_id\":\"\xff\"}",
+        ] {
+            assert_eq!(
+                require_model_access_projection_phase(invalid, Policy),
+                Err(SavedOrchestrationStepError::Invalid)
             );
         }
     }

@@ -55,7 +55,7 @@ mod provider_prepare;
 pub(crate) use provider_prepare::{
     start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
     ConversationCompletePhase, ConversationRegistryRequiresLegacyRead,
-    ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
+    ConversationWriteRequiresLegacyRead, LinkedConversationReadMode, ModelAccessProjectionPhase,
     ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
     ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
     SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,

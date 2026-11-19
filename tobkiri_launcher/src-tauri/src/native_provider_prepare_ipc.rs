@@ -31,16 +31,16 @@ use crate::{
         ApplicationPresentationRole, ConversationAppendCaller, ConversationCompletePhase,
         ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
-        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
-        OriginalSavedReceiptRole, PendingProviderPrepare, ProviderPrepareDeadline,
-        ProviderSnapshotRequiresLegacyRead, RegistryResponse, SavedLocalChatRequiresLegacyRequest,
-        SavedOrchestrationStepError, SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
-        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
-        APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
-        CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        PROVIDER_SNAPSHOT_REPLY_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
-        TURN_START_REPLY_LIMIT,
+        ModelAccessProjectionPhase, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
+        OriginalModelResolveRole, OriginalSavedReceiptRole, PendingProviderPrepare,
+        ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
+        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
+        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
+        TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+        APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
+        CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, PROVIDER_SNAPSHOT_REPLY_LIMIT,
+        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -116,6 +116,8 @@ struct Start<'a> {
     ai_route: Option<AiRoutingStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     provider_snapshot: Option<ProviderSnapshot>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    model_access_projection: Option<ModelAccessProjectionStart>,
 }
 
 enum RequestStart {
@@ -129,6 +131,10 @@ enum RequestStart {
     },
     ConversationComplete {
         phase: ConversationCompletePhase,
+        input_bytes: usize,
+    },
+    ModelAccessProjection {
+        phase: ModelAccessProjectionPhase,
         input_bytes: usize,
     },
     SavedLocalChat(SavedLocalChatStart),
@@ -145,7 +151,9 @@ impl RequestStart {
         deadline: Instant,
     ) -> Result<()> {
         let (tag, payload): (u8, &[u8]) = match self {
-            Self::ConversationComplete { .. } => (FAILURE, b"denied"),
+            Self::ConversationComplete { .. } | Self::ModelAccessProjection { .. } => {
+                (FAILURE, b"denied")
+            }
             Self::ApplicationPresentation { .. } => (FAILURE, b"unavailable"),
             _ => (INAPPLICABLE, &[]),
         };
@@ -157,6 +165,7 @@ enum BodyStart<'a> {
     SavedOrchestration(&'a SavedOrchestrationStart),
     ApplicationPresentation(&'a ApplicationPresentationStart),
     ConversationComplete(&'a ConversationCompleteStart),
+    ModelAccessProjection(&'a ModelAccessProjectionStart),
     SavedLocalChat(&'a SavedLocalChatStart),
     AiRouting(&'a AiRoutingStart),
 }
@@ -196,19 +205,25 @@ impl Start<'_> {
             &self.saved_orchestration,
             &self.application_presentation,
             &self.conversation_complete,
+            &self.model_access_projection,
             &self.saved_local_chat,
             &self.ai_route,
         ) {
-            (None, None, None, None, None) => None,
-            (Some(saved), None, None, None, None) => Some(BodyStart::SavedOrchestration(saved)),
-            (None, Some(presentation), None, None, None) => {
+            (None, None, None, None, None, None) => None,
+            (Some(saved), None, None, None, None, None) => {
+                Some(BodyStart::SavedOrchestration(saved))
+            }
+            (None, Some(presentation), None, None, None, None) => {
                 Some(BodyStart::ApplicationPresentation(presentation))
             }
-            (None, None, Some(complete), None, None) => {
+            (None, None, Some(complete), None, None, None) => {
                 Some(BodyStart::ConversationComplete(complete))
             }
-            (None, None, None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
-            (None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
+            (None, None, None, Some(projection), None, None) => {
+                Some(BodyStart::ModelAccessProjection(projection))
+            }
+            (None, None, None, None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
+            (None, None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
             _ => bail!("native Registry start must name exactly one operation"),
         };
         let registry_read = match (&self.model_list, &self.provider_snapshot) {
@@ -367,6 +382,26 @@ impl Start<'_> {
                 None,
                 None,
                 None,
+                Some(BodyStart::ModelAccessProjection(projection)),
+                None,
+            ) => {
+                ModelAccessProjectionPhase::check_input_size(projection.input_bytes)?;
+                return Ok(RequestStart::ModelAccessProjection {
+                    phase: projection.phase,
+                    input_bytes: projection.input_bytes,
+                });
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 Some(BodyStart::SavedLocalChat(chat)),
                 None,
             ) => return Ok(RequestStart::SavedLocalChat(chat.clone())),
@@ -406,6 +441,7 @@ impl Start<'_> {
             RequestStart::SavedOrchestration { .. }
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
+            | RequestStart::ModelAccessProjection { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::AiGatewayData { .. } => {
                 bail!("request needs a body")
@@ -577,6 +613,13 @@ struct ApplicationPresentationStart {
 #[serde(deny_unknown_fields)]
 struct ConversationCompleteStart {
     phase: ConversationCompletePhase,
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelAccessProjectionStart {
+    phase: ModelAccessProjectionPhase,
     input_bytes: usize,
 }
 
@@ -1371,13 +1414,19 @@ pub(crate) fn admit_connection(
     let request = match start.request_start() {
         Ok(request) => request,
         Err(error)
-            if start.conversation_complete.is_some()
+            if (start.conversation_complete.is_some()
+                || start.model_access_projection.is_some())
                 && error.is::<SavedOrchestrationStepError>() =>
         {
+            let reply = if start.model_access_projection.is_some() {
+                ReplyRole::ModelAccessProjection
+            } else {
+                ReplyRole::ConversationComplete
+            };
             send_frame(
                 &mut stream,
                 FAILURE,
-                ReplyRole::ConversationComplete
+                reply
                     .failure_code(WireAuthority::AwaitingLive, &error)
                     .as_bytes(),
                 deadline.min(Instant::now() + FRAME_TIMEOUT),
@@ -1391,6 +1440,7 @@ pub(crate) fn admit_connection(
         RequestStart::SavedOrchestration { .. }
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
+            | RequestStart::ModelAccessProjection { .. }
             | RequestStart::AiGatewayData { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::Inline(
@@ -1467,6 +1517,9 @@ pub(crate) fn admit_connection(
             proof.permits_application_presentation(*role)
         }
         RequestStart::ConversationComplete { .. } => proof.permits_conversation_complete(),
+        RequestStart::ModelAccessProjection { phase, .. } => {
+            proof.permits_model_access_projection(phase.role())
+        }
         RequestStart::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
         RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
     };
@@ -1579,6 +1632,26 @@ impl AdmittedConnection {
                     },
                 );
             }
+            RequestStart::ModelAccessProjection { phase, input_bytes } => {
+                let connection = Connection::new(
+                    manager,
+                    candidate,
+                    stream,
+                    deadline,
+                    ReplyRole::ModelAccessProjection,
+                );
+                let input_connection = Arc::clone(&connection);
+                return connection.run(
+                    app,
+                    NativeRegistryRequest::ModelAccessProjection {
+                        phase,
+                        input_bytes,
+                        receive_input: Box::new(move |deadline| {
+                            input_connection.receive_funded_input(input_bytes, deadline)
+                        }),
+                    },
+                );
+            }
             RequestStart::AiGatewayData {
                 operation,
                 input_bytes,
@@ -1614,6 +1687,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
             NativeRegistryRequest::ModelList => ReplyRole::ModelList,
             NativeRegistryRequest::ProviderSnapshot { .. } => ReplyRole::ProviderSnapshot,
+            NativeRegistryRequest::ModelAccessProjection { .. } => ReplyRole::ModelAccessProjection,
             NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
             NativeRegistryRequest::ConversationGet { .. }
             | NativeRegistryRequest::LinkedConversationContext { .. }
@@ -1644,6 +1718,7 @@ enum ReplyRole {
     Provider,
     ModelList,
     ProviderSnapshot,
+    ModelAccessProjection,
     ModelSave,
     ConversationRead,
     ConversationConfirmation,
@@ -1663,7 +1738,9 @@ impl ReplyRole {
     fn uses_funded_input(self) -> bool {
         matches!(
             self,
-            Self::ApplicationPresentation | Self::ConversationComplete
+            Self::ApplicationPresentation
+                | Self::ConversationComplete
+                | Self::ModelAccessProjection
         )
     }
 
@@ -1696,7 +1773,7 @@ impl ReplyRole {
         match self {
             Self::Provider => (JSON_LIMIT, "limit-exceeded"),
             Self::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
-            Self::ProviderSnapshot => (
+            Self::ProviderSnapshot | Self::ModelAccessProjection => (
                 PROVIDER_SNAPSHOT_REPLY_LIMIT,
                 provider_snapshot_fallback(authority),
             ),
@@ -1731,13 +1808,21 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
-        if self == Self::ProviderSnapshot {
+        if matches!(self, Self::ProviderSnapshot | Self::ModelAccessProjection) {
             return if error.is::<ProviderSnapshotRequiresLegacyRead>() {
                 provider_snapshot_fallback(authority)
             } else {
-                match failure_code(error) {
-                    "legacy-read-required" => "unavailable",
-                    code => code,
+                match (self, error.downcast_ref::<SavedOrchestrationStepError>()) {
+                    (Self::ModelAccessProjection, Some(SavedOrchestrationStepError::Invalid)) => {
+                        "invalid"
+                    }
+                    (Self::ModelAccessProjection, Some(SavedOrchestrationStepError::Capacity)) => {
+                        "limit-exceeded"
+                    }
+                    _ => match failure_code(error) {
+                        "legacy-read-required" => "unavailable",
+                        code => code,
+                    },
                 }
             };
         }
@@ -1880,7 +1965,7 @@ impl ReplyRole {
         if output.len() > limit {
             return Err(overflow_code);
         }
-        if self == Self::ProviderSnapshot {
+        if matches!(self, Self::ProviderSnapshot | Self::ModelAccessProjection) {
             if authority != WireAuthority::Live {
                 return Err("unavailable");
             }
@@ -3764,6 +3849,120 @@ mod tests {
                 "{extra}"
             );
         }
+    }
+
+    #[test]
+    fn model_access_projection_start_requires_one_exact_phase_and_bounded_length() {
+        let start = |descriptor: &str, extra: &str| {
+            start_frame(&format!(
+                r#", "model_access_projection":{descriptor}{extra}"#
+            ))
+        };
+        let limit = 1024 * 1024;
+        for (name, expected) in [
+            ("policy", ModelAccessProjectionPhase::Policy),
+            (
+                "prepare-catalog",
+                ModelAccessProjectionPhase::PrepareCatalog,
+            ),
+            (
+                "project-catalog",
+                ModelAccessProjectionPhase::ProjectCatalog,
+            ),
+        ] {
+            for input_bytes in [1, limit] {
+                let frame = start(
+                    &format!(r#"{{"phase":"{name}","input_bytes":{input_bytes}}}"#),
+                    "",
+                );
+                assert!(matches!(
+                    parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                    Ok(RequestStart::ModelAccessProjection { phase, input_bytes: declared })
+                        if phase == expected && declared == input_bytes
+                ));
+                assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            }
+        }
+        for (descriptor, extra) in [
+            ("null", ""),
+            (r#"["policy",1]"#, ""),
+            (r#"{"phase":"Policy","input_bytes":1}"#, ""),
+            (r#"{"phase":"policy","input_bytes":0}"#, ""),
+            (r#"{"phase":"policy","input_bytes":1048577}"#, ""),
+            (r#"{"phase":"policy","input_bytes":true}"#, ""),
+            (
+                r#"{"phase":"policy","phase":"prepare-catalog","input_bytes":1}"#,
+                "",
+            ),
+            (
+                r#"{"phase":"policy","input_bytes":1,"role":"model-access-catalog"}"#,
+                "",
+            ),
+            (
+                r#"{"phase":"policy","input_bytes":1}"#,
+                r#", "provider_snapshot":{"role":"model-access-read"}"#,
+            ),
+            (
+                r#"{"phase":"policy","input_bytes":1}"#,
+                r#", "saved_orchestration":{"input_bytes":1}"#,
+            ),
+        ] {
+            let frame = start(descriptor, extra);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|parsed| parsed.request_start())
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn model_access_projection_requires_live_authority_and_only_falls_back_for_compatibility() {
+        let role = ReplyRole::ModelAccessProjection;
+        let live = WireAuthority::Live;
+        let compatibility = ProviderSnapshotRequiresLegacyRead.into();
+        let opaque = br#"{"result":{"number":NaN},"snapshot":{}}"#;
+        assert!(role.uses_funded_input());
+        assert!(role.effect_check().is_none());
+        assert_eq!(
+            role.failure_code(live, &compatibility),
+            "legacy-read-required"
+        );
+        assert_eq!(
+            role.failure_code(live, &NativeArtifactError::Denied.into()),
+            "denied"
+        );
+        assert_eq!(
+            role.failure_code(live, &SavedOrchestrationStepError::Invalid.into()),
+            "invalid"
+        );
+        assert_eq!(
+            role.failure_code(live, &ModelRegistryRequiresLegacyRead.into()),
+            "unavailable"
+        );
+        assert_eq!(role.validate_result(live, opaque), Ok(()));
+        assert_eq!(
+            role.result_limit(live),
+            (PROVIDER_SNAPSHOT_REPLY_LIMIT, "legacy-read-required")
+        );
+        for authority in [
+            WireAuthority::AwaitingLive,
+            WireAuthority::PublicationPermitted,
+        ] {
+            assert_eq!(role.failure_code(authority, &compatibility), "unavailable");
+            assert_eq!(role.validate_result(authority, opaque), Err("unavailable"));
+        }
+
+        let (mut listener, mut host) = UnixStream::pair().unwrap();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        RequestStart::ModelAccessProjection {
+            phase: ModelAccessProjectionPhase::Policy,
+            input_bytes: 1,
+        }
+        .reject_missing_launch_proof(&mut listener, deadline)
+        .unwrap();
+        assert_eq!(read_header(&mut host, deadline).unwrap(), (FAILURE, 6));
+        let mut denied = [0; 6];
+        read_exact(&mut host, &mut denied, deadline).unwrap();
+        assert_eq!(&denied, b"denied");
     }
 
     #[test]

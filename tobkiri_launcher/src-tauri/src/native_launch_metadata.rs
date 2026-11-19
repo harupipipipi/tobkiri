@@ -38,7 +38,7 @@ use tobkiri_wasm::{
     verify_legacy_conversation_linked_context_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
-    verify_legacy_provider_snapshot_declaration,
+    verify_legacy_provider_model_access_declaration, verify_legacy_provider_snapshot_declaration,
 };
 
 use super::{
@@ -198,6 +198,20 @@ impl VerifiedRegistryLaunch {
         self.provider_snapshot.as_ref().is_some_and(|source| {
             source.model_access_read.is_some() || source.model_access_catalog.is_some()
         })
+    }
+
+    /// Require the Model Access operation's own signed grant and the verified projection port.
+    pub(crate) fn permits_model_access_projection(
+        &self,
+        role: OriginalProviderSnapshotRole,
+    ) -> bool {
+        matches!(
+            role,
+            OriginalProviderSnapshotRole::ModelAccessRead
+                | OriginalProviderSnapshotRole::ModelAccessCatalog
+        ) && self
+            .provider_snapshot(role)
+            .is_some_and(|(_, source)| source.model_access_projection_declared)
     }
 
     fn provider_snapshot(
@@ -782,6 +796,7 @@ struct VerifiedProviderSnapshotSource {
     command_datasource: Option<VerifiedOrdinarySavedBundle>,
     model_access_read: Option<VerifiedOrdinarySavedBundle>,
     model_access_catalog: Option<VerifiedOrdinarySavedBundle>,
+    model_access_projection_declared: bool,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -896,6 +911,20 @@ impl VerifiedRegistryLaunch {
         Self::test_provider_snapshot_proof_with_roles(identity, catalog_revision, [role.into()])
     }
 
+    pub(crate) fn test_model_access_projection_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalProviderSnapshotRole,
+    ) -> Self {
+        let mut proof = Self::test_provider_snapshot_proof(identity, catalog_revision, role);
+        proof
+            .provider_snapshot
+            .as_mut()
+            .unwrap()
+            .model_access_projection_declared = true;
+        proof
+    }
+
     pub(crate) fn test_provider_snapshot_proof_with_roles(
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
@@ -912,6 +941,7 @@ impl VerifiedRegistryLaunch {
             command_datasource: None,
             model_access_read: None,
             model_access_catalog: None,
+            model_access_projection_declared: false,
             archive_sha256: Digest::hash(b"provider-snapshot-archive").to_string(),
             archive_bytes: 512,
             manifest_sha256: Digest::hash(b"provider-snapshot-manifest").to_string(),
@@ -1925,6 +1955,9 @@ impl LaunchActivationObserver<'_> {
                         return Ok((None, None));
                     }
                     let pack = verify_registry_archive(inspection, receipt, input)?;
+                    let model_access_projection_declared =
+                        observe_model_access_projection_declaration(&pack)
+                            .map_err(io::Error::other)?;
                     let prepare = provider_selection
                         .as_ref()
                         .map(|selection| {
@@ -1950,6 +1983,7 @@ impl LaunchActivationObserver<'_> {
                             command_datasource,
                             model_access_read,
                             model_access_catalog,
+                            model_access_projection_declared,
                             archive_sha256: receipt.archive_sha256().to_owned(),
                             archive_bytes: receipt.archive_bytes(),
                             manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -2359,6 +2393,9 @@ pub(super) fn reacquire_provider_snapshot_pack(
             )?;
             let pack = verify_registry_archive(inspection, receipt, input)?;
             verify_legacy_provider_snapshot_declaration(&pack).map_err(io::Error::other)?;
+            if proof.permits_model_access_projection(role) {
+                verify_legacy_provider_model_access_declaration(&pack).map_err(io::Error::other)?;
+            }
             Ok(pack)
         },
     )
@@ -3014,6 +3051,14 @@ fn observe_provider_snapshot_declaration(pack: &VerifiedPack) -> Result<bool> {
     let declared = registry_port_declared(pack, "local.provider-registry.legacy-resource");
     if declared {
         verify_legacy_provider_snapshot_declaration(pack)?;
+    }
+    Ok(declared)
+}
+
+fn observe_model_access_projection_declaration(pack: &VerifiedPack) -> Result<bool> {
+    let declared = registry_port_declared(pack, "local.provider-registry.model-access-projection");
+    if declared {
+        verify_legacy_provider_model_access_declaration(pack)?;
     }
     Ok(declared)
 }
@@ -4536,7 +4581,14 @@ mod tests {
         assert!(!unrelated.permits_model_access_provider_snapshot());
         for role in roles {
             assert!(!unrelated.permits_provider_snapshot(role));
-            let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            let raw_proof = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                identity.clone(),
+                digest.as_str(),
+                role,
+            );
+            assert!(raw_proof.permits_model_access_provider_snapshot());
+            assert!(!raw_proof.permits_model_access_projection(role));
+            let mut proof = VerifiedRegistryLaunch::test_model_access_projection_proof(
                 identity.clone(),
                 digest.as_str(),
                 role,
@@ -4547,10 +4599,15 @@ mod tests {
                     proof.permits_provider_snapshot(candidate),
                     candidate == role,
                 );
+                assert_eq!(
+                    proof.permits_model_access_projection(candidate),
+                    candidate == role,
+                );
             }
             proof.provider_snapshot = None;
             assert!(!proof.permits_model_access_provider_snapshot());
             assert!(!proof.permits_provider_snapshot(role));
+            assert!(!proof.permits_model_access_projection(role));
         }
     }
 
@@ -5541,6 +5598,82 @@ mod tests {
         assert!(
             observe_linked_conversation_context_declaration(&verify(&missing_provide)).is_err()
         );
+    }
+
+    #[test]
+    fn optional_model_access_projection_declaration_preserves_legacy_registry_read() {
+        use std::{
+            fs,
+            path::{Path, PathBuf},
+        };
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-model-access-projection-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        let source =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/local.provider-registry-rust");
+        let draft: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../packs/local.provider-registry-rust/pack.draft.json"
+        ))
+        .unwrap();
+        for file in draft["files"].as_array().unwrap() {
+            let file = file.as_str().unwrap();
+            match file {
+                "component.wasm" => fs::write(path.join(file), b"fixture").unwrap(),
+                "wit/deps/core.wit" => fs::write(
+                    path.join(file),
+                    include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+                )
+                .unwrap(),
+                _ => {
+                    fs::copy(source.join(file), path.join(file)).unwrap();
+                }
+            }
+        }
+        let verify = |draft: &serde_json::Value| {
+            let manifest = generate_manifest(&path, &serde_json::to_vec(draft).unwrap()).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        let current = verify(&draft);
+        assert!(observe_model_access_projection_declaration(&current).unwrap());
+        assert!(observe_provider_snapshot_declaration(&current).unwrap());
+
+        let projection = "local.provider-registry.model-access-projection";
+        let mut malformed = draft;
+        malformed["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|port| port["shape"] == projection)
+            .unwrap()["optional"] = serde_json::json!(true);
+        assert!(observe_model_access_projection_declaration(&verify(&malformed)).is_err());
+
+        malformed["ports"]["provides"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|port| port["shape"] != projection);
+        assert!(observe_model_access_projection_declaration(&verify(&malformed)).is_err());
+
+        let mut previous = malformed;
+        previous["shapes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|shape| shape["name"] != projection);
+        let previous = verify(&previous);
+        assert!(!observe_model_access_projection_declaration(&previous).unwrap());
+        assert!(observe_provider_snapshot_declaration(&previous).unwrap());
     }
 
     #[test]
