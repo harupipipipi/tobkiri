@@ -748,6 +748,43 @@ impl<'a> OriginalConversationCompleteChoice<'a> {
     }
 }
 
+/// The signed Conversation Complete chain and its Gateway's Provider Health grant.
+pub struct OriginalConversationCompleteHealthChoice<'a> {
+    complete: OriginalConversationCompleteChoice<'a>,
+    health: OriginalRoutePin,
+}
+
+impl<'a> OriginalConversationCompleteHealthChoice<'a> {
+    /// Select the exact desktop Shell, Application, Conversation, Gateway, and Health grants.
+    /// Verify all returned pins against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_conversation_complete_health_records(active.records(), budget)?.map(
+                |(routes, health)| Self {
+                    complete: OriginalConversationCompleteChoice {
+                        _active: active,
+                        routes,
+                    },
+                    health,
+                },
+            ),
+        )
+    }
+
+    /// The selected Complete grants and the ordinary Shell and Application identities.
+    pub fn complete(&self) -> &OriginalConversationCompleteChoice<'a> {
+        &self.complete
+    }
+
+    /// The Gateway Generate grant for the dedicated Provider Health operation.
+    pub fn health(&self) -> &OriginalRoutePin {
+        &self.health
+    }
+}
+
 /// Immutable metadata for the selected Shell's direct Model List grant.
 pub struct OriginalModelSettingsSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1599,6 +1636,8 @@ pub enum OriginalProviderSnapshotRole {
         /// The operation selected by the desktop Shell.
         entry: OriginalWorkflowSnapshotEntry,
     },
+    /// The ordinary Conversation Complete chain's Gateway Generate Health grant.
+    ConversationCompleteHealth,
     /// The desktop Shell owns this direct settings read grant.
     ShellSettings,
     /// Model Manage owns a nested read grant on the selected Model Save chain.
@@ -1618,7 +1657,9 @@ impl OriginalProviderSnapshotRole {
     pub const fn is_health(self) -> bool {
         matches!(
             self,
-            Self::GatewayHealth { .. } | Self::WorkflowHealth { .. }
+            Self::GatewayHealth { .. }
+                | Self::WorkflowHealth { .. }
+                | Self::ConversationCompleteHealth
         )
     }
 }
@@ -2102,16 +2143,33 @@ fn select_conversation_complete_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<ConversationCompleteRoutes>> {
-    let Some(records) = selected_shell_records(active, budget)? else {
+    let Some(records) = selected_desktop_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let (profile, lock, plan) = active;
-    let shell = required(profile, "shell")?;
-    if verified_text(&records.shell_caller) != TURN_SHELL_CALLER
-        || !is_text(&shell, "pack_id", TURN_SHELL_CALLER)
-    {
+    select_conversation_complete_routes(active, &records)
+}
+
+fn select_conversation_complete_health_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<(ConversationCompleteRoutes, OriginalRoutePin)>> {
+    let Some(records) = selected_desktop_shell_records(active, budget)? else {
         return Ok(None);
-    }
+    };
+    let Some(complete) = select_conversation_complete_routes(active, &records)? else {
+        return Ok(None);
+    };
+    let [_, gateway] = &complete.pins;
+    Ok(records
+        .select_route(gateway.function_id(), &PROVIDER_HEALTH_GENERATE)?
+        .map(|health| (complete, health)))
+}
+
+fn select_conversation_complete_routes(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    records: &Records<'_>,
+) -> Result<Option<ConversationCompleteRoutes>> {
+    let (profile, lock, plan) = active;
     let Some(conversation) = records.select_shell_route(&CONVERSATION_COMPLETE)? else {
         return Ok(None);
     };
@@ -2148,13 +2206,14 @@ fn select_conversation_complete_records(
         "artifact_digest",
         verified_text(&application_digest),
     ) || !application
-        .eq_guest(&required(lock, "application")?, budget)
+        .eq_guest(&required(lock, "application")?, records.budget)
         .map_err(|_| Capacity)?
     {
         return Err(Inconsistent(
             "the selected Application differs across records",
         ));
     }
+    let shell = required(profile, "shell")?;
     Ok(Some(ConversationCompleteRoutes {
         pins: [conversation, gateway],
         shell_artifacts: [
@@ -3714,6 +3773,39 @@ mod tests {
         })
     }
 
+    fn add_fixture_grant(
+        fixture: &mut Value,
+        caller: &str,
+        route: &Route,
+        budget: &Arc<dyn AllocationBudget>,
+    ) {
+        let snapshot = fixture["profile"]["profile_authority_snapshot_digest"]
+            .as_str()
+            .unwrap();
+        let reference = authority_reference(caller, route, snapshot, budget).unwrap();
+        let revision = Digest::hash(route.contract.as_bytes());
+        let scope = json!({
+            "capability": "operation.invoke",
+            "semantics_digest": revision.as_str(),
+            "dimensions": {"operation": [route.operation], "contract": [route.contract]},
+            "quotas": {},
+            "opaque": false,
+            "exact_request_digest": null,
+        });
+        let scope_digest = CoreValue::parse_guest(&serde_json::to_vec(&scope).unwrap(), budget)
+            .unwrap()
+            .digest_guest(budget)
+            .unwrap();
+        add_record(
+            fixture,
+            route,
+            caller,
+            &format!("authority-ref:{}", reference.hex()),
+            revision.as_str(),
+            scope_digest.as_str(),
+        );
+    }
+
     fn workflow_snapshot_records(health_callers: &[OriginalWorkflowSnapshotCaller]) -> Value {
         let mut fixture = records();
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
@@ -3731,32 +3823,7 @@ mod tests {
             {
                 return;
             }
-            let snapshot = fixture["profile"]["profile_authority_snapshot_digest"]
-                .as_str()
-                .unwrap();
-            let reference = authority_reference(caller, route, snapshot, &budget).unwrap();
-            let revision = Digest::hash(route.contract.as_bytes());
-            let scope = json!({
-                "capability": "operation.invoke",
-                "semantics_digest": revision.as_str(),
-                "dimensions": {"operation": [route.operation], "contract": [route.contract]},
-                "quotas": {},
-                "opaque": false,
-                "exact_request_digest": null,
-            });
-            let scope_digest =
-                CoreValue::parse_guest(&serde_json::to_vec(&scope).unwrap(), &budget)
-                    .unwrap()
-                    .digest_guest(&budget)
-                    .unwrap();
-            add_record(
-                &mut fixture,
-                route,
-                caller,
-                &format!("authority-ref:{}", reference.hex()),
-                revision.as_str(),
-                scope_digest.as_str(),
-            );
+            add_fixture_grant(&mut fixture, caller, route, &budget);
         };
         for entry in OriginalWorkflowSnapshotEntry::ALL {
             add("shell.tauri.default", entry.route());
@@ -3801,7 +3868,7 @@ mod tests {
         )
     }
 
-    fn set_workflow_grant_interactive_only(fixture: &mut Value, row: usize) {
+    fn set_grant_interactive_only(fixture: &mut Value, row: usize) {
         fixture["profile"]["requested_edges"][row]["authority_mode"] = json!("interactive_only");
         fixture["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
     }
@@ -3828,7 +3895,7 @@ mod tests {
                     || (edge["operation_id"] == PROVIDER_HEALTH_GENERATE.operation
                         && edge["caller_function_id"] != gateway.function)
                 {
-                    set_workflow_grant_interactive_only(&mut candidate, row);
+                    set_grant_interactive_only(&mut candidate, row);
                 }
             }
             assert!(select_workflow_snapshot(&candidate).unwrap().is_none());
@@ -3869,7 +3936,7 @@ mod tests {
                     && edge["target_provider_id"] == WORKFLOW_ADVANCE.function
                     && edge["operation_id"] != root.route().operation
                 {
-                    set_workflow_grant_interactive_only(&mut candidate, row);
+                    set_grant_interactive_only(&mut candidate, row);
                 }
             }
             let (entries, _) = select_workflow_health(&candidate).unwrap().unwrap();
@@ -3890,7 +3957,7 @@ mod tests {
                 .unwrap();
             for revoked_row in [root_row, gateway_row] {
                 let mut revoked = candidate.clone();
-                set_workflow_grant_interactive_only(&mut revoked, revoked_row);
+                set_grant_interactive_only(&mut revoked, revoked_row);
                 assert!(select_workflow_health(&revoked).unwrap().is_none());
             }
         }
@@ -4167,6 +4234,97 @@ mod tests {
             wrong_shell_pack[record]["shell"]["pack_id"] = json!("unrelated.shell-pack");
         }
         assert!(select(&wrong_shell_pack).unwrap().is_none());
+    }
+
+    #[test]
+    fn conversation_complete_health_requires_its_exact_generate_grant_and_complete_root() {
+        let fixture = records();
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_conversation_complete_health_records((&profile, &lock, &plan), &budget)
+        };
+        let select_complete = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_conversation_complete_records((&profile, &lock, &plan), &budget)
+        };
+        let select_saved_health = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_gateway_provider_health_records(
+                (&profile, &lock, &plan),
+                &budget,
+                OriginalModelResolveRole::Generate,
+                false,
+            )
+        };
+        let (complete, health) = select(&fixture).unwrap().unwrap();
+        let [conversation, gateway] = &complete.pins;
+        assert_eq!(conversation.caller_function_id(), TURN_SHELL_CALLER);
+        assert_eq!(conversation.operation_id(), CONVERSATION_COMPLETE.operation);
+        assert_eq!(gateway.caller_function_id(), conversation.function_id());
+        assert_eq!(gateway.function_id(), GATEWAY_GENERATE.function);
+        assert_eq!(health.caller_function_id(), gateway.function_id());
+        assert_eq!(health.operation_id(), PROVIDER_HEALTH_GENERATE.operation);
+
+        let edges = fixture["profile"]["requested_edges"].as_array().unwrap();
+        let row = |caller: &str, route: &Route| {
+            edges
+                .iter()
+                .position(|edge| {
+                    edge["caller_function_id"] == caller && edge["operation_id"] == route.operation
+                })
+                .unwrap()
+        };
+        let health_row = row(gateway.function_id(), &PROVIDER_HEALTH_GENERATE);
+        let mut missing = fixture.clone();
+        missing["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(health_row);
+        missing["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(health_row);
+        assert!(select(&missing).unwrap().is_none());
+        assert!(select_complete(&missing).unwrap().is_some());
+        add_fixture_grant(
+            &mut missing,
+            gateway.function_id(),
+            &PROVIDER_HEALTH_STREAM,
+            &budget,
+        );
+        let [profile, lock, plan] = parse_records(&missing, &budget);
+        let stream_records = selected_shell_records((&profile, &lock, &plan), &budget)
+            .unwrap()
+            .unwrap();
+        assert!(
+            stream_records
+                .select_route(gateway.function_id(), &PROVIDER_HEALTH_STREAM)
+                .unwrap()
+                .is_some()
+        );
+        assert!(select(&missing).unwrap().is_none());
+        assert!(select_complete(&missing).unwrap().is_some());
+
+        let mut mismatched = fixture.clone();
+        mismatched["plan"]["bindings"][health_row]["authority_mode"] = json!("interactive_only");
+        assert!(matches!(select(&mismatched), Err(Inconsistent(_))));
+        assert!(select_complete(&mismatched).unwrap().is_some());
+
+        for (caller, route) in [
+            (TURN_SHELL_CALLER, &CONVERSATION_COMPLETE),
+            (CONVERSATION_COMPLETE.function, &GATEWAY_GENERATE),
+        ] {
+            let mut saved_only = fixture.clone();
+            set_grant_interactive_only(&mut saved_only, row(caller, route));
+            assert!(select(&saved_only).unwrap().is_none());
+            assert!(select_saved_health(&saved_only).unwrap().is_some());
+        }
+        let saved_turn_row = row(TURN_SHELL_CALLER, &SAVED_TURN);
+        let mut complete_only = fixture;
+        set_grant_interactive_only(&mut complete_only, saved_turn_row);
+        assert!(select_saved_health(&complete_only).unwrap().is_none());
+        assert!(select(&complete_only).unwrap().is_some());
     }
 
     fn select_model_save(records: &Value) -> Result<Option<(OriginalRoutePin, OriginalRoutePin)>> {

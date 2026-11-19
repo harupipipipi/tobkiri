@@ -2081,7 +2081,7 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
         assert peer.recv(1) == b""
 
     with _served(monkeypatch, serve):
-        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "13")
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, "14")
         assert ipc.capture_launcher_provider_snapshot_reader() is None
         minimum = 11 if quote else 10 if side_chat else 9
         for older in range(8, minimum):
@@ -2124,6 +2124,10 @@ def test_gateway_provider_health_uses_the_opaque_read_frame(
             "version": "rumi.provider-registry.store.v1",
             "profile_id": "defaults", "revision": 0, "providers": [],
         }),
+        ("conversation-complete-health", {
+            "version": "rumi.provider-registry.store.v1",
+            "profile_id": "defaults", "revision": 0, "providers": [],
+        }),
     ],
 )
 def test_gateway_health_rejects_results_outside_the_owner_shape(role, result) -> None:
@@ -2133,7 +2137,7 @@ def test_gateway_health_rejects_results_outside_the_owner_shape(role, result) ->
 
 @pytest.mark.parametrize("role", ("workflow-health-text", "workflow-health-messages"))
 @pytest.mark.parametrize("entry", ipc.WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES)
-@pytest.mark.parametrize("version", ("12", "12-health-only"))
+@pytest.mark.parametrize("version", ("12", "12-health-only", "13", "13-health-only"))
 def test_workflow_provider_health_carries_the_exact_entry(
     monkeypatch: pytest.MonkeyPatch,
     role: ipc.WorkflowProviderHealthRole,
@@ -2170,8 +2174,8 @@ def test_workflow_provider_health_carries_the_exact_entry(
         reader = ipc.capture_launcher_provider_snapshot_reader()
         assert reader is not None
         assert reader.supports_gateway_quote_health and reader.supports_workflow_health
-        assert reader.supports_workflow_adapter == (version == "12")
-        if version == "12-health-only":
+        assert reader.supports_workflow_adapter is (version in ("12", "13"))
+        if version.endswith("-health-only"):
             assert not reader.supports_gateway and not reader.supports_workflow
             for raw_role, raw_entry in [("generate", None), ("workflow-text", entry)]:
                 raw_request = ipc.NativeProviderSnapshotRequest(
@@ -2180,6 +2184,51 @@ def test_workflow_provider_health_carries_the_exact_entry(
                 )
                 with pytest.raises(ipc.NativeProviderPrepareUnavailable):
                     reader(raw_request)
+        assert reader(request) == expected
+
+
+@pytest.mark.parametrize("version", ("13", "13-health-only"))
+def test_conversation_complete_health_carries_only_the_exact_role(
+    monkeypatch: pytest.MonkeyPatch, version: str,
+) -> None:
+    borrow = _Borrow()
+    request = ipc.NativeProviderSnapshotRequest(
+        borrow.context, borrow.runtime_instance, borrow.deadline_monotonic,
+        borrow.assert_current, ipc.CONVERSATION_COMPLETE_HEALTH_ROLE,
+    )
+    expected = {"providers": [
+        {"provider_instance_id": "fixture", "status": "available",
+         "observed_at": 1_901_234_567.125, "verified": True},
+    ]}
+
+    def serve(peer: socket.socket) -> None:
+        tag, frame = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(frame)
+        assert start.keys() == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns", "provider_snapshot",
+        }
+        assert start["provider_snapshot"] == {"role": "conversation-complete-health"}
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    with _served(monkeypatch, serve):
+        for older in ("12", "12-health-only"):
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, older)
+            reader = ipc.capture_launcher_provider_snapshot_reader()
+            assert reader is not None and reader.supports_workflow_health
+            assert not reader.supports_conversation_complete_health
+            with pytest.raises(ipc.NativeProviderPrepareUnavailable):
+                reader(request)
+        for unknown in ("11-health-only", "14-health-only"):
+            monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, unknown)
+            assert ipc.capture_launcher_provider_snapshot_reader() is None
+        monkeypatch.setenv(ipc._PROVIDER_SNAPSHOT_ENV, version)
+        reader = ipc.capture_launcher_provider_snapshot_reader()
+        assert reader is not None and reader.supports_conversation_complete_health
+        assert reader.supports_raw_snapshot is (version == "13")
         assert reader(request) == expected
 
 
@@ -2277,6 +2326,8 @@ def test_model_access_provider_snapshot_is_a_v7_raw_borrow(
     ("workflow-health-text", None), ("workflow-health-messages", "run.get"),
     ("workflow-health-audio-transcribe", "run.advance"),
     ("workflow-health-text-adapter", "run.step.resume"),
+    ("conversation-complete-health", "run.advance"),
+    ("conversation-complete-health-stream", None),
 ])
 def test_workflow_provider_snapshot_rejects_mismatched_entry(role, entry) -> None:
     borrow = _Borrow()

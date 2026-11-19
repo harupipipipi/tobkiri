@@ -1160,8 +1160,9 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
     fn try_from(wire: ProviderSnapshotWire) -> std::result::Result<Self, Self::Error> {
         use tobkiri_harness_native::OriginalWorkflowHealthCaller;
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
-            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
+            Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
+            WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -1211,6 +1212,7 @@ impl TryFrom<ProviderSnapshotWire> for ProviderSnapshot {
             "command-datasource" => return snapshot(CommandDatasource),
             "model-access-read" => return snapshot(ModelAccessRead),
             "model-access-catalog" => return snapshot(ModelAccessCatalog),
+            "conversation-complete-health" => return snapshot(ConversationCompleteHealth),
             _ => {}
         }
         let unknown_role = "unknown Provider Snapshot role or missing Workflow entry";
@@ -3258,8 +3260,8 @@ mod tests {
     #[test]
     fn provider_snapshot_start_decodes_the_closed_role_set() {
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
-            ModelAccessRead, ModelSave, ModelSearch, ShellSettings,
+            Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings,
         };
 
         let assert_role = |name: &str, expected| {
@@ -3308,6 +3310,7 @@ mod tests {
         assert_role("command-datasource", CommandDatasource);
         assert_role("model-access-read", ModelAccessRead);
         assert_role("model-access-catalog", ModelAccessCatalog);
+        assert_role("conversation-complete-health", ConversationCompleteHealth);
     }
 
     #[test]
@@ -3423,6 +3426,10 @@ mod tests {
             r#", "provider_snapshot":{"role":"gateway-side-chat-stream"}"#,
             r#", "provider_snapshot":{"role":"side-chat-gateway-quote-health-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-quote-reconcile"}"#,
+            r#", "provider_snapshot":{"role":"conversation-complete-health","entry":"run.advance"}"#,
+            r#", "provider_snapshot":{"role":"conversation-complete-health","input_bytes":32}"#,
+            r#", "provider_snapshot":{"role":"conversation-complete-health","profile_id":"elsewhere"}"#,
+            r#", "provider_snapshot":{"role":"conversation-complete-health-stream"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-quote-stream","delivery_mode":"incremental"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","entry":"run.advance"}"#,
             r#", "provider_snapshot":{"role":"gateway-health-stream","profile_id":"elsewhere"}"#,

@@ -2196,8 +2196,9 @@ fn encode_turn_start_reply(
 
 fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool {
     use OriginalProviderSnapshotRole::{
-        Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog, ModelAccessRead,
-        ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
+        Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
+        ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
+        WorkflowHealth,
     };
 
     match role {
@@ -2205,6 +2206,7 @@ fn uses_provider_settings_projection(role: OriginalProviderSnapshotRole) -> bool
         Adapter(_)
         | Gateway { .. }
         | GatewayHealth { .. }
+        | ConversationCompleteHealth
         | Workflow { .. }
         | WorkflowHealth { .. }
         | ModelAccessRead
@@ -2769,8 +2771,9 @@ mod tests {
 
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
         use OriginalProviderSnapshotRole::{
-            Adapter, CommandDatasource, Gateway, GatewayHealth, ModelAccessCatalog,
-            ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow, WorkflowHealth,
+            Adapter, CommandDatasource, ConversationCompleteHealth, Gateway, GatewayHealth,
+            ModelAccessCatalog, ModelAccessRead, ModelSave, ModelSearch, ShellSettings, Workflow,
+            WorkflowHealth,
         };
         use OriginalWorkflowSnapshotCaller::{
             AudioSpeech, AudioTranscribe, Messages, MessagesAdapter, Text, TextAdapter,
@@ -2841,7 +2844,11 @@ mod tests {
                             .map(|entry| WorkflowHealth { caller, entry })
                     }),
             )
-            .chain([ModelAccessRead, ModelAccessCatalog])
+            .chain([
+                ModelAccessRead,
+                ModelAccessCatalog,
+                ConversationCompleteHealth,
+            ])
             .map(|role| (role, false))
             .chain(
                 [ShellSettings, ModelSave, ModelSearch, CommandDatasource].map(|role| (role, true)),

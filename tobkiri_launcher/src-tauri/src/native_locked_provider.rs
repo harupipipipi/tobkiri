@@ -193,6 +193,7 @@ pub(crate) struct LockedApplicationPresentationBundle<'pin> {
 pub(crate) struct LockedConversationCompleteBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
     routes: [LockedRegistryRoute<'pin>; 2],
+    health: Option<LockedRegistryRoute<'pin>>,
     shell_pack: LockedDocument,
     application_pack: LockedDocument,
     choice: &'pin OriginalConversationCompleteChoice<'pin>,
@@ -294,6 +295,7 @@ impl NativeApplicationSources {
     pub(crate) fn conversation_complete_bundle<'pin>(
         &self,
         choice: &'pin OriginalConversationCompleteChoice<'pin>,
+        health: Option<&'pin OriginalRoutePin>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<LockedConversationCompleteBundle<'pin>>> {
         let [conversation, gateway] = choice.pins();
@@ -307,6 +309,7 @@ impl NativeApplicationSources {
             shell_id == "shell.tauri.default"
                 && conversation.caller_function_id() == shell_id
                 && gateway.caller_function_id() == conversation.function_id()
+                && health.is_none_or(|pin| pin.caller_function_id() == gateway.function_id())
                 && self.authority.launch.provider_id == CONVERSATION_COMPLETE_APPLICATION_ID
                 && self.authority.launch.entrypoint_digest == choice.application_artifacts()[1],
             "Conversation Complete differs from the selected Shell and Application launch"
@@ -318,6 +321,9 @@ impl NativeApplicationSources {
                 LockedRegistryRoute::from_lock(lock, conversation, budget)?,
                 LockedRegistryRoute::from_lock(lock, gateway, budget)?,
             ],
+            health: health
+                .map(|pin| LockedRegistryRoute::from_lock(lock, pin, budget))
+                .transpose()?,
             shell_pack: LockedDocument::pack_from_lock(lock, shell_id, budget)?,
             application_pack: LockedDocument::pack_from_lock(
                 lock,
@@ -1523,6 +1529,14 @@ impl LockedConversationCompleteBundle<'_> {
             &mut checkpoint,
             ["pure", "privileged"],
         )?;
+        if let Some(health) = self.health {
+            source = source.verify_routes(
+                &[Some([health])],
+                &self.budget,
+                &mut checkpoint,
+                ["privileged"],
+            )?;
+        }
         for (document, pack_id, kind, [artifact, executable]) in [
             (
                 self.shell_pack,

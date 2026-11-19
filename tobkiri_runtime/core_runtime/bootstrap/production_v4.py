@@ -1931,6 +1931,7 @@ def capture_production_dispatch(
         AI_USAGE_COST_INPUT_FIELDS,
         APPLICATION_PRESENTATION_MINIMUM_MEMORY,
         CONVERSATION_APPEND_MINIMUM_MEMORY,
+        CONVERSATION_COMPLETE_HEALTH_ROLE,
         CONVERSATION_COMPLETE_MINIMUM_MEMORY,
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
         CONVERSATION_GET_MAX_ID_CHARS,
@@ -3123,7 +3124,12 @@ def capture_production_dispatch(
     native_conversation_edge: _CapturedPlanEdge | None = None
     native_conversation_gateway: _CapturedPlanEdge | None = None
     native_conversation_original_provider: str | None = None
-    if native_conversation_port is not None:
+    conversation_complete_route: tuple[_CapturedPlanEdge, _CapturedPlanEdge] | None = None
+    supports_conversation_complete_health = (
+        getattr(native_provider_snapshot_reader, "supports_conversation_complete_health", False)
+        is True
+    )
+    if native_conversation_port is not None or supports_conversation_complete_health:
         matches = tuple(
             edge for edge in captured_edges
             if edge.caller.principal_id in shell_principal_ids
@@ -3151,31 +3157,39 @@ def capture_production_dispatch(
                 and gateway.target.contract_revision_digest == _CONVERSATION_GATEWAY_REVISION
                 and gateway.resolved_binding.operation.contract_version == "1.0.0"
             ):
-                manifest, _ = native_conversation_port
-                caller = OpaqueAuthorityRef(edge.caller.principal_id)
-                caller_suffix = caller.value.removeprefix("sha256:")[:24]
-                native_domain = (
-                    f"domain.provider.conversation-wasm.{caller_suffix}."
-                    f"{activation_suffix}.{manifest.removeprefix('sha256:')}"
-                )
-                native_conversation = NativeWasmBinding(
-                    binding=edge.resolved_binding,
-                    backend=NativeConversationCompleteBackend(
-                        edge.resolved_binding, caller, native_domain, manifest,
-                        authority_store=authority_store,
-                        execute=lambda envelope, guard: execute_native_conversation(
-                            envelope, guard,
-                        ),
-                        capture_current=lambda envelope: capture_current_native_conversation(
-                            envelope,
-                        ),
-                    ),
-                    caller_principal=caller,
-                    domain_id=native_domain,
-                    executable_digest=manifest,
-                )
-                native_conversation_edge = edge
-                native_conversation_gateway = gateway
+                conversation_complete_route = (edge, gateway)
+
+    conversation_health_edge = None
+    if conversation_complete_route is not None:
+        edge, gateway = conversation_complete_route
+        if supports_conversation_complete_health:
+            conversation_health_edge = select_original_chat_edge(
+                {gateway.target.principal_id}, "rumi_provider_registry_pack",
+                _PROVIDER_HEALTH_CONTRACT, f"{_PROVIDER_HEALTH_OPERATION}.generate",
+                _PROVIDER_HEALTH_FUNCTION, EffectClass.PRIVILEGED,
+            )
+        if native_conversation_port is not None:
+            manifest, _ = native_conversation_port
+            caller = OpaqueAuthorityRef(edge.caller.principal_id)
+            caller_suffix = caller.value.removeprefix("sha256:")[:24]
+            native_domain = (
+                f"domain.provider.conversation-wasm.{caller_suffix}."
+                f"{activation_suffix}.{manifest.removeprefix('sha256:')}"
+            )
+            native_conversation = NativeWasmBinding(
+                binding=edge.resolved_binding,
+                backend=NativeConversationCompleteBackend(
+                    edge.resolved_binding, caller, native_domain, manifest,
+                    authority_store=authority_store,
+                    execute=lambda envelope, guard: execute_native_conversation(envelope, guard),
+                    capture_current=lambda envelope: capture_current_native_conversation(envelope),
+                ),
+                caller_principal=caller,
+                domain_id=native_domain,
+                executable_digest=manifest,
+            )
+            native_conversation_edge = edge
+            native_conversation_gateway = gateway
 
     def physical_wasm_for_edge(edge: _CapturedPlanEdge) -> NativeWasmBinding | None:
         if edge is ordinary_orchestration_edge:
@@ -5545,6 +5559,24 @@ def capture_production_dispatch(
             or gateway_projection_role("quote-generate", gateway.payload) == role
         )
 
+    def conversation_health_lineage(
+        context: RequestContext,
+        parent: CapturedInvocationScopeV4 | None,
+        operation_id: str,
+    ) -> tuple[_CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
+        edge = conversation_health_edge
+        if (
+            edge is None or conversation_complete_route is None
+            or context.caller_principal.value != edge.caller.principal_id
+            or operation_id != edge.binding_key[2]
+        ):
+            return None
+        complete, gateway = conversation_complete_route
+        ancestors = match_captured_ancestors(parent, (gateway, complete))
+        if ancestors is None or any(item.context.profile_id != context.profile_id for item in ancestors):
+            return None
+        return edge, ancestors
+
     def workflow_snapshot_lineage(
         context: RequestContext,
         parent: CapturedInvocationScopeV4 | None,
@@ -5607,6 +5639,9 @@ def capture_production_dispatch(
             if health is not None:
                 health_role, side_chat, health_edge, _ = health
                 return GATEWAY_PROVIDER_HEALTH_ROLES[side_chat, health_role], health_edge, parent, None
+            conversation_health = conversation_health_lineage(context, parent, operation_id)
+            if conversation_health is not None:
+                return CONVERSATION_COMPLETE_HEALTH_ROLE, conversation_health[0], parent, None
 
         for role, side_chat, edge, parents in gateway_snapshot_routes.get(
             (context.caller_principal.value, operation_id), (),
@@ -5703,6 +5738,16 @@ def capture_production_dispatch(
                 or any(item.context.profile_id != context.profile_id for item in ancestors)
             ):
                 raise AuthorityDenied("native Workflow health lineage changed")
+        elif role == CONVERSATION_COMPLETE_HEALTH_ROLE:
+            conversation_health = conversation_health_lineage(
+                context, parent, envelope.operation_id,
+            )
+            if (
+                conversation_health is None or conversation_health[0] is not edge
+                or envelope.payload or workflow_entry is not None
+            ):
+                raise AuthorityDenied("native Conversation health lineage changed")
+            _, ancestors = conversation_health
 
         if ancestors is not None:
             chain = (envelope, *ancestors)
@@ -5727,6 +5772,11 @@ def capture_production_dispatch(
                     health_role, ancestors[0],
                 ):
                     raise AuthorityDenied("native Provider health delivery changed")
+                if role == CONVERSATION_COMPLETE_HEALTH_ROLE and (
+                    conversation_complete_route is None
+                    or resolve_bridge_outer(ancestors[-1]) is not conversation_complete_route[0]
+                ):
+                    raise AuthorityDenied("native Conversation health parent changed")
             if (
                 native_provider_runtime is not pinned
                 or parent_invocation_scopes.lookup(context.caller_session_id) is not parent
@@ -8292,6 +8342,7 @@ def capture_production_dispatch(
                   for _, _, edge, _ in routes),
                 *(edge for routes in gateway_health_routes.values()
                   for _, _, edge, _ in routes),
+                *((conversation_health_edge,) if conversation_health_edge is not None else ()),
                 *(edge for _, edge, _ in projected_snapshot_routes.values()),
                 *(edge for routes in workflow_snapshot_routes.values()
                   for _, edge, _ in routes),

@@ -19,8 +19,8 @@ use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
     OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
+    OriginalConversationCompleteHealthChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection, OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
     OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
     OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
@@ -229,6 +229,9 @@ impl VerifiedRegistryLaunch {
             OriginalProviderSnapshotRole::WorkflowHealth { caller, entry } => source
                 .workflow_health
                 .bundle(caller.snapshot_caller(), entry)?,
+            OriginalProviderSnapshotRole::ConversationCompleteHealth => {
+                source.conversation_health.as_ref()?
+            }
             _ if !source.raw_snapshot_declared => return None,
             OriginalProviderSnapshotRole::Adapter(role) => {
                 &self.local_chat.as_ref()?.entry(role)?.bundle
@@ -819,6 +822,7 @@ struct VerifiedProviderSnapshotSource {
     gateway_health: [[Option<VerifiedOrdinarySavedBundle>; OriginalModelResolveRole::ALL.len()]; 2],
     workflow: VerifiedWorkflowProviderSnapshot,
     workflow_health: VerifiedWorkflowProviderSnapshot,
+    conversation_health: Option<VerifiedOrdinarySavedBundle>,
     shell_settings: Option<VerifiedOrdinarySavedBundle>,
     model_save: Option<VerifiedOrdinarySavedBundle>,
     model_search: Option<VerifiedOrdinarySavedBundle>,
@@ -994,6 +998,7 @@ impl VerifiedRegistryLaunch {
             gateway_health: [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2],
             workflow: VerifiedWorkflowProviderSnapshot::default(),
             workflow_health: VerifiedWorkflowProviderSnapshot::default(),
+            conversation_health: None,
             shell_settings: None,
             model_save: None,
             model_search: None,
@@ -1037,6 +1042,9 @@ impl VerifiedRegistryLaunch {
                     let caller = caller.snapshot_caller().index();
                     source.workflow_health.entries_by_caller[caller][entry.index()] = true;
                     &mut source.workflow_health.callers[caller]
+                }
+                OriginalProviderSnapshotRole::ConversationCompleteHealth => {
+                    &mut source.conversation_health
                 }
                 OriginalProviderSnapshotRole::ShellSettings => &mut source.shell_settings,
                 OriginalProviderSnapshotRole::ModelAccessRead => &mut source.model_access_read,
@@ -2006,7 +2014,10 @@ impl LaunchActivationObserver<'_> {
         }
         let workflow_health_selection =
             OriginalWorkflowProviderSnapshotSelection::select_health(active, budget)?;
+        let conversation_health_selection =
+            OriginalConversationCompleteHealthChoice::select(active, budget)?;
         let has_health_grants = workflow_health_selection.is_some()
+            || conversation_health_selection.is_some()
             || gateway_health_selections
                 .iter()
                 .flatten()
@@ -2052,9 +2063,25 @@ impl LaunchActivationObserver<'_> {
                     let mut gateway_health =
                         [const { [const { None }; OriginalModelResolveRole::ALL.len()] }; 2];
                     let mut workflow_health = VerifiedWorkflowProviderSnapshot::default();
+                    let mut conversation_health = None;
                     let health_declared = has_health_grants
                         && observe_provider_health_declaration(&pack).map_err(io::Error::other)?;
                     if health_declared {
+                        if let Some(choice) = &conversation_health_selection {
+                            let locked = inspection
+                                .with_source(|sources| {
+                                    sources.conversation_complete_bundle(
+                                        choice.complete(),
+                                        Some(choice.health()),
+                                        budget,
+                                    )
+                                })
+                                .map_err(io::Error::other)?
+                                .map_err(io::Error::other)?;
+                            conversation_health = locked
+                                .map(|bundle| bundle.verify(&checkpoint).map_err(io::Error::other))
+                                .transpose()?;
+                        }
                         if let Some(selection) = &workflow_health_selection {
                             let locked = inspection
                                 .with_source(|sources| {
@@ -2093,6 +2120,7 @@ impl LaunchActivationObserver<'_> {
                             gateway_health,
                             workflow,
                             workflow_health,
+                            conversation_health,
                             shell_settings,
                             model_save: model_save_snapshot,
                             model_search,
@@ -3367,7 +3395,7 @@ fn verify_conversation_complete_source(
         return Ok(None);
     };
     let Some(locked) = inspection
-        .with_source(|sources| sources.conversation_complete_bundle(&choice, budget))??
+        .with_source(|sources| sources.conversation_complete_bundle(&choice, None, budget))??
     else {
         return Ok(None);
     };
@@ -4593,7 +4621,7 @@ mod tests {
 
     #[test]
     fn gateway_health_launch_proof_keeps_saved_roles_and_snapshot_port_independent() {
-        use OriginalProviderSnapshotRole::{Gateway, GatewayHealth};
+        use OriginalProviderSnapshotRole::{ConversationCompleteHealth, Gateway, GatewayHealth};
         use OriginalSavedLocalChatRole::Generate;
 
         let identity = ExecutionProfileIdentity {
@@ -4618,8 +4646,17 @@ mod tests {
                 OriginalModelResolveRole::ALL.map(|role| GatewayHealth { role, side_chat })
             })
         };
+        let complete = VerifiedRegistryLaunch::test_provider_snapshot_proof(
+            identity.clone(),
+            "catalog",
+            ConversationCompleteHealth,
+        );
+        assert!(complete.permits_provider_snapshot(ConversationCompleteHealth));
+        assert!(complete.raw_provider_snapshot().is_none());
+        assert!(!complete.permits_workflow_provider_health());
         for health in health_roles() {
             assert!(!older_pack.permits_provider_snapshot(health));
+            assert!(!complete.permits_provider_snapshot(health));
             let mut proof = VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
                 identity.clone(),
                 "catalog",
@@ -4632,6 +4669,7 @@ mod tests {
                 );
             }
             assert!(proof.permits_provider_snapshot(gateway));
+            assert!(!proof.permits_provider_snapshot(ConversationCompleteHealth));
             assert!(proof.permits_provider_snapshot(Generate.into()));
 
             proof

@@ -6311,9 +6311,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `.stream` の拒否、Lease終了後の拒否、従来およびRegistry一覧の経路を照合した。
   Rustの経路選択54件とPythonのIPC 674件が通過し、Healthポートだけを通知した場合の
   IPCフレームと通常読み取りの互換処理を検証した。Launcherを含む試験は配布CIで行う。
-- PythonのHealth所有者を廃止するには、`conversation.turn.v1/complete` 経由のGenerateと
-  権限レビューのQuote・Generateにも対応が必要。設定画面の旧 `/api/ui/provider-health` は
-  v3互換契約に属するため、元の投影と呼び出し経路を別途照合する。
+- `conversation.turn.v1/complete` が呼ぶGatewayの `.generate` もWasmのHealthポートへ接続した。
+  Launcherは元のShell、Application、会話完了、Gatewayの署名済み文書にHealth権限を加えて照合する。
+  Hostは会話完了とGatewayの実行中のLease、子の専用予約、実行ドメインを照合する。
+  IPCレベル13を通知し、Healthポートだけの場合は `13-health-only` を使う。
+  Rustの経路選択55件が通過し、保存ターン用の権限や `.stream` のHealth権限を使わないことを確認した。
+  IPC 703件と署名済みHTTPの会話完了2件が通過した。HTTPでWasm側の応答とGatewayの推論結果を
+  差し替え、Wasmを選ぶ場合と元のPackVM ABIを通す場合の両方で、同じ署名済みHealth呼び出しと
+  終了後の拒否を照合した。PackVM経路では旧Registry所有者への互換処理も確認した。
+- PythonのHealth所有者を廃止するには、権限レビューのQuote・Generateにも対応が必要。
+  レビューの署名済み権限は `request_surface` と `tool_calling` を固定し、Generateは
+  `allow_failover` も固定する。Hostが作るレビュー専用セッションは、実行中の保存ターンを保持する。
+  Healthの移植では、このセッションと元の呼び出しを照合し、レビュー担当Packの署名済み文書も検証する。
+  設定画面の旧 `/api/ui/provider-health` はv3互換契約に属し、ヘルスに加えてカタログ順・資格情報の
+  設定有無・スコープを投影する。元の投影と呼び出し経路を別途照合する。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 

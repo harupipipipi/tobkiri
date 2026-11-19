@@ -5252,13 +5252,19 @@ def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
         assert executions[-1].role == "settings"
 
 
-def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("native_complete", (True, False), ids=("wasm", "packvm"))
+def test_conversation_complete_health_uses_signed_http_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_complete: bool,
 ) -> None:
-    """The signed Shell route dispatches at most one live Gateway child."""
+    """Use the same live health grant beneath either verified Complete owner."""
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import AuthorityDenied
     from ecosystem.defaultspack.runtime import conversation as legacy
+    from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
+        HEALTH_CONTRACT, HEALTH_GENERATE_OPERATION, HEALTH_STREAM_OPERATION,
+    )
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.broker import _thaw_payload
     from tobkiri_host.native_conversation_complete import (
         CONVERSATION_COMPLETE,
         CONVERSATION_GENERATE,
@@ -5275,9 +5281,34 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         "usage": {"input_tokens": 2, "output_tokens": 3},
     }
     legacy_payload = {"messages": [{"role": "user", "content": "hello"}]}
+    health_value = {"providers": [{
+        "provider_instance_id": "fixture", "status": "available",
+        "observed_at": 1_901_234_567.125, "verified": True,
+    }]}
     executions = []
     gateway_envelopes = []
+    health_reads = []
+    health_envelopes = []
     mode = "success"
+
+    class ConversationPackVmBackend(_ShellPolicyPackVmBackend):
+        """Run the original PackVM ABI across the production Host bridge."""
+
+        _PACK_ID = "defaultspack"
+        _FUNCTION_ID = "defaultspack.conversation"
+        _CONTRACT_ID, _OPERATION_ID = CONVERSATION_COMPLETE
+
+        def bind_capability_bridge(self, callback):
+            self._bridge = callback
+
+        def invoke(self, request):
+            assert request.target_domain.value == self._target_domain_id
+            assert (request.contract_id, request.operation_id) == CONVERSATION_COMPLETE
+            frame = legacy.tobkiri_packvm_invoke(request.operation_id, _thaw_payload(request.payload))
+            result = self._bridge(request, frame)
+            return ProviderOutcome(legacy.tobkiri_packvm_invoke(request.operation_id, {
+                "continuation": frame["continuation"], "bridge_result": result,
+            }))
 
     def complete(request: ipc.NativeConversationCompleteRequest) -> dict:
         request.assert_current()
@@ -5293,10 +5324,25 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         assert request.input == {"status": "ok", "value": gateway_value}
         return legacy._project_completion(request.input["value"])
 
+    def read_health(request: ipc.NativeProviderSnapshotRequest) -> dict:
+        request.assert_current()
+        assert request.role == "conversation-complete-health"
+        assert request.workflow_entry is None
+        assert request.context is health_envelopes[-1].context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        health_reads.append(request)
+        if mode == "compatibility":
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        return health_value
+
+    read_health.supports_conversation_complete_health = True
+    read_health.supports_raw_snapshot = False
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
-        ipc, "capture_launcher_conversation_complete", lambda: (manifest, complete),
+        ipc, "capture_launcher_conversation_complete",
+        lambda: (manifest, complete) if native_complete else None,
     )
+    monkeypatch.setattr(ipc, "capture_launcher_provider_snapshot_reader", lambda: read_health)
 
     def unused_presentation(_request: ipc.NativeApplicationPresentationRequest) -> dict:
         pytest.fail("startup readiness must not dispatch Application presentation")
@@ -5305,8 +5351,9 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         ipc, "capture_launcher_application_presentation",
         lambda: ("sha256:" + "a" * 64, unused_presentation),
     )
+    packvm = None if native_complete else ConversationPackVmBackend()
     with contextmanager(_captured_production_server)(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry(()),
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((packvm,) if packvm else ()),
     ) as (server, session, authority):
         server.assert_runtime_startup_ready()
         assert not executions
@@ -5314,11 +5361,14 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         before = session.context_for(*CONVERSATION_COMPLETE, "native-conversation-probe")
         native = session.broker._catalog.resolve_pinned(*CONVERSATION_COMPLETE)
         selected = session.broker._native_wasm_binding_for(before, native)
-        assert selected.backend.status.backend_id == "tobkiri.native-conversation-complete-v1"
-        assert selected.executable_digest == manifest
+        if native_complete:
+            assert selected.backend.status.backend_id == "tobkiri.native-conversation-complete-v1"
+            assert selected.executable_digest == manifest
+        else:
+            assert selected is None
 
-        # Preserve the real Broker, child lease, and Host Provider entry checks.
-        # Stub the verified Gateway contribution to avoid external generation.
+        # The Gateway fixture uses its signed contract client for Health and
+        # supplies a deterministic generation result for Complete.
         child_binding = session.broker._catalog.resolve_pinned(*CONVERSATION_GENERATE)
         gateway_backend = session.broker._backends.select(child_binding)
         gateway_key = (*CONVERSATION_GENERATE, child_binding.principal_ref.value)
@@ -5330,6 +5380,17 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
             assert payload["messages"] == legacy_payload["messages"]
             assert payload["requirements"] == {"request_surface": "defaultspack.conversation"}
             gateway_envelopes.append(invocation.envelope)
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({HEALTH_CONTRACT}),
+                consumer_pack_id="rumi_ai_gateway_pack",
+            )
+            with pytest.raises(AuthorityDenied):
+                client.invoke(HEALTH_CONTRACT, HEALTH_STREAM_OPERATION, {})
+            health = client.invoke(HEALTH_CONTRACT, HEALTH_GENERATE_OPERATION, {})
+            expected_health = health_value if mode != "compatibility" else ProviderRegistry(
+                invocation.envelope.context.profile_id, user_data_root=tmp_path / "user-data",
+            ).health()
+            assert health == expected_health
             return gateway_value
 
         monkeypatch.setitem(
@@ -5340,8 +5401,11 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
 
         def dispatch(backend, envelope: RequestEnvelope, *args, **kwargs):
             if (envelope.contract_id, envelope.operation_id) == CONVERSATION_COMPLETE:
-                assert backend is selected.backend
+                assert backend is (selected.backend if native_complete else packvm)
                 envelopes.append(envelope)
+            if envelope.contract_id == HEALTH_CONTRACT:
+                assert envelope.operation_id == HEALTH_GENERATE_OPERATION and envelope.payload == {}
+                health_envelopes.append(envelope)
             return original_dispatch(backend, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", dispatch)
@@ -5376,13 +5440,35 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         status, result = send()
         assert status == 200, result
         assert result["data"] == legacy._project_completion(gateway_value)
-        assert [request.phase for request in executions] == ["prepare", "finish"]
+        assert [request.phase for request in executions] == (
+            ["prepare", "finish"] if native_complete else []
+        )
         (outer,) = envelopes
         (child,) = gateway_envelopes
         assert child.context.caller_principal == outer.target_principal
         assert child.lease.token != outer.lease.token
-        assert child.cancellation_requested is outer.cancellation_requested
         assert child.deadline_monotonic <= outer.deadline_monotonic
+        (health,) = health_envelopes
+        (health_read,) = health_reads
+        assert health.context.caller_principal == child.target_principal
+        assert health_read.deadline_monotonic == health.deadline_monotonic
+        assert health.deadline_monotonic <= child.deadline_monotonic
+        assert len({envelope.lease.token for envelope in (outer, child, health)}) == 3
+        assert health.resource_reservation_id is not None
+        assert health.resource_reservation_id not in (
+            outer.resource_reservation_id, child.resource_reservation_id,
+        )
+        with pytest.raises((AuthorityDenied, PermissionError)):
+            health_read.assert_current()
+        if not native_complete:
+            assert authority.get_domain(outer.target_domain.value).boundary.value == "dedicated_process"
+            mode = "compatibility"
+            status, result = send()
+            assert status == 200, result
+            assert result["data"] == legacy._project_completion(gateway_value)
+            assert len(health_reads) == len(health_envelopes) == 2
+            return
+        assert child.cancellation_requested is outer.cancellation_requested
         for request in executions:
             assert request.runtime_instance == server._native_provider_prepare_instance
             assert request.context is outer.context
@@ -5397,6 +5483,7 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         status, result = send()
         assert status != 200, result
         assert len(gateway_envelopes) == 1
+        assert len(health_reads) == 1
         assert [request.phase for request in executions] == ["prepare", "finish", "prepare"]
         assert not selected.backend._reservations
 
@@ -5404,6 +5491,7 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         status, result = send()
         assert status != 200, result
         assert len(gateway_envelopes) == 2
+        assert len(health_reads) == 2
         assert [request.phase for request in executions[-2:]] == ["prepare", "finish"]
         assert not selected.backend._reservations
 
@@ -5423,6 +5511,7 @@ def test_native_conversation_complete_uses_signed_http_broker_without_packvm(
         assert status != 200, result
         assert len(executions) == 5
         assert len(gateway_envelopes) == 2
+        assert len(health_reads) == 2
 
 
 def test_presentation_allocation_capacity_refusal_has_http503_through_real_broker(
@@ -10504,6 +10593,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     read_snapshot.supports_gateway_health = True
     read_snapshot.supports_side_chat_gateway_health = side_chat
     read_snapshot.supports_gateway_quote_health = True
+    read_snapshot.supports_conversation_complete_health = True
 
     def checked_execute(
         request: ipc.NativeSavedLocalChatRequest,
