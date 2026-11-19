@@ -109,6 +109,8 @@ pub enum NativeArtifactError {
     ConversationRegistryRejected(#[source] LegacyRegistryError),
     #[error("native Conversation completion staging failed")]
     ConversationConfirmation(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("native Conversation append staging failed")]
+    ConversationAppend(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("legacy Conversation Store exceeds its native publication envelope")]
     ConversationLimitBeforePublish,
     #[error("legacy Conversation Store publication is unconfirmed")]
@@ -465,6 +467,27 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
             Err(error) => NativeArtifactError::ConversationConfirmation(error.into()),
+        })
+    }
+
+    /// Stage an append using the original document observed under this
+    /// invocation's cooperative lock. Publication belongs to the lock owner.
+    pub async fn stage_legacy_conversation_append(
+        &mut self,
+        pack: &VerifiedPack,
+        owner: &crate::NativeRegistry,
+        request: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        let (profile_id, document) = owner.locked_conversation(&self.work.get().invocation)?;
+        self.claim_execution()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let staged = store
+            .stage_legacy_conversation_append(pack, profile_id, document, request)
+            .await;
+        self.require_live()?;
+        staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ConversationAppend(error.into()),
         })
     }
 

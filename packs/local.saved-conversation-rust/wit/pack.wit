@@ -39,6 +39,14 @@ interface legacy-confirmation {
   confirm: func(document: string, turn: string) -> result<json, error>;
 }
 
+interface legacy-append {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Plan an append, receipt and lifecycle update from one locked owner document.
+  /// Only the native host can publish the proposed replacement.
+  append: func(document: string, request: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
@@ -46,4 +54,6 @@ world pack {
   export legacy-read;
   export legacy-receipt;
   export legacy-confirmation;
+  import tobkiri:core/clock@1.2.0;
+  export legacy-append;
 }

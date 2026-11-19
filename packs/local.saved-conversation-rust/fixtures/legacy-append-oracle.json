@@ -1,0 +1,483 @@
+{
+  "source": {
+    "interpreter": "CPython 3.13.16",
+    "revision": "78b09bb53b66464d630bd3117207d8b1418e27fc",
+    "owner": "MessageManageHostFactoryV4 append_saved",
+    "requests": "saved_conversation.start/resume"
+  },
+  "profile": "defaults",
+  "document": "{\"conversations\": {\"conversation-1\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200000, \"current_node_id\": \"history\", \"group_id\": null, \"id\": \"conversation-1\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [], \"content\": \"先行メッセージ\", \"created_at\": 1790899200000, \"events\": null, \"finish_reason\": null, \"id\": \"history\", \"metadata\": {}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"assistant\", \"sequence\": -7, \"sequence_number\": 44, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200000, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"model-profile-1\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"会話 🌱\", \"updated_at\": 1790899200000}, \"other\": {\"messages\": [{\"id\": \"legacy\", \"sequence\": -1}], \"metadata\": {\"amount\": 10000000000000000000000000, \"icon_svg\": \"legacy\", \"zéro\": -0.0}}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 2, \"version\": \"rumi.conversation-store.v1\"}",
+  "user": {
+    "request": {
+      "conversation_id": "conversation-1",
+      "expected_conversation_revision": 2,
+      "message": {
+        "id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+        "role": "user",
+        "content": "こんにちは 🌱\nCafé\t「引用」",
+        "parent_id": "history",
+        "metadata": {
+          "turn_id": "turn-1"
+        },
+        "status": "complete"
+      },
+      "saved_input": {
+        "request": {
+          "turn_id": "turn-1",
+          "conversation_id": "conversation-1",
+          "conversation_revision": 2,
+          "content": "こんにちは 🌱\nCafé\t「引用」"
+        }
+      }
+    },
+    "clock_ms": [
+      1790899200101,
+      1790899200102,
+      1790899200103
+    ],
+    "owner_result": {
+      "action": "message_appended",
+      "message": {
+        "id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+        "role": "user",
+        "content": "こんにちは 🌱\nCafé\t「引用」",
+        "parts": [],
+        "status": "complete",
+        "created_at": 1790899200101,
+        "updated_at": 1790899200101,
+        "sequence": 1,
+        "metadata": {
+          "turn_id": "turn-1"
+        },
+        "parent_id": "history",
+        "children_ids": [],
+        "sequence_number": 2,
+        "raw_text": "",
+        "finish_reason": null,
+        "usage": null,
+        "widget": null,
+        "events": null,
+        "tool_logs": null
+      },
+      "conversation_revision": 3,
+      "store_revision": 3
+    },
+    "receipt": {
+      "assistant_message_id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+      "conversation_id": "conversation-1",
+      "initial_revision": 2,
+      "input_digest": "sha256:ee23df56e530f64a182c3e9fbbf303e3bc2d9de997b9cc405884f6ced1427a6b",
+      "turn_id": "turn-1",
+      "user_message_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+      "user_revision": 3
+    },
+    "next_document": "{\"conversations\": {\"conversation-1\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 3, \"created_at\": 1790899200000, \"current_node_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"group_id\": null, \"id\": \"conversation-1\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"active_user_received_at_ms\": 1790899200102, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"running\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [\"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\"], \"content\": \"先行メッセージ\", \"created_at\": 1790899200000, \"events\": null, \"finish_reason\": null, \"id\": \"history\", \"metadata\": {}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"assistant\", \"sequence\": 0, \"sequence_number\": 1, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200000, \"usage\": null, \"widget\": null}, {\"children_ids\": [], \"content\": \"こんにちは 🌱\\nCafé\\t「引用」\", \"created_at\": 1790899200101, \"events\": null, \"finish_reason\": null, \"id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"metadata\": {\"turn_id\": \"turn-1\"}, \"parent_id\": \"history\", \"parts\": [], \"raw_text\": \"\", \"role\": \"user\", \"sequence\": 1, \"sequence_number\": 2, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200101, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"model-profile-1\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"会話 🌱\", \"updated_at\": 1790899200103}, \"other\": {\"messages\": [{\"id\": \"legacy\", \"sequence\": 0, \"sequence_number\": 1}], \"metadata\": {\"amount\": 10000000000000000000000000, \"zéro\": -0.0}}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 3, \"saved_receipts\": {\"turn-1\": {\"assistant_message_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"conversation_id\": \"conversation-1\", \"initial_revision\": 2, \"input_digest\": \"sha256:ee23df56e530f64a182c3e9fbbf303e3bc2d9de997b9cc405884f6ced1427a6b\", \"turn_id\": \"turn-1\", \"user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"user_revision\": 3}}, \"version\": \"rumi.conversation-store.v1\"}"
+  },
+  "assistant": {
+    "request": {
+      "conversation_id": "conversation-1",
+      "expected_conversation_revision": 3,
+      "message": {
+        "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+        "role": "assistant",
+        "content": "応答 🧭 次の行\nQuote: \"yes\"",
+        "parent_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+        "metadata": {
+          "turn_id": "turn-1"
+        },
+        "status": "complete",
+        "finish_reason": "stop"
+      },
+      "saved_input": {
+        "request": {
+          "turn_id": "turn-1",
+          "conversation_id": "conversation-1",
+          "conversation_revision": 2,
+          "content": "こんにちは 🌱\nCafé\t「引用」"
+        }
+      }
+    },
+    "clock_ms": [
+      1790899200201,
+      1790899200202,
+      1790899200203
+    ],
+    "owner_result": {
+      "action": "message_appended",
+      "message": {
+        "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+        "role": "assistant",
+        "content": "応答 🧭 次の行\nQuote: \"yes\"",
+        "parts": [],
+        "status": "complete",
+        "created_at": 1790899200201,
+        "updated_at": 1790899200201,
+        "sequence": 2,
+        "metadata": {
+          "turn_id": "turn-1"
+        },
+        "parent_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+        "children_ids": [],
+        "sequence_number": 3,
+        "raw_text": "",
+        "finish_reason": "stop",
+        "usage": null,
+        "widget": null,
+        "events": null,
+        "tool_logs": null
+      },
+      "conversation_revision": 4,
+      "store_revision": 4
+    },
+    "receipt": {
+      "assistant_message_id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+      "conversation_id": "conversation-1",
+      "initial_revision": 2,
+      "input_digest": "sha256:ee23df56e530f64a182c3e9fbbf303e3bc2d9de997b9cc405884f6ced1427a6b",
+      "result_reference": {
+        "assistant_message_id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+        "conversation_id": "conversation-1",
+        "conversation_revision": 4,
+        "outcome_digest": "sha256:ecca195769f99215e55e6b62839164df6e5c7ec393fe92087cfe27a4f4c18125",
+        "user_message_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb"
+      },
+      "turn_id": "turn-1",
+      "user_message_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+      "user_revision": 3
+    },
+    "next_document": "{\"conversations\": {\"conversation-1\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 4, \"created_at\": 1790899200000, \"current_node_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"group_id\": null, \"id\": \"conversation-1\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"active_user_received_at_ms\": 1790899200102, \"completed_at_ms\": null, \"completion_candidate\": {\"completed_at_ms\": 1790899200202, \"receipt\": {\"assistant_message_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"conversation_id\": \"conversation-1\", \"initial_revision\": 2, \"input_digest\": \"sha256:ee23df56e530f64a182c3e9fbbf303e3bc2d9de997b9cc405884f6ced1427a6b\", \"result_reference\": {\"assistant_message_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"conversation_id\": \"conversation-1\", \"conversation_revision\": 4, \"outcome_digest\": \"sha256:ecca195769f99215e55e6b62839164df6e5c7ec393fe92087cfe27a4f4c18125\", \"user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\"}, \"turn_id\": \"turn-1\", \"user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"user_revision\": 3}}, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"running\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [\"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\"], \"content\": \"先行メッセージ\", \"created_at\": 1790899200000, \"events\": null, \"finish_reason\": null, \"id\": \"history\", \"metadata\": {}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"assistant\", \"sequence\": 0, \"sequence_number\": 1, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200000, \"usage\": null, \"widget\": null}, {\"children_ids\": [\"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\"], \"content\": \"こんにちは 🌱\\nCafé\\t「引用」\", \"created_at\": 1790899200101, \"events\": null, \"finish_reason\": null, \"id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"metadata\": {\"turn_id\": \"turn-1\"}, \"parent_id\": \"history\", \"parts\": [], \"raw_text\": \"\", \"role\": \"user\", \"sequence\": 1, \"sequence_number\": 2, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200101, \"usage\": null, \"widget\": null}, {\"children_ids\": [], \"content\": \"応答 🧭 次の行\\nQuote: \\\"yes\\\"\", \"created_at\": 1790899200201, \"events\": null, \"finish_reason\": \"stop\", \"id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"metadata\": {\"turn_id\": \"turn-1\"}, \"parent_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"parts\": [], \"raw_text\": \"\", \"role\": \"assistant\", \"sequence\": 2, \"sequence_number\": 3, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200201, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"model-profile-1\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"会話 🌱\", \"updated_at\": 1790899200203}, \"other\": {\"messages\": [{\"id\": \"legacy\", \"sequence\": 0, \"sequence_number\": 1}], \"metadata\": {\"amount\": 10000000000000000000000000, \"zéro\": -0.0}}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 4, \"saved_receipts\": {\"turn-1\": {\"assistant_message_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"conversation_id\": \"conversation-1\", \"initial_revision\": 2, \"input_digest\": \"sha256:ee23df56e530f64a182c3e9fbbf303e3bc2d9de997b9cc405884f6ced1427a6b\", \"result_reference\": {\"assistant_message_id\": \"message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773\", \"conversation_id\": \"conversation-1\", \"conversation_revision\": 4, \"outcome_digest\": \"sha256:ecca195769f99215e55e6b62839164df6e5c7ec393fe92087cfe27a4f4c18125\", \"user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\"}, \"turn_id\": \"turn-1\", \"user_message_id\": \"message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb\", \"user_revision\": 3}}, \"version\": \"rumi.conversation-store.v1\"}"
+  },
+  "rejected_after_user": [
+    {
+      "name": "stale_revision",
+      "request": {
+        "conversation_id": "conversation-1",
+        "expected_conversation_revision": 2,
+        "message": {
+          "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+          "role": "assistant",
+          "content": "応答 🧭 次の行\nQuote: \"yes\"",
+          "parent_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+          "metadata": {
+            "turn_id": "turn-1"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "conversation_revision": 2,
+            "content": "こんにちは 🌱\nCafé\t「引用」"
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200151
+      ],
+      "python_exception": "ConversationConflict",
+      "python_message": "conversation revision is stale"
+    },
+    {
+      "name": "unknown_parent",
+      "request": {
+        "conversation_id": "conversation-1",
+        "expected_conversation_revision": 3,
+        "message": {
+          "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+          "role": "assistant",
+          "content": "応答 🧭 次の行\nQuote: \"yes\"",
+          "parent_id": "missing",
+          "metadata": {
+            "turn_id": "turn-1"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "conversation_revision": 2,
+            "content": "こんにちは 🌱\nCafé\t「引用」"
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200152
+      ],
+      "python_exception": "KeyError",
+      "python_message": "parent message is unknown"
+    },
+    {
+      "name": "wrong_existing_parent",
+      "request": {
+        "conversation_id": "conversation-1",
+        "expected_conversation_revision": 3,
+        "message": {
+          "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+          "role": "assistant",
+          "content": "応答 🧭 次の行\nQuote: \"yes\"",
+          "parent_id": "history",
+          "metadata": {
+            "turn_id": "turn-1"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "conversation_revision": 2,
+            "content": "こんにちは 🌱\nCafé\t「引用」"
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200153,
+        1790899200154
+      ],
+      "python_exception": "ValueError",
+      "python_message": "saved assistant append has no matching user receipt"
+    },
+    {
+      "name": "unlinked_context_binding",
+      "request": {
+        "conversation_id": "conversation-1",
+        "expected_conversation_revision": 3,
+        "message": {
+          "id": "message:91a1c8e7708110691c21b210b808df759e96aefa59fd3cd90668ef86a434d773",
+          "role": "assistant",
+          "content": "応答 🧭 次の行\nQuote: \"yes\"",
+          "parent_id": "message:fab2705432da5b411e0815a3f0aadf07b932f48f3c1f7c7605c8a82fffb913eb",
+          "metadata": {
+            "turn_id": "turn-1"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "conversation_revision": 2,
+            "content": "こんにちは 🌱\nCafé\t「引用」",
+            "context_binding": {
+              "version": "tobkiri.conversation-context-binding.v1",
+              "profile_id": "defaults",
+              "parent_conversation_id": "conversation-1",
+              "parent_revision": 3,
+              "context_digest": "sha256:d45866ee62549e7656692b10764465eb73cdbe49bc34a70557d186fbae0f4289"
+            }
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200155
+      ],
+      "python_exception": "ValueError",
+      "python_message": "unlinked conversation cannot select a parent context"
+    }
+  ],
+  "linked": {
+    "document": "{\"conversations\": {\"child\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": {\"created_from_parent_revision\": 1, \"parent_conversation_id\": \"parent\", \"slot\": \"thread\", \"version\": \"tobkiri.conversation-context-link.v1\"}, \"conversation_kind\": \"chat\", \"conversation_revision\": 1, \"created_at\": 1790899200300, \"current_node_id\": null, \"group_id\": null, \"id\": \"child\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [], \"metadata\": {}, \"model_reference\": \"\", \"parent_conversation_id\": \"parent\", \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"子会話\", \"updated_at\": 1790899200300}, \"parent\": {\"agent_id\": null, \"child_conversation_ids\": [\"child\"], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200300, \"current_node_id\": null, \"group_id\": null, \"id\": \"parent\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [], \"metadata\": {\"thinking_level\": \"high\"}, \"model_reference\": \"model-profile-2\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [\"引継ぎ\"], \"title\": \"親会話 🪴\", \"updated_at\": 1790899200300}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 2, \"version\": \"rumi.conversation-store.v1\"}",
+    "user": {
+      "request": {
+        "conversation_id": "child",
+        "expected_conversation_revision": 1,
+        "message": {
+          "id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+          "role": "user",
+          "content": "引き継いだ会話 🪴",
+          "parent_id": null,
+          "metadata": {
+            "turn_id": "linked-turn"
+          },
+          "status": "complete"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "linked-turn",
+            "conversation_id": "child",
+            "conversation_revision": 1,
+            "content": "引き継いだ会話 🪴",
+            "thinking_level": "high",
+            "context_binding": {
+              "version": "tobkiri.conversation-context-binding.v1",
+              "profile_id": "defaults",
+              "parent_conversation_id": "parent",
+              "parent_revision": 2,
+              "context_digest": "sha256:bb735a30cc58254a541c63d8d9730cdbebfa702322477c09e0cd3313eec2b8e9"
+            }
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200301,
+        1790899200302,
+        1790899200303
+      ],
+      "owner_result": {
+        "action": "message_appended",
+        "message": {
+          "id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+          "role": "user",
+          "content": "引き継いだ会話 🪴",
+          "parts": [],
+          "status": "complete",
+          "created_at": 1790899200301,
+          "updated_at": 1790899200301,
+          "sequence": 0,
+          "metadata": {
+            "turn_id": "linked-turn"
+          },
+          "parent_id": null,
+          "children_ids": [],
+          "sequence_number": 1,
+          "raw_text": "",
+          "finish_reason": null,
+          "usage": null,
+          "widget": null,
+          "events": null,
+          "tool_logs": null
+        },
+        "conversation_revision": 2,
+        "store_revision": 3
+      },
+      "receipt": {
+        "assistant_message_id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+        "conversation_id": "child",
+        "initial_revision": 1,
+        "input_digest": "sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe",
+        "turn_id": "linked-turn",
+        "user_message_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+        "user_revision": 2
+      },
+      "next_document": "{\"conversations\": {\"child\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": {\"created_from_parent_revision\": 1, \"parent_conversation_id\": \"parent\", \"slot\": \"thread\", \"version\": \"tobkiri.conversation-context-link.v1\"}, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200300, \"current_node_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"group_id\": null, \"id\": \"child\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"active_user_received_at_ms\": 1790899200302, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"running\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [], \"content\": \"引き継いだ会話 🪴\", \"created_at\": 1790899200301, \"events\": null, \"finish_reason\": null, \"id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"metadata\": {\"turn_id\": \"linked-turn\"}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"user\", \"sequence\": 0, \"sequence_number\": 1, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200301, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"\", \"parent_conversation_id\": \"parent\", \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"子会話\", \"updated_at\": 1790899200303}, \"parent\": {\"agent_id\": null, \"child_conversation_ids\": [\"child\"], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200300, \"current_node_id\": null, \"group_id\": null, \"id\": \"parent\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [], \"metadata\": {\"thinking_level\": \"high\"}, \"model_reference\": \"model-profile-2\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [\"引継ぎ\"], \"title\": \"親会話 🪴\", \"updated_at\": 1790899200300}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 3, \"saved_receipts\": {\"linked-turn\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"initial_revision\": 1, \"input_digest\": \"sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe\", \"turn_id\": \"linked-turn\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"user_revision\": 2}}, \"version\": \"rumi.conversation-store.v1\"}"
+    },
+    "assistant": {
+      "request": {
+        "conversation_id": "child",
+        "expected_conversation_revision": 2,
+        "message": {
+          "id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+          "role": "assistant",
+          "content": "文脈を確認しました。",
+          "parent_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+          "metadata": {
+            "turn_id": "linked-turn"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "linked-turn",
+            "conversation_id": "child",
+            "conversation_revision": 1,
+            "content": "引き継いだ会話 🪴",
+            "thinking_level": "high",
+            "context_binding": {
+              "version": "tobkiri.conversation-context-binding.v1",
+              "profile_id": "defaults",
+              "parent_conversation_id": "parent",
+              "parent_revision": 2,
+              "context_digest": "sha256:bb735a30cc58254a541c63d8d9730cdbebfa702322477c09e0cd3313eec2b8e9"
+            }
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200311,
+        1790899200312,
+        1790899200313
+      ],
+      "owner_result": {
+        "action": "message_appended",
+        "message": {
+          "id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+          "role": "assistant",
+          "content": "文脈を確認しました。",
+          "parts": [],
+          "status": "complete",
+          "created_at": 1790899200311,
+          "updated_at": 1790899200311,
+          "sequence": 1,
+          "metadata": {
+            "turn_id": "linked-turn"
+          },
+          "parent_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+          "children_ids": [],
+          "sequence_number": 2,
+          "raw_text": "",
+          "finish_reason": "stop",
+          "usage": null,
+          "widget": null,
+          "events": null,
+          "tool_logs": null
+        },
+        "conversation_revision": 3,
+        "store_revision": 4
+      },
+      "receipt": {
+        "assistant_message_id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+        "conversation_id": "child",
+        "initial_revision": 1,
+        "input_digest": "sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe",
+        "result_reference": {
+          "assistant_message_id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+          "conversation_id": "child",
+          "conversation_revision": 3,
+          "outcome_digest": "sha256:d4457d608ef7e5afd645ccd86034fe1aa520d5b5b6c4d7e8f271968711083ef7",
+          "user_message_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0"
+        },
+        "turn_id": "linked-turn",
+        "user_message_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+        "user_revision": 2
+      },
+      "next_document": "{\"conversations\": {\"child\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": {\"created_from_parent_revision\": 1, \"parent_conversation_id\": \"parent\", \"slot\": \"thread\", \"version\": \"tobkiri.conversation-context-link.v1\"}, \"conversation_kind\": \"chat\", \"conversation_revision\": 3, \"created_at\": 1790899200300, \"current_node_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"group_id\": null, \"id\": \"child\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"active_user_received_at_ms\": 1790899200302, \"completed_at_ms\": null, \"completion_candidate\": {\"completed_at_ms\": 1790899200312, \"receipt\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"initial_revision\": 1, \"input_digest\": \"sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe\", \"result_reference\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"conversation_revision\": 3, \"outcome_digest\": \"sha256:d4457d608ef7e5afd645ccd86034fe1aa520d5b5b6c4d7e8f271968711083ef7\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\"}, \"turn_id\": \"linked-turn\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"user_revision\": 2}}, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"running\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [\"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\"], \"content\": \"引き継いだ会話 🪴\", \"created_at\": 1790899200301, \"events\": null, \"finish_reason\": null, \"id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"metadata\": {\"turn_id\": \"linked-turn\"}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"user\", \"sequence\": 0, \"sequence_number\": 1, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200301, \"usage\": null, \"widget\": null}, {\"children_ids\": [], \"content\": \"文脈を確認しました。\", \"created_at\": 1790899200311, \"events\": null, \"finish_reason\": \"stop\", \"id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"metadata\": {\"turn_id\": \"linked-turn\"}, \"parent_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"parts\": [], \"raw_text\": \"\", \"role\": \"assistant\", \"sequence\": 1, \"sequence_number\": 2, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200311, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"\", \"parent_conversation_id\": \"parent\", \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"子会話\", \"updated_at\": 1790899200313}, \"parent\": {\"agent_id\": null, \"child_conversation_ids\": [\"child\"], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200300, \"current_node_id\": null, \"group_id\": null, \"id\": \"parent\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [], \"metadata\": {\"thinking_level\": \"high\"}, \"model_reference\": \"model-profile-2\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [\"引継ぎ\"], \"title\": \"親会話 🪴\", \"updated_at\": 1790899200300}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 4, \"saved_receipts\": {\"linked-turn\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"initial_revision\": 1, \"input_digest\": \"sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe\", \"result_reference\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"conversation_revision\": 3, \"outcome_digest\": \"sha256:d4457d608ef7e5afd645ccd86034fe1aa520d5b5b6c4d7e8f271968711083ef7\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\"}, \"turn_id\": \"linked-turn\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"user_revision\": 2}}, \"version\": \"rumi.conversation-store.v1\"}"
+    },
+    "stale_parent_document": "{\"conversations\": {\"child\": {\"agent_id\": null, \"child_conversation_ids\": [], \"context_link\": {\"created_from_parent_revision\": 1, \"parent_conversation_id\": \"parent\", \"slot\": \"thread\", \"version\": \"tobkiri.conversation-context-link.v1\"}, \"conversation_kind\": \"chat\", \"conversation_revision\": 2, \"created_at\": 1790899200300, \"current_node_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"group_id\": null, \"id\": \"child\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"active_user_received_at_ms\": 1790899200302, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"running\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [{\"children_ids\": [], \"content\": \"引き継いだ会話 🪴\", \"created_at\": 1790899200301, \"events\": null, \"finish_reason\": null, \"id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"metadata\": {\"turn_id\": \"linked-turn\"}, \"parent_id\": null, \"parts\": [], \"raw_text\": \"\", \"role\": \"user\", \"sequence\": 0, \"sequence_number\": 1, \"status\": \"complete\", \"tool_logs\": null, \"updated_at\": 1790899200301, \"usage\": null, \"widget\": null}], \"metadata\": {}, \"model_reference\": \"\", \"parent_conversation_id\": \"parent\", \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [], \"title\": \"子会話\", \"updated_at\": 1790899200303}, \"parent\": {\"agent_id\": null, \"child_conversation_ids\": [\"child\"], \"context_link\": null, \"conversation_kind\": \"chat\", \"conversation_revision\": 3, \"created_at\": 1790899200300, \"current_node_id\": null, \"group_id\": null, \"id\": \"parent\", \"is_archived\": false, \"is_pinned\": false, \"is_starred\": false, \"lifecycle\": {\"active_user_message_id\": null, \"active_user_received_at_ms\": null, \"completed_at_ms\": null, \"completion_candidate\": null, \"completion_message_id\": null, \"confirmed_completion\": null, \"resumed_completed_at_ms\": null, \"state\": \"unknown\", \"version\": \"tobkiri.conversation-lifecycle.v1\"}, \"messages\": [], \"metadata\": {\"thinking_level\": \"high\"}, \"model_reference\": \"changed-model\", \"parent_conversation_id\": null, \"pin_scope\": \"global\", \"pinned_at\": null, \"system_prompt_id\": null, \"tags\": [\"引継ぎ\"], \"title\": \"親会話 🪴\", \"updated_at\": 1790899200320}}, \"migration\": null, \"profile_id\": \"defaults\", \"revision\": 4, \"saved_receipts\": {\"linked-turn\": {\"assistant_message_id\": \"message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273\", \"conversation_id\": \"child\", \"initial_revision\": 1, \"input_digest\": \"sha256:30e4b71e3955c2e4b34ff258753168aee0def1e38c52058edeffc2d87b93cefe\", \"turn_id\": \"linked-turn\", \"user_message_id\": \"message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0\", \"user_revision\": 2}}, \"version\": \"rumi.conversation-store.v1\"}",
+    "stale_parent": {
+      "name": "stale_linked_parent",
+      "request": {
+        "conversation_id": "child",
+        "expected_conversation_revision": 2,
+        "message": {
+          "id": "message:0b74315403e094efdbe8a3cc4b698ca6c7fd08f478c2ccbb31dbd4ad0fe20273",
+          "role": "assistant",
+          "content": "文脈を確認しました。",
+          "parent_id": "message:00e33757c65cbbdb772a38847cab472d6f42807801fe3f415abf2759f0f290d0",
+          "metadata": {
+            "turn_id": "linked-turn"
+          },
+          "status": "complete",
+          "finish_reason": "stop"
+        },
+        "saved_input": {
+          "request": {
+            "turn_id": "linked-turn",
+            "conversation_id": "child",
+            "conversation_revision": 1,
+            "content": "引き継いだ会話 🪴",
+            "thinking_level": "high",
+            "context_binding": {
+              "version": "tobkiri.conversation-context-binding.v1",
+              "profile_id": "defaults",
+              "parent_conversation_id": "parent",
+              "parent_revision": 2,
+              "context_digest": "sha256:bb735a30cc58254a541c63d8d9730cdbebfa702322477c09e0cd3313eec2b8e9"
+            }
+          }
+        }
+      },
+      "clock_ms": [
+        1790899200321
+      ],
+      "python_exception": "ValueError",
+      "python_message": "conversation parent context is stale or unavailable"
+    }
+  }
+}

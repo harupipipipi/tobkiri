@@ -1,10 +1,11 @@
 //! Plan the original Conversation owner's separate completion publication.
 
 use super::legacy_read::{
-    MAX_BYTES, ReadError, decode_document, field, normalize, set_field, validate_identifier,
-    validate_profile,
+    MAX_BYTES, ReadError, decode_document, encode_owner_mutation, field, normalize, set_field,
+    validate_identifier, validate_profile,
 };
-use ordered_python_compat::{PyValue, dumps_bounded, dumps_spaced_document, loads, pystrip};
+use super::old_message_lifecycle::assistant_completed;
+use ordered_python_compat::{PyValue, dumps_bounded, loads, pystrip};
 use tobkiri_canon::{CanonValue, Digest, Variant};
 
 type Fields = Vec<(String, PyValue)>;
@@ -58,21 +59,11 @@ pub(super) fn confirm(
                 normalize(row);
             }
         }
-        let mut document = PyValue::Object(state);
-        sort_keys(&mut document);
-        Some(dumps_spaced_document(&document, MAX_BYTES).map_err(|_| ConfirmationError::Limit)?)
+        Some(PyValue::Object(state))
     } else {
         None
     };
-    let owner_result = dumps_bounded(&result, MAX_BYTES).map_err(|_| ConfirmationError::Limit)?;
-    dumps_bounded(
-        &object([
-            ("owner_result", PyValue::String(owner_result)),
-            ("next_document", next.map_or(PyValue::Null, PyValue::String)),
-        ]),
-        MAX_BYTES,
-    )
-    .map_err(|_| ConfirmationError::Limit)
+    encode_owner_mutation(&result, next).map_err(|_| ConfirmationError::Limit)
 }
 
 fn plan(
@@ -142,7 +133,7 @@ fn plan(
     let Some(assistant) = find_assistant(lookup(current, "messages"), assistant_id)? else {
         return Ok((reply(false, revision), false));
     };
-    if !assistant_completed(assistant)? {
+    if !assistant_completed(assistant).map_err(|_| ConfirmationError::Compatibility)? {
         return Ok((reply(false, revision), false));
     }
     let outcome = object([
@@ -228,54 +219,6 @@ fn find_assistant<'a>(
     Ok(None)
 }
 
-fn assistant_completed(message: &PyValue) -> Result<bool, ConfirmationError> {
-    if string(message, "role") != Some("assistant") {
-        return Ok(false);
-    }
-    let empty = PyValue::Null;
-    let metadata = message.get("metadata").unwrap_or(&empty);
-    let explicit = [
-        metadata.get("task_state"),
-        metadata.get("thinking").and_then(|v| v.get("state")),
-    ];
-    let status = message.get("status");
-    let finish = string(message, "finish_reason")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let success = ["stop", "end_turn", "completed", "complete"];
-    if !success.contains(&finish.as_str()) {
-        return Ok(false);
-    }
-    // With an explicit successful finish, every other nonempty task or
-    // thinking state blocks promotion, whether waiting, failed or unknown.
-    if explicit.into_iter().flatten().any(|state| {
-        !matches!(state, PyValue::Null)
-            && state.as_str() != Some("")
-            && !state
-                .as_str()
-                .is_some_and(|s| success.contains(&s.to_ascii_lowercase().as_str()))
-    }) || [
-        "cancelled",
-        "approval_required",
-        "waiting_for_user",
-        "draft",
-        "streaming",
-    ]
-    .iter()
-    .any(|flag| metadata.get(flag) == Some(&PyValue::Bool(true)))
-    {
-        return Ok(false);
-    }
-    match status {
-        None | Some(PyValue::Null) => Ok(true),
-        Some(PyValue::String(value)) => {
-            Ok(["", "complete", "completed", "success", "succeeded"].contains(&value.as_str()))
-        }
-        Some(PyValue::Object(_) | PyValue::Array(_)) => Err(ConfirmationError::Compatibility),
-        _ => Ok(false),
-    }
-}
-
 fn same_evidence(left: Option<&PyValue>, right: &PyValue) -> Result<bool, ConfirmationError> {
     let Some(left) = left else {
         return Ok(false);
@@ -313,19 +256,6 @@ fn canonical(value: &PyValue) -> Result<CanonValue, ConfirmationError> {
 fn canonical_digest(value: &PyValue) -> Result<Digest, ConfirmationError> {
     tobkiri_canon::digest(&canonical(value)?, Variant::StrictV1)
         .map_err(|_| ConfirmationError::Compatibility)
-}
-
-fn sort_keys(value: &mut PyValue) {
-    match value {
-        PyValue::Object(fields) => {
-            fields.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
-            for (_, value) in fields {
-                sort_keys(value);
-            }
-        }
-        PyValue::Array(values) => values.iter_mut().for_each(sort_keys),
-        _ => {}
-    }
 }
 
 fn identifier<'a>(value: &'a PyValue, name: &str) -> Result<&'a str, ConfirmationError> {

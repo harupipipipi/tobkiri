@@ -1583,6 +1583,7 @@ mod tests {
         copy_wit!(
             "pack.wit",
             "data.shape.json",
+            "legacy-append.shape.json",
             "legacy-confirmation.shape.json",
             "legacy-read.shape.json",
             "legacy-receipt.shape.json",

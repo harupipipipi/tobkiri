@@ -5,11 +5,12 @@ use anyhow::{Context, Result, bail, ensure};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt, io, sync::Arc};
 use tobkiri_canon::{
-    AllocationBudget, AllocationError, CoreBuffer, CoreRef, CoreValue, ids::ShapeRef,
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreBuffer, CoreRef,
+    CoreValue, ids::ShapeRef,
 };
 use tobkiri_gate::ControlKind;
 use tobkiri_manifest::{
-    RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType, source::StagedArtifact,
+    Cardinality, RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType, source::StagedArtifact,
 };
 use wasmtime::component::types::{ComponentFunc, ComponentInstance, ComponentItem, Type};
 use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec, Component, Linker, Val};
@@ -19,6 +20,8 @@ const PROVIDER_PACK: &str = "local.provider-registry";
 const MODEL_PACK: &str = "local.model-registry";
 const CONVERSATION_PACK: &str = "local.saved-conversation";
 const FLOW: &str = "tobkiri:core/flow@1.2.0";
+const CLOCK: &str = "tobkiri:core/clock@1.2.0";
+const NOW_MS: &str = "now-ms";
 const PROFILE: &str = "current-profile";
 const CALLBACK: &str = "invoke-callback";
 const OBSERVE_ID: u64 = 1;
@@ -52,6 +55,7 @@ enum RegistryClock {
     None,
     Required,
     ForReplacement,
+    WallMilliseconds(u8),
 }
 
 const PREPARE: RegistryExport = RegistryExport {
@@ -144,6 +148,16 @@ const CONVERSATION_CONFIRMATION: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const CONVERSATION_APPEND: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-append@1.0",
+    interface: "local:saved-conversation/legacy-append@1.0.0",
+    function: "append",
+    error_subject: "legacy Conversation append",
+    parameters: &["document", "request"],
+    reads: 0,
+    clock: RegistryClock::WallMilliseconds(3),
+};
 
 enum LegacyProviderOperation<'a> {
     Prepare,
@@ -162,9 +176,9 @@ enum RegistryInput<'a> {
         document: Option<&'a str>,
         identifier: &'a str,
     },
-    ConversationConfirmation {
+    ConversationStage {
         document: &'a str,
-        turn: &'a str,
+        request: &'a str,
     },
     ModelSave {
         request: &'a CoreValue,
@@ -239,6 +253,14 @@ pub fn verify_legacy_conversation_receipt_declaration(pack: &VerifiedPack) -> Re
 pub fn verify_legacy_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &CONVERSATION_CONFIRMATION)?;
     declared_registry_function(pack, &CONVERSATION_CONFIRMATION)?;
+    Ok(())
+}
+
+/// Check the fixed legacy Conversation append declaration. Invocation also
+/// checks the executable ABI before lending data or time to the component.
+pub fn verify_legacy_conversation_append_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_APPEND)?;
+    declared_registry_function(pack, &CONVERSATION_APPEND)?;
     Ok(())
 }
 
@@ -454,10 +476,34 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 pack,
                 profile_id,
                 &CONVERSATION_CONFIRMATION,
-                RegistryInput::ConversationConfirmation { document, turn },
+                RegistryInput::ConversationStage {
+                    document,
+                    request: turn,
+                },
             )
             .await?;
-        validate_conversation_confirmation_reply(&reply)?;
+        validate_conversation_stage_reply(&reply, true)?;
+        Ok(reply)
+    }
+
+    /// Stage one append against the original owner document held by the
+    /// native caller. The component can propose bytes for publication.
+    pub async fn stage_legacy_conversation_append(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: &str,
+        request: &str,
+    ) -> Result<CoreValue> {
+        let reply = self
+            .invoke_legacy_registry(
+                pack,
+                profile_id,
+                &CONVERSATION_APPEND,
+                RegistryInput::ConversationStage { document, request },
+            )
+            .await?;
+        validate_conversation_stage_reply(&reply, false)?;
         Ok(reply)
     }
 
@@ -490,7 +536,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
             RegistryInput::ModelSave { .. }
             | RegistryInput::DocumentLookup { .. }
-            | RegistryInput::ConversationConfirmation { .. } => true,
+            | RegistryInput::ConversationStage { .. } => true,
         };
         ensure!(
             abi_matches,
@@ -562,14 +608,15 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 two_parameters = [optional_document(document, &owners)?, Val::String(id)];
                 (&two_parameters, None)
             }
-            RegistryInput::ConversationConfirmation { document, turn } => {
+            RegistryInput::ConversationStage { document, request } => {
                 ensure!(
-                    turn.len() <= MAX_DOCUMENT_BYTES,
-                    "legacy Conversation durable Turn record exceeds its limit"
+                    request.len() <= MAX_DOCUMENT_BYTES,
+                    "{} input exceeds its limit",
+                    export.error_subject,
                 );
                 two_parameters = [
                     raw_document(document, &owners)?,
-                    Val::String(BudgetedString::copy_from(turn, owners.component(), 1)?),
+                    Val::String(BudgetedString::copy_from(request, owners.component(), 1)?),
                 ];
                 (&two_parameters, None)
             }
@@ -610,7 +657,9 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             );
         }
         let expected_clock_pending = match export.clock {
-            RegistryClock::None | RegistryClock::Required => false,
+            RegistryClock::None | RegistryClock::Required | RegistryClock::WallMilliseconds(_) => {
+                false
+            }
             RegistryClock::ForReplacement => validate_model_save_reply(&reply)?,
         };
         ensure!(
@@ -621,28 +670,25 @@ impl<T: Send + 'static> NativeSetupStore<T> {
     }
 }
 
-fn validate_conversation_confirmation_reply(reply: &CoreValue) -> Result<()> {
+fn validate_conversation_stage_reply(reply: &CoreValue, allow_no_op: bool) -> Result<()> {
     let CoreRef::Obj(fields) = reply.inspect() else {
-        bail!("legacy Conversation confirmation stage must return an object");
+        bail!("legacy Conversation stage must return an object");
     };
-    ensure!(
-        fields.len() == 2,
-        "legacy Conversation confirmation stage fields differ"
-    );
+    ensure!(fields.len() == 2, "legacy Conversation stage fields differ");
     let owner = fields
         .get("owner_result")
-        .context("missing legacy Conversation confirmation owner result")?;
+        .context("missing legacy Conversation stage owner result")?;
     ensure!(
         matches!(owner.inspect(), CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}')),
-        "legacy Conversation confirmation owner result must enclose an object"
+        "legacy Conversation stage owner result must enclose an object"
     );
     let document = fields
         .get("next_document")
-        .context("missing legacy Conversation confirmation next document")?;
+        .context("missing legacy Conversation stage next document")?;
     match document.inspect() {
-        CoreRef::Null => Ok(()),
+        CoreRef::Null if allow_no_op => Ok(()),
         CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}') => Ok(()),
-        _ => bail!("legacy Conversation confirmation next document differs"),
+        _ => bail!("legacy Conversation stage next document differs"),
     }
 }
 
@@ -764,10 +810,16 @@ fn declared_registry_function<'a>(
             "legacy owner lookup parameter ABI differs"
         );
     }
-    if export.shape == CONVERSATION_CONFIRMATION.shape {
+    if [CONVERSATION_CONFIRMATION.shape, CONVERSATION_APPEND.shape].contains(&export.shape) {
         ensure!(
             function.params.iter().all(|(_, ty)| *ty == WitType::String),
-            "legacy Conversation confirmation parameter ABI differs"
+            "legacy Conversation stage parameter ABI differs"
+        );
+    }
+    if export.shape == CONVERSATION_APPEND.shape {
+        ensure!(
+            definition.cardinality == Cardinality::One,
+            "legacy Conversation append requires a single provider"
         );
     }
     Ok(function)
@@ -898,8 +950,8 @@ fn registry_linker<T: Send + 'static>(
     }
     let mut linker = Linker::new(engine);
     linker.define_unknown_imports_as_traps(component)?;
-    // Replace only the exact flow instance, keeping the other import traps.
-    // A nested linker instance replacement creates a fresh definition map.
+    // Each replaced instance starts with a fresh definition map. All other
+    // imports keep their trap bindings, including the clock for other roles.
     linker.allow_shadowing(true);
     let mut replacement = linker.instance(FLOW)?;
     for (name, import) in flow.exports(engine) {
@@ -952,7 +1004,82 @@ fn registry_linker<T: Send + 'static>(
             _ => bail!("legacy Provider flow import contains an unsupported item"),
         }
     }
+    if matches!(export.clock, RegistryClock::WallMilliseconds(_)) {
+        let clock = instance_type(ty.get_import(engine, CLOCK).map(|item| item.ty))?;
+        link_append_clock(&mut linker, engine, clock, owners)?;
+    }
     Ok(linker)
+}
+
+fn link_append_clock<T: Send + 'static>(
+    linker: &mut Linker<NativeState<T>>,
+    engine: &Engine,
+    clock: ComponentInstance,
+    owners: &crate::AllocationOwners,
+) -> Result<()> {
+    let now = function_type(clock.get_export(engine, NOW_MS).map(|item| item.ty))?;
+    ensure!(
+        now.params().len() == 0 && now.results().eq([Type::U64]),
+        "legacy Conversation append clock ABI differs"
+    );
+    let mut replacement = linker.instance(CLOCK)?;
+    for (name, import) in clock.exports(engine) {
+        match import.ty {
+            ComponentItem::ComponentFunc(_) if name == NOW_MS => {
+                replacement.func_new_owned(
+                    name,
+                    owners.component(),
+                    |mut cx, _, args, output| {
+                        append_now_ms(cx.data_mut(), args, output)
+                            .map_err(wasmtime::Error::from_anyhow)
+                    },
+                )?;
+            }
+            ComponentItem::ComponentFunc(_) => {
+                replacement.func_new_owned(name, owners.component(), |_, _, _, _| {
+                    Err(wasmtime::Error::msg(
+                        "legacy Conversation append clock capability is unavailable",
+                    ))
+                })?;
+            }
+            ComponentItem::Type(_) => {}
+            _ => bail!("legacy Conversation append clock import contains an unsupported item"),
+        }
+    }
+    Ok(())
+}
+
+fn append_now_ms<T: 'static>(
+    state: &mut NativeState<T>,
+    args: &[Val],
+    output: &mut [Val],
+) -> Result<()> {
+    ensure_active(state)?;
+    let ([], [result]) = (args, output) else {
+        bail!("legacy Conversation append clock signature differs");
+    };
+    ensure!(
+        state.registry_profile.is_none(),
+        "legacy Conversation append clock requires the admitted Profile"
+    );
+    let remaining = state
+        .registry_clock_remaining
+        .as_mut()
+        .context("legacy Conversation append clock is outside its admitted call")?;
+    *remaining = remaining
+        .checked_sub(1)
+        .context("legacy Conversation append clock allowance exhausted")?;
+    state.owners.graph().reserve(AllocationRequest {
+        kind: AllocationKind::Temporary,
+        bytes: 0,
+        elements: 0,
+        depth: 0,
+        work: 1,
+    })?;
+    *result = Val::U64(u64::try_from(
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis(),
+    )?);
+    ensure_active(state)
 }
 
 fn observe_registry<T>(state: &mut NativeState<T>, args: &[Val], output: &mut [Val]) -> Result<()> {
@@ -1145,7 +1272,14 @@ async fn call_registry<T: Send + 'static>(
         .context("legacy Provider configuration function export missing")?;
     ensure_active(store.data_mut())?;
     store.data_mut().registry_profile = Some(profile);
-    let expects_clock = !matches!(export.clock, RegistryClock::None);
+    let expects_clock = matches!(
+        export.clock,
+        RegistryClock::Required | RegistryClock::ForReplacement
+    );
+    store.data_mut().registry_clock_remaining = match export.clock {
+        RegistryClock::WallMilliseconds(limit) => Some(limit),
+        _ => None,
+    };
     store.data_mut().provider_prepare_reads = read.map(|read| LiveObservations {
         read,
         count: 0,
@@ -1153,6 +1287,7 @@ async fn call_registry<T: Send + 'static>(
         clock_pending: expects_clock,
     });
     let result = function.call_async_owned(&mut *store, parameters).await;
+    store.data_mut().registry_clock_remaining = None;
     let read_profile = store.data_mut().registry_profile.take().is_none();
     let (reads, clock_pending) = store
         .data_mut()
@@ -1235,7 +1370,7 @@ mod tests {
             "next_document": document,
         }))?;
         let staged = CoreValue::parse_guest(&encoded, &budget)?;
-        validate_conversation_confirmation_reply(&staged)?;
+        validate_conversation_stage_reply(&staged, true)?;
         let result = staged.get_key("owner_result").unwrap();
         assert!(matches!(result.inspect(), CoreRef::Str(value) if value == owner));
         let next = staged.get_key("next_document").unwrap();
@@ -1243,7 +1378,7 @@ mod tests {
 
         let no_op =
             CoreValue::parse_guest(br#"{"owner_result":"{}","next_document":null}"#, &budget)?;
-        validate_conversation_confirmation_reply(&no_op)?;
+        validate_conversation_stage_reply(&no_op, true)?;
 
         for invalid in [
             &br#"{"owner_result":"{}"}"#[..],
@@ -1253,8 +1388,30 @@ mod tests {
             br#"{"owner_result":"{}","next_document":null,"extra":null}"#,
         ] {
             let invalid = CoreValue::parse_guest(invalid, &budget)?;
-            assert!(validate_conversation_confirmation_reply(&invalid).is_err());
+            assert!(validate_conversation_stage_reply(&invalid, true).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn append_requires_a_replacement_and_preserves_owner_bytes() -> Result<()> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(FixtureBudget);
+        let owner = r#"{"receipt":{"value":-0.0}}"#;
+        let document = r#"{"messages": [{"text": "会話", "value": 12345678901234567890}]}"#;
+        let encoded = serde_json::to_vec(&serde_json::json!({
+            "owner_result": owner,
+            "next_document": document,
+        }))?;
+        let staged = CoreValue::parse_guest(&encoded, &budget)?;
+        validate_conversation_stage_reply(&staged, false)?;
+        let result = staged.get_key("owner_result").unwrap();
+        let next = staged.get_key("next_document").unwrap();
+        assert!(matches!(result.inspect(), CoreRef::Str(value) if value == owner));
+        assert!(matches!(next.inspect(), CoreRef::Str(value) if value == document));
+
+        let no_op =
+            CoreValue::parse_guest(br#"{"owner_result":"{}","next_document":null}"#, &budget)?;
+        assert!(validate_conversation_stage_reply(&no_op, false).is_err());
         Ok(())
     }
 }

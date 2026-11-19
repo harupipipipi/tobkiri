@@ -49,6 +49,7 @@ pub use imports::{
 };
 pub use legacy_registry::{
     LegacyProviderRegistryRead, LegacyRegistryError, LegacyRegistryRead,
+    verify_legacy_conversation_append_declaration,
     verify_legacy_conversation_confirmation_declaration,
     verify_legacy_conversation_read_declaration, verify_legacy_conversation_receipt_declaration,
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
@@ -141,6 +142,7 @@ struct NativeState<T: 'static> {
     io_claimed: bool,
     component_claimed: bool,
     registry_profile: Option<tobkiri_canon::CoreBuffer>,
+    registry_clock_remaining: Option<u8>,
     provider_prepare_reads: Option<legacy_registry::LiveObservations>,
     read_only_call: Option<read_only_port::ActiveCall>,
     #[cfg(test)]
@@ -275,6 +277,7 @@ impl WasmEngine {
             io_claimed: false,
             component_claimed: false,
             registry_profile: None,
+            registry_clock_remaining: None,
             provider_prepare_reads: None,
             read_only_call: None,
             #[cfg(test)]

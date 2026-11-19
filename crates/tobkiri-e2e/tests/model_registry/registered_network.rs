@@ -548,6 +548,175 @@ async fn original_saved_confirmation_publishes_physical_store() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires the staged Conversation Registry Pack archive"]
+async fn original_saved_append_updates_the_physical_store_and_receipt() -> Result<()> {
+    use std::cell::Cell;
+    use tobkiri_canon::{Variant, digest, parse};
+
+    const ORACLE: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-append-oracle.json"
+    );
+    let oracle: Value = serde_json::from_str(ORACLE)?;
+    let root = physical_temp()?;
+    let data = root.path().join("owner");
+    let disk = DataRoot::open(&data)?;
+    let profile = ProfileId::parse("defaults")?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let fixture = LiveConversationFixture {
+        core: &core,
+        root: root.path(),
+        data,
+        pin: registry::pack(SAVED_PACK)?.pin,
+        profile: &profile,
+    };
+    let path = fixture.data.join(fixture.relative_path());
+    let lock = path
+        .parent()
+        .context("physical owner parent")?
+        .join("locks/conversations.lock");
+    let original = oracle["document"].as_str().context("old owner document")?;
+    disk.write_atomic(fixture.relative_path(), original.as_bytes())?;
+
+    for (role, deny, replay) in [
+        ("user", true, false),
+        ("user", false, false),
+        ("assistant", false, false),
+        ("assistant", false, true),
+    ] {
+        let case = &oracle[role];
+        let request = &case["request"];
+        let conversation = request["conversation_id"]
+            .as_str()
+            .context("oracle conversation")?;
+        let turn_id = request["saved_input"]["request"]["turn_id"]
+            .as_str()
+            .context("oracle turn")?;
+        let mut inspection = core.inspect_declared_artifacts(Source::new(root.path()))?;
+        let (mut archive, size) = fixture.archive()?;
+        let pack = inspection.verify_pack_archive(&mut archive, size)?;
+        ensure!(pack.hash == fixture.pin.sha256);
+        tobkiri_wasm::verify_legacy_conversation_append_declaration(&pack)?;
+        let mut owner = inspection.legacy_conversation_store(&fixture.data, profile.as_str())?;
+        let prior = owner
+            .observe_locked(inspection.allocation_budget()?, || Ok(()))?
+            .context("locked Conversation file")?;
+        ensure!(lock.is_file());
+        let staged = inspection
+            .stage_legacy_conversation_append(&pack, &owner, &request.to_string())
+            .await;
+        inspection.finish().await?;
+        if replay {
+            let error = staged.expect_err("append replay must conflict");
+            ensure!(
+                matches!(error, NativeArtifactError::ConversationRegistryRejected(ref error)
+                if error.code() == "conflict")
+            );
+            let on_disk: Value = serde_json::from_slice(&fs::read(&path)?)?;
+            ensure!(on_disk["saved_receipts"][turn_id]["result_reference"].is_object());
+            ensure!(fs::read(&path)? == prior.as_bytes());
+            drop(owner);
+            ensure!(!lock.exists());
+            continue;
+        }
+        let staged = staged?;
+        let wire = staged.get_key("owner_result").context("owner result")?;
+        let wire: Value = serde_json::from_str(wire.as_str().context("owner result text")?)?;
+        let next = staged
+            .get_key("next_document")
+            .context("replacement decision")?;
+        let next = next.as_str().context("replacement text")?;
+        let replacement: Value = serde_json::from_str(next)?;
+        let mut message = wire["message"].clone();
+        ensure!(message["created_at"].as_i64().context("created clock")? > 0);
+        ensure!(message["created_at"] == message["updated_at"]);
+        message["created_at"] = case["owner_result"]["message"]["created_at"].clone();
+        message["updated_at"] = case["owner_result"]["message"]["updated_at"].clone();
+        ensure!(message == case["owner_result"]["message"]);
+        ensure!(wire["action"] == "message_appended");
+        ensure!(wire["conversation_revision"] == case["owner_result"]["conversation_revision"]);
+        let record = &replacement["conversations"][conversation];
+        ensure!(
+            record["messages"].as_array().and_then(|items| items.last()) == Some(&wire["message"])
+        );
+        let receipt = &replacement["saved_receipts"][turn_id];
+        if role == "user" {
+            ensure!(*receipt == case["receipt"]);
+            ensure!(
+                record["lifecycle"]["active_user_received_at_ms"]
+                    .as_i64()
+                    .is_some()
+            );
+        } else {
+            let reference = &receipt["result_reference"];
+            let canonical_outcome = json!({
+                "status":"ok", "turn_id":turn_id, "conversation_id":conversation,
+                "conversation_revision":wire["conversation_revision"],
+                "user_message_id":receipt["user_message_id"], "message":wire["message"],
+            });
+            let value = parse(&serde_json::to_vec(&canonical_outcome)?, Variant::StrictV1)?;
+            ensure!(reference["outcome_digest"] == digest(&value, Variant::StrictV1)?.as_str());
+            ensure!(record["lifecycle"]["completion_candidate"]["receipt"] == *receipt);
+            ensure!(
+                record["lifecycle"]["completion_candidate"]["completed_at_ms"]
+                    .as_i64()
+                    .is_some()
+            );
+        }
+        let checkpoints = Cell::new(0);
+        let written = owner.publish(next.as_bytes(), || {
+            checkpoints.set(checkpoints.get() + 1);
+            if deny && checkpoints.get() == 2 {
+                return Err(NativeArtifactError::Denied);
+            }
+            Ok(())
+        });
+        ensure!(checkpoints.get() == 2 && !lock.exists());
+        if deny {
+            ensure!(matches!(written, Err(NativeArtifactError::Denied)));
+            ensure!(fs::read(&path)? == prior.as_bytes());
+        } else {
+            written?;
+            ensure!(fs::read(&path)? == next.as_bytes());
+        }
+    }
+    let data: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    let turn = oracle["user"]["request"]["saved_input"]["request"]["turn_id"]
+        .as_str()
+        .context("oracle turn")?;
+    ensure!(data["saved_receipts"][turn]["result_reference"].is_object());
+
+    let stale = &oracle["linked"];
+    let prior = stale["stale_parent_document"]
+        .as_str()
+        .context("changed parent document")?;
+    let request = stale["stale_parent"]["request"].to_string();
+    disk.write_atomic(fixture.relative_path(), prior.as_bytes())?;
+    let mut inspection = core.inspect_declared_artifacts(Source::new(root.path()))?;
+    let (mut archive, size) = fixture.archive()?;
+    let pack = inspection.verify_pack_archive(&mut archive, size)?;
+    ensure!(pack.hash == fixture.pin.sha256);
+    let mut owner = inspection.legacy_conversation_store(&fixture.data, profile.as_str())?;
+    owner
+        .observe_locked(inspection.allocation_budget()?, || Ok(()))?
+        .context("locked changed parent document")?;
+    let rejected = inspection
+        .stage_legacy_conversation_append(&pack, &owner, &request)
+        .await;
+    ensure!(
+        matches!(rejected, Err(NativeArtifactError::ConversationRegistryRejected(ref error))
+        if error.code() == "invalid")
+    );
+    inspection.finish().await?;
+    drop(owner);
+    ensure!(fs::read(path)? == prior.as_bytes() && !lock.exists());
+    Ok(())
+}
+
 fn admitted_ui(session: &Session) -> Result<UiAttachment> {
     session.bind_ui_generation(7)?;
     let [ui] = session

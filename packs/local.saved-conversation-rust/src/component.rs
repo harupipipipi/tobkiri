@@ -8,12 +8,13 @@ wit_bindgen::generate!({
 
 use crate::{
     legacy_confirmation::{self, ConfirmationError},
+    legacy_message_append::{self, AppendError},
     legacy_read::{self, ReadError},
     saved_model::{SelectionError, select},
 };
 use ordered_python_compat::{CodecError, loads};
 use tobkiri::core::{
-    flow, storage,
+    clock, flow, storage,
     types::{Error, ErrorCode},
 };
 
@@ -72,7 +73,36 @@ impl exports::local::saved_conversation::legacy_confirmation::Guest for Pack {
     }
 }
 
+impl exports::local::saved_conversation::legacy_append::Guest for Pack {
+    fn append(document: String, request: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_message_append::append(&profile, &document, &request, || {
+            i64::try_from(clock::now_ms()).map_err(|_| AppendError::Limit)
+        })
+        .map_err(append_error)
+    }
+}
+
 export!(Pack);
+
+fn append_error(error: AppendError) -> Error {
+    match error {
+        AppendError::Read(error) => read_error(error),
+        AppendError::Invalid => failure(ErrorCode::Invalid, "saved message append is invalid"),
+        AppendError::Conflict => failure(ErrorCode::Conflict, "saved message revision changed"),
+        AppendError::NotFound => {
+            failure(ErrorCode::NotFound, "saved message context is unavailable")
+        }
+        AppendError::Compatibility => failure(
+            ErrorCode::Unavailable,
+            "saved append needs the original Conversation owner",
+        ),
+        AppendError::Limit => failure(
+            ErrorCode::LimitExceeded,
+            "saved message append exceeds limits",
+        ),
+    }
+}
 
 fn confirmation_error(error: ConfirmationError) -> Error {
     match error {

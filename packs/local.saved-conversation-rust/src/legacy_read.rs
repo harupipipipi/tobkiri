@@ -2,7 +2,7 @@
 
 use crate::saved_model::{STORE_VERSION, valid_conversation_id};
 use ordered_python_compat::{
-    CodecError, PyValue, dumps_bounded, loads, loads_python_json, pystrip,
+    CodecError, PyValue, dumps_bounded, dumps_spaced_document, loads, loads_python_json, pystrip,
 };
 
 pub(super) const MAX_BYTES: usize = 1024 * 1024;
@@ -85,6 +85,41 @@ fn owner_reply(field: &str, value: PyValue) -> Result<String, ReadError> {
     let owner = dumps_bounded(&owner, MAX_BYTES).map_err(output_error)?;
     let reply = PyValue::Object(vec![("owner_result".into(), PyValue::String(owner))]);
     dumps_bounded(&reply, MAX_BYTES).map_err(output_error)
+}
+
+/// Serialize an old owner document with CPython's recursively sorted keys
+/// and default separators. The inner reply preserves its owner field order.
+pub(super) fn encode_owner_mutation(
+    owner_result: &PyValue,
+    mut document: Option<PyValue>,
+) -> Result<String, CodecError> {
+    let owner_result = dumps_bounded(owner_result, MAX_BYTES)?;
+    let next_document = match document.as_mut() {
+        Some(document) => {
+            sort_keys(document);
+            PyValue::String(dumps_spaced_document(document, MAX_BYTES)?)
+        }
+        None => PyValue::Null,
+    };
+    drop(document);
+    let reply = PyValue::Object(vec![
+        ("owner_result".into(), PyValue::String(owner_result)),
+        ("next_document".into(), next_document),
+    ]);
+    dumps_bounded(&reply, MAX_BYTES)
+}
+
+fn sort_keys(value: &mut PyValue) {
+    match value {
+        PyValue::Object(fields) => {
+            fields.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            for (_, value) in fields {
+                sort_keys(value);
+            }
+        }
+        PyValue::Array(values) => values.iter_mut().for_each(sort_keys),
+        _ => {}
+    }
 }
 
 pub(super) fn decode_document(
