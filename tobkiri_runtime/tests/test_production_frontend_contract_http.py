@@ -10051,11 +10051,13 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     """Exercise the signed HTTP chain with the real Provider and Model owners."""
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import AuthorityDenied, LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
     from tobkiri_host.broker import _thaw_payload
     from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.runtime import V4DispatchSession
 
     root = tmp_path / "user-data"
     store = ConversationStore("defaults", user_data_root=root)
@@ -10073,8 +10075,21 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
     registry_reads: list[tuple[RequestEnvelope, Mapping[str, object]]] = []
     native_calls: list[ipc.NativeSavedLocalChatRequest] = []
     permitted_posts: list[bytes] = []
+    fixture_failures: list[AssertionError] = []
     legacy_connections: list[tuple[str, int | None]] = []
     legacy_connect = http.client.HTTPConnection
+    invoke_provider = V4DispatchSession.invoke
+
+    def invoke(
+        session: V4DispatchSession, contract: str, operation: str,
+        payload: Mapping[str, object], **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (
+            side_chat and role == "generate" and (contract, operation) == READINESS
+            and payload.get("delivery_mode") == "incremental"
+        ):
+            return {"ready": False, "model_profile_id": model_profile_id}
+        return invoke_provider(session, contract, operation, payload, **kwargs)
 
     def connect(
         host: str, port: int | None = None, **kwargs: object,
@@ -10089,7 +10104,7 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             raise ipc.NativeModelResolveFailure("not-found")
         raise ipc.NativeProviderPrepareUnavailable()
 
-    def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
+    def checked_execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
         native_calls.append(request)
         adapter, = adapter_calls
         turn, orchestration, gateway = parents[-3:]
@@ -10189,9 +10204,17 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
             b'"finish_reason":"stop"}]}'
         )
 
+    def execute(request: ipc.NativeSavedLocalChatRequest) -> bytes | dict[str, object]:
+        try:
+            return checked_execute(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
     execute.supports_request_compilation = native_source
     execute.supports_policy_compilation = native_policy
     execute.supports_side_chat = True
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_resolve_reader", lambda: read_model,
@@ -10347,6 +10370,8 @@ def test_signed_saved_local_chat_borrows_adapter_lease_for_one_dispatch(
                 })
             else:
                 status, result = post(turn)
+            if fixture_failures:
+                raise fixture_failures[0]
             expected_native_calls = 2 if outcome == "legacy-denied" else 1
             assert len(native_calls) == expected_native_calls, result
             assert len(adapter_calls) == 1, result
