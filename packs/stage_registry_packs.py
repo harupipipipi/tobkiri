@@ -15,13 +15,17 @@ from build import REPO, ROOT, sha256, write_json
 # These names are source directories and the exact local Pack identities.
 ORIGINAL_PACKS = ("provider-registry", "model-registry", "saved-conversation")
 SETTLEMENT_PACK = "saved-turn-runtime"
-PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
+ORCHESTRATION_PACK = "saved-orchestration"
+SETTLEMENT_PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
+PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
+ORCHESTRATION_PACK_VERSION = "0.1.0"
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
 
 def stage_pack(
     tobkiri: Path, name: str, components: Path, work: Path, output: Path
 ) -> dict[str, str | int]:
+    """Build one archive and return its receipt record."""
     pack_id = f"local.{name}"
     source = ROOT / f"{pack_id}-rust"
     stage = work / pack_id
@@ -54,6 +58,8 @@ def stage_pack(
     verified_id, version, digest = verified.split()
     if verified_id != pack_id or digest != sha256(manifest.read_bytes()):
         raise ValueError(f"verified Pack differs from the staged manifest for {pack_id}")
+    if name == ORCHESTRATION_PACK and version != ORCHESTRATION_PACK_VERSION:
+        raise ValueError(f"verified Pack version is invalid for {pack_id}")
     archive_digest = hashlib.sha256()
     with artifact.open("rb") as reader:
         while block := reader.read(64 * 1024):
@@ -69,6 +75,7 @@ def stage_pack(
 
 
 def main() -> None:
+    """Stage the selected archives and publish their receipt atomically."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tobkiri", required=True, type=Path)
     parser.add_argument("--components", required=True, type=Path)
@@ -77,8 +84,12 @@ def main() -> None:
     args = parser.parse_args()
     selected = set(args.pack or ORIGINAL_PACKS)
     receipt_version = 1
-    if SETTLEMENT_PACK in selected:
+    if ORCHESTRATION_PACK in selected:
         if selected != set(PACKS):
+            parser.error("the orchestration Pack requires the full Registry Pack set")
+        receipt_version = 3
+    elif SETTLEMENT_PACK in selected:
+        if selected != set(SETTLEMENT_PACKS):
             parser.error("the settlement Pack requires the full Registry Pack set")
         receipt_version = 2
     output = args.output.absolute()

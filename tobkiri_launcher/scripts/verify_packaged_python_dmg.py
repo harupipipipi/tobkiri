@@ -31,6 +31,9 @@ NATIVE_REGISTRY_PACKS = Path("Contents/Resources/app/native-registry-packs")
 REGISTRY_RECEIPT_NAME = "receipt.json"
 REGISTRY_RECEIPT_FORMAT = "tobkiri.registry-packs/1"
 SETTLEMENT_RECEIPT_FORMAT = "tobkiri.registry-packs/2"
+ORCHESTRATION_RECEIPT_FORMAT = "tobkiri.registry-packs/3"
+ORCHESTRATION_PACK_ID = "local.saved-orchestration"
+ORCHESTRATION_PACK_VERSION = "0.1.0"
 REGISTRY_ARCHIVES = {
     "local.provider-registry": "local.provider-registry.tpk",
     "local.model-registry": "local.model-registry.tpk",
@@ -39,6 +42,10 @@ REGISTRY_ARCHIVES = {
 REGISTRY_ARCHIVES_WITH_SETTLEMENT = {
     **REGISTRY_ARCHIVES,
     "local.saved-turn-runtime": "local.saved-turn-runtime.tpk",
+}
+REGISTRY_ARCHIVES_WITH_ORCHESTRATION = {
+    **REGISTRY_ARCHIVES_WITH_SETTLEMENT,
+    ORCHESTRATION_PACK_ID: f"{ORCHESTRATION_PACK_ID}.tpk",
 }
 MAX_REGISTRY_RECEIPT_BYTES = 16 * 1024
 # Match the package limit in crates/tobkiri-manifest/src/package.rs.
@@ -558,6 +565,8 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
         archives = REGISTRY_ARCHIVES
     elif receipt["format"] == SETTLEMENT_RECEIPT_FORMAT:
         archives = REGISTRY_ARCHIVES_WITH_SETTLEMENT
+    elif receipt["format"] == ORCHESTRATION_RECEIPT_FORMAT:
+        archives = REGISTRY_ARCHIVES_WITH_ORCHESTRATION
     else:
         raise DmgVerificationError("native Registry Packs receipt has the wrong format")
     if len(receipt["packs"]) != len(archives):
@@ -588,6 +597,10 @@ def _registry_archive_pins(payload: bytes) -> list[_RegistryArchivePin]:
             or not _matches(TAGGED_SHA256, digest)
             or not _matches(TAGGED_SHA256, record["manifest_sha256"])
             or not _matches(PACK_VERSION, record["version"])
+            or (
+                pack_id == ORCHESTRATION_PACK_ID
+                and record["version"] != ORCHESTRATION_PACK_VERSION
+            )
         ):
             raise DmgVerificationError(
                 "native Registry Packs receipt has an invalid pin"

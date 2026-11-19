@@ -261,6 +261,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
                 | crate::native_provider_prepare_service::OWNER_ENV
                 | crate::native_provider_prepare_service::APPEND_ENV
                 | crate::native_provider_prepare_service::TURN_READ_ENV
+                | crate::native_provider_prepare_service::SAVED_ORCHESTRATION_ENV
         )
     {
         return true;

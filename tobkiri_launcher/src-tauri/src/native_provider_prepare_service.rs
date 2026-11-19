@@ -23,6 +23,7 @@ pub(crate) const SOCKET_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET";
 pub(crate) const OWNER_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER";
 pub(crate) const APPEND_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_APPEND";
 pub(crate) const TURN_READ_ENV: &str = "TOBKIRI_NATIVE_SAVED_TURN_READ";
+pub(crate) const SAVED_ORCHESTRATION_ENV: &str = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION";
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProviderPrepareEndpoint {

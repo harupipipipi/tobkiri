@@ -347,11 +347,12 @@ where
         command.env_remove("TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER");
         command.env_remove("TOBKIRI_NATIVE_CONVERSATION_APPEND");
         command.env_remove("TOBKIRI_NATIVE_SAVED_TURN_READ");
+        command.env_remove("TOBKIRI_NATIVE_SAVED_ORCHESTRATION");
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
                 use crate::native_provider_prepare_service::{
-                    APPEND_ENV, OWNER_ENV, SOCKET_ENV, TURN_READ_ENV,
+                    APPEND_ENV, OWNER_ENV, SAVED_ORCHESTRATION_ENV, SOCKET_ENV, TURN_READ_ENV,
                 };
                 command
                     .env(SOCKET_ENV, &endpoint.socket)
@@ -359,7 +360,8 @@ where
                     // These advertise supported wire operations. The endpoint
                     // still checks the exact launch proof for each request.
                     .env(APPEND_ENV, "1")
-                    .env(TURN_READ_ENV, "1");
+                    .env(TURN_READ_ENV, "1")
+                    .env(SAVED_ORCHESTRATION_ENV, "1");
             }
         }
         Ok(())

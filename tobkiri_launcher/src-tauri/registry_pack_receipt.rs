@@ -30,6 +30,7 @@ mod unix {
     pub(crate) const RECEIPT: &str = "receipt.json";
     pub(crate) const RECEIPT_FORMAT: &str = "tobkiri.registry-packs/1";
     pub(crate) const SETTLEMENT_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/2";
+    pub(crate) const ORCHESTRATION_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/3";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -39,6 +40,8 @@ mod unix {
         "local.saved-conversation",
     ];
     pub(crate) const SETTLEMENT_PACK_ID: &str = "local.saved-turn-runtime";
+    pub(crate) const ORCHESTRATION_PACK_ID: &str = "local.saved-orchestration";
+    const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -186,6 +189,7 @@ mod unix {
         let expected_count = match receipt.format.as_str() {
             RECEIPT_FORMAT => PACK_IDS.len(),
             SETTLEMENT_RECEIPT_FORMAT => PACK_IDS.len() + 1,
+            ORCHESTRATION_RECEIPT_FORMAT => PACK_IDS.len() + 2,
             _ => return Err(invalid("Registry Pack receipt format is invalid")),
         };
         if receipt.packs.len() != expected_count {
@@ -195,11 +199,12 @@ mod unix {
         }
         let ids = PACK_IDS
             .into_iter()
-            .chain(std::iter::once(SETTLEMENT_PACK_ID));
+            .chain([SETTLEMENT_PACK_ID, ORCHESTRATION_PACK_ID]);
         for (id, pack) in ids.zip(&receipt.packs) {
             if pack.id != id
                 || pack.archive != format!("{id}.tpk")
                 || !valid_version(&pack.version)
+                || (id == ORCHESTRATION_PACK_ID && pack.version != ORCHESTRATION_PACK_VERSION)
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)
@@ -285,7 +290,7 @@ mod unix {
         // fdopendir owns this descriptor on success.
         let _ = independent.into_raw_fd();
         let result = (|| {
-            let mut found = [false; PACK_IDS.len() + 2];
+            let mut found = [false; PACK_IDS.len() + 3];
             let names = std::iter::once(RECEIPT.as_bytes())
                 .chain(receipt.packs.iter().map(|pack| pack.archive.as_bytes()));
             loop {
@@ -503,12 +508,59 @@ mod unix {
     pub(crate) fn verify_installed_with_settlement_archives<P, M, C, S>(
         app_root: &Path,
         expected_sha256: &str,
-        mut checkpoint: impl FnMut() -> io::Result<()>,
+        checkpoint: impl FnMut() -> io::Result<()>,
         inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
         inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
         inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
         inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
     ) -> io::Result<(P, M, C, Option<S>)> {
+        let (provider, model, conversation, settlement, _) =
+            verify_installed_with_orchestration_archives(
+                app_root,
+                expected_sha256,
+                checkpoint,
+                inspect_provider,
+                inspect_model,
+                inspect_conversation,
+                inspect_settlement,
+                discard_archive,
+            )?;
+        Ok((provider, model, conversation, settlement))
+    }
+
+    /// Inspect the orchestration archive when the installed receipt includes it.
+    pub(crate) fn verify_installed_with_orchestration<O>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
+    ) -> io::Result<Option<O>> {
+        let (_, _, _, _, orchestration) = verify_installed_with_orchestration_archives(
+            app_root,
+            expected_sha256,
+            checkpoint,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            discard_archive,
+            inspect_orchestration,
+        )?;
+        Ok(orchestration)
+    }
+
+    /// Inspect each archive in one pass and return the results after every digest matches.
+    /// Settlement and orchestration are present only in versions of the receipt requiring them.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub(crate) fn verify_installed_with_orchestration_archives<P, M, C, S, O>(
+        app_root: &Path,
+        expected_sha256: &str,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_provider: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<P>,
+        inspect_model: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<M>,
+        inspect_conversation: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<C>,
+        inspect_settlement: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<S>,
+        inspect_orchestration: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<O>,
+    ) -> io::Result<(P, M, C, Option<S>, Option<O>)> {
         checkpoint()?;
         let app = open_directory(app_root)?;
         let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
@@ -530,7 +582,11 @@ mod unix {
             .first()
             .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_settlement))
             .transpose()?;
-        Ok((provider, model, conversation, settlement))
+        let orchestration = newest
+            .get(1)
+            .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect_orchestration))
+            .transpose()?;
+        Ok((provider, model, conversation, settlement, orchestration))
     }
 
     fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {

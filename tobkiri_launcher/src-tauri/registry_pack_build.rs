@@ -124,9 +124,11 @@ mod unix {
         use super::super::super::raw_byte_digest;
         use super::super::super::registry_pack_receipt::{
             verify_installed, verify_installed_with_conversation, verify_installed_with_model,
+            verify_installed_with_orchestration, verify_installed_with_orchestration_archives,
             verify_installed_with_provider, verify_installed_with_provider_and_model,
-            verify_installed_with_settlement, Pack, ARCHIVE_LIMIT, PACK_IDS, RECEIPT_FORMAT,
-            SETTLEMENT_PACK_ID, SETTLEMENT_RECEIPT_FORMAT,
+            verify_installed_with_settlement, Pack, ARCHIVE_LIMIT, ORCHESTRATION_PACK_ID,
+            ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS, RECEIPT_FORMAT, SETTLEMENT_PACK_ID,
+            SETTLEMENT_RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -493,6 +495,87 @@ mod unix {
             let invalid = current.write_receipt(&invalid_downgrade)?;
             let error = invalid.stage(&current.root).unwrap_err();
             assert!(error.to_string().contains("wrong number of records"));
+            Ok(())
+        }
+
+        #[test]
+        fn only_v3_receipts_require_the_pinned_orchestration_archive() -> io::Result<()> {
+            let ids = PACK_IDS
+                .into_iter()
+                .chain([SETTLEMENT_PACK_ID, ORCHESTRATION_PACK_ID]);
+            for (format, count) in [(RECEIPT_FORMAT, 3), (SETTLEMENT_RECEIPT_FORMAT, 4)] {
+                let fixture = Fixture::with_packs(format, ids.clone().take(count))?;
+                let input = fixture.write_receipt(&fixture.document)?;
+                input.stage(&fixture.stage)?;
+                assert_eq!(
+                    verify_installed_with_orchestration(
+                        &fixture.stage,
+                        input.receipt_sha256(),
+                        || Ok(()),
+                        |_, _| panic!("older receipts do not have orchestration"),
+                    )?,
+                    None::<()>,
+                );
+            }
+
+            let current = Fixture::with_packs(ORCHESTRATION_RECEIPT_FORMAT, ids)?;
+            let input = current.write_receipt(&current.document)?;
+            input.stage(&current.stage)?;
+            let pin = input.receipt_sha256();
+            let inspect_id = |pack: &Pack, _: &mut dyn std::io::Read| Ok(pack.id().to_owned());
+            let inspect_orchestration = |pack: &Pack, archive: &mut dyn std::io::Read| {
+                assert_eq!(pack.id(), ORCHESTRATION_PACK_ID);
+                assert_eq!(pack.version(), "0.1.0");
+                let mut prefix = [0; 11];
+                archive.read_exact(&mut prefix)?;
+                Ok(prefix)
+            };
+            assert_eq!(
+                verify_installed_with_orchestration_archives(
+                    &current.stage,
+                    pin,
+                    || Ok(()),
+                    inspect_id,
+                    inspect_id,
+                    inspect_id,
+                    inspect_id,
+                    inspect_orchestration,
+                )?,
+                (
+                    PACK_IDS[0].to_owned(),
+                    PACK_IDS[1].to_owned(),
+                    PACK_IDS[2].to_owned(),
+                    Some(SETTLEMENT_PACK_ID.to_owned()),
+                    Some(*b"local.saved"),
+                ),
+            );
+            let reacquire = || {
+                verify_installed_with_orchestration(
+                    &current.stage,
+                    pin,
+                    || Ok(()),
+                    inspect_orchestration,
+                )
+            };
+            assert_eq!(reacquire()?, Some(*b"local.saved"));
+
+            let archive = current
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{ORCHESTRATION_PACK_ID}.tpk"));
+            fs::write(&archive, b"local.saved-orchestratioN")?;
+            assert!(reacquire().is_err());
+            assert!(verify_installed(&current.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&archive)?;
+            assert!(reacquire().is_err());
+
+            let mut invalid = current.document.clone();
+            invalid["packs"][4]["version"] = json!("0.1.1");
+            let error = current
+                .write_receipt(&invalid)?
+                .stage(&current.root)
+                .unwrap_err();
+            assert!(error.to_string().contains(ORCHESTRATION_PACK_ID));
             Ok(())
         }
 

@@ -653,12 +653,17 @@ jobs:
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::launch_metadata::tests::turn_
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 25 -- \
+              --log "$RUNNER_TEMP/harness-native-orchestration-evidence.log" --expected-passed 1 -- \
+              cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+              --target aarch64-apple-darwin --features "$features" \
+              --lib native_harness_bootstrap::launch_metadata::tests::saved_orchestration_declaration_pins_the_effect_free_step -- --exact
+            python3 -B tools/quality/issue_1520_ci.py cargo-test \
+              --log "$RUNNER_TEMP/harness-native-provider-connection.log" --expected-passed 30 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_provider_prepare_ipc::tests
             python3 -B tools/quality/issue_1520_ci.py cargo-test \
-              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 19 -- \
+              --log "$RUNNER_TEMP/harness-native-provider-job.log" --expected-passed 21 -- \
               cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
               --target aarch64-apple-darwin --features "$features" \
               --lib native_harness_bootstrap::provider_prepare::tests
@@ -709,6 +714,7 @@ jobs:
             ${{ runner.temp }}/harness-native-provider-connection.log*
             ${{ runner.temp }}/harness-native-provider-job.log*
             ${{ runner.temp }}/harness-native-turn-evidence.log*
+            ${{ runner.temp }}/harness-native-orchestration-evidence.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-launch-artifacts.log*
             ${{ runner.temp }}/harness-native-runtime-features/
@@ -790,13 +796,14 @@ jobs:
           cargo build --locked --release --target wasm32-wasip2 --manifest-path packs/Cargo.toml \
             -p tobkiri-pack-provider-registry-rust -p tobkiri-pack-model-registry-rust \
             -p tobkiri-pack-saved-conversation-rust -p tobkiri-pack-saved-turn-runtime-rust \
+            -p tobkiri-pack-saved-orchestration-rust \
             --features component
           cargo build --locked -p tobkiri-cli --bin tobkiri
           python3 -B packs/stage_registry_packs.py \
             --tobkiri "$CARGO_TARGET_DIR/debug/tobkiri" \
             --components "$CARGO_TARGET_DIR/wasm32-wasip2/release" \
             --pack provider-registry --pack model-registry --pack saved-conversation \
-            --pack saved-turn-runtime \
+            --pack saved-turn-runtime --pack saved-orchestration \
             --output "$RUNNER_TEMP/native-registry-packs"
           receipt_sha256="$(shasum -a 256 "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
@@ -819,23 +826,8 @@ jobs:
       - name: Replay original saved orchestration against its Wasm component
         env:
           TOBKIRI_SAVED_ORCHESTRATION_ORACLE_PYTHON: python3
-          TOBKIRI_SAVED_ORCHESTRATION_TPK: ${{ runner.temp }}/saved-orchestration-check/local.saved-orchestration.tpk
+          TOBKIRI_SAVED_ORCHESTRATION_TPK: ${{ runner.temp }}/native-registry-packs/local.saved-orchestration.tpk
         run: |
-          set -euo pipefail
-          cargo build --locked --release --target wasm32-wasip2 --manifest-path packs/Cargo.toml \
-            -p tobkiri-pack-saved-orchestration-rust --features component
-          PYTHONPATH="$GITHUB_WORKSPACE/packs" python3 -B - <<'PY'
-          import os
-          from pathlib import Path
-          from stage_registry_packs import stage_pack
-          target = Path(os.environ["CARGO_TARGET_DIR"])
-          check = Path(os.environ["TOBKIRI_SAVED_ORCHESTRATION_TPK"]).parent
-          check.mkdir()
-          stage_pack(
-              target / "debug/tobkiri", "saved-orchestration",
-              target / "wasm32-wasip2/release", check, check,
-          )
-          PY
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/saved-orchestration-check.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test saved_orchestration \

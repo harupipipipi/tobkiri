@@ -24,12 +24,17 @@ from core_runtime.provider_prepare_native_v4 import (
     NativeProviderRegistryRequiresLegacyRead,
 )
 from tobkiri_host.models import RequestContext
-from tobkiri_protocol.canonical import strict_loads
+from tobkiri_protocol.canonical import (
+    MAX_CANONICAL_JSON_BYTES,
+    canonical_json,
+    strict_loads,
+)
 
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
 _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
+_SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -47,6 +52,7 @@ _PLAN, _FAILURE, _CANCEL = 7, 8, 9
 _INAPPLICABLE = 10
 _PUBLISH_CHECK, _PUBLISH_PERMIT = 11, 12
 _START_APPEND = 13
+_BODY_READY, _ORCHESTRATION_INPUT = 14, 15
 _JSON_LIMIT = 16 * 1024
 _APPEND_START_LIMIT = 1024 * 1024
 _OWNER_RESULT_LIMIT = 1024 * 1024
@@ -59,6 +65,7 @@ MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -135,6 +142,14 @@ class NativeSavedTurnReadFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native saved Turn read failed ({code})")
+        self.code = code
+
+
+class NativeSavedOrchestrationFailure(RuntimeError):
+    """The Launcher returned a typed failure for a pure orchestration step."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Saved Orchestration step failed ({code})")
         self.code = code
 
 
@@ -248,6 +263,17 @@ class NativeSavedTurnReadRequest:
 
 
 @dataclass(frozen=True)
+class NativeSavedOrchestrationRequest:
+    """Borrow the signed Saved Orchestration invocation and step input."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    input: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
 class NativeSavedTurnSettlementRequest:
     """Borrow the signed Turn invocation and its verified result reference."""
 
@@ -299,6 +325,7 @@ _NativeBorrow = (
     | NativeConversationAppendRequest
     | NativeSavedReceiptRequest
     | NativeSavedTurnReadRequest
+    | NativeSavedOrchestrationRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
@@ -306,7 +333,7 @@ _NativeBorrow = (
 _NativeOperation = Literal[
     "provider_prepare", "model_list", "model_save", "conversation_get",
     "conversation_receipt", "model_resolve", "turn_settlement",
-    "conversation_confirmation", "conversation_append",
+    "conversation_confirmation", "conversation_append", "saved_orchestration",
 ]
 
 
@@ -444,6 +471,18 @@ def capture_launcher_saved_turn_reader() -> (
     return read
 
 
+def capture_launcher_saved_orchestration_step() -> (
+    Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for pure saved steps."""
+    if os.environ.get(_SAVED_ORCHESTRATION_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="saved_orchestration")
+
+
 def is_native_saved_turn_read_identifier(value: object) -> bool:
     """Check that a Turn resource identifier can cross the native wire unchanged."""
     if (
@@ -510,7 +549,9 @@ def model_save_from_environment() -> (
 capture_launcher_model_save_writer = model_save_from_environment
 
 
-def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
+def _start_payload(
+    borrow: _NativeBorrow, deadline_ns: int, *, orchestration_input_bytes: int = 0,
+) -> bytes:
     context = borrow.context
     runtime_instance = borrow.runtime_instance
     if (
@@ -573,6 +614,10 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
         ):
             raise _ProtocolError("native saved Turn read inputs are invalid")
         frame["turn_read"] = {"caller": borrow.caller, "turn_id": borrow.turn_id}
+    elif isinstance(borrow, NativeSavedOrchestrationRequest):
+        if not 0 < orchestration_input_bytes <= MAX_CANONICAL_JSON_BYTES:
+            raise _ProtocolError("native Saved Orchestration input size is invalid")
+        frame["saved_orchestration"] = {"input_bytes": orchestration_input_bytes}
     elif isinstance(borrow, NativeSavedTurnSettlementRequest):
         frame["turn_settlement"] = _turn_settlement_payload(borrow)
     elif isinstance(borrow, NativeConversationConfirmationRequest):
@@ -611,6 +656,19 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
     if len(encoded) > _JSON_LIMIT:
         raise _ProtocolError("native Provider preparation request exceeds its bound")
     return encoded
+
+
+def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes:
+    invalid = "native Saved Orchestration input is invalid"
+    if not isinstance(borrow.input, Mapping):
+        raise _ProtocolError(invalid)
+    step_input = dict(borrow.input)
+    if step_input.keys() not in ({"request"}, {"state", "outcome"}):
+        raise _ProtocolError(invalid)
+    try:
+        return canonical_json(step_input)
+    except (ValueError, RecursionError):
+        raise _ProtocolError(invalid) from None
 
 
 def _encode_append_start(frame: dict[str, Any]) -> bytes:
@@ -986,16 +1044,20 @@ class _Exchange:
         *,
         permits_publication: bool,
         conversation_mutation: bool,
+        requires_body_ready: bool,
     ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
         self.permits_publication = permits_publication
+        self.requires_body_ready = requires_body_ready
         self.legacy_failure = (
             _CONVERSATION_LEGACY_READ_FAILURE
             if conversation_mutation
             else _LEGACY_READ_FAILURE
         )
-        self.failure_codes = _FAILURES | {self.legacy_failure}
+        self.failure_codes = _FAILURES
+        if not requires_body_ready:
+            self.failure_codes |= {self.legacy_failure}
         if conversation_mutation:
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
         self.failure_limit = max(map(len, self.failure_codes))
@@ -1039,6 +1101,8 @@ class _Exchange:
             limit = self.failure_limit
         elif tag == _PUBLISH_CHECK and self.permits_publication:
             limit = 0
+        elif tag == _BODY_READY and self.requires_body_ready:
+            limit = 0
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
         self._receive_until(_FRAME.size + size, wait_seconds)
@@ -1070,8 +1134,10 @@ class _Exchange:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in self.failure_codes:
                     return
-                if tag != _CHECK and not (
-                    tag == _PUBLISH_CHECK and self.permits_publication
+                if not (
+                    tag == _CHECK
+                    or (tag == _PUBLISH_CHECK and self.permits_publication)
+                    or (tag == _BODY_READY and self.requires_body_ready)
                 ):
                     break
         except (OSError, _ProtocolError):
@@ -1085,8 +1151,16 @@ class _Exchange:
         wait_seconds: Callable[[], float],
     ) -> dict[str, Any] | None:
         conversation_append = isinstance(borrow, NativeConversationAppendRequest)
+        orchestration_input = (
+            _saved_orchestration_input(borrow)
+            if isinstance(borrow, NativeSavedOrchestrationRequest)
+            else None
+        )
         try:
-            start = _start_payload(borrow, deadline_ns)
+            start = _start_payload(
+                borrow, deadline_ns,
+                orchestration_input_bytes=len(orchestration_input or b""),
+            )
         except NativeProviderRegistryRequiresLegacyRead:
             wait_seconds()
             raise
@@ -1108,6 +1182,9 @@ class _Exchange:
                         "owner requires a legacy read outside the native envelope",
                     )
                 if payload != self.legacy_failure:
+                    if isinstance(borrow, NativeSavedOrchestrationRequest):
+                        wait_seconds()
+                        raise NativeSavedOrchestrationFailure(payload.decode("ascii"))
                     if entered_live_phase and isinstance(
                         borrow, NativeSavedTurnReadRequest,
                     ):
@@ -1147,7 +1224,10 @@ class _Exchange:
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
             wait_seconds()
-            if tag == _CHECK:
+            if tag == _BODY_READY and orchestration_input is not None:
+                self.send(_ORCHESTRATION_INPUT, orchestration_input, wait_seconds)
+                orchestration_input = None
+            elif tag == _CHECK and orchestration_input is None:
                 self.send(_LIVE, b"", wait_seconds)
                 entered_live_phase = True
             elif (
@@ -1191,7 +1271,11 @@ class _Exchange:
                 wait_seconds()
                 self.terminal = True
                 return plan
-            elif tag == _INAPPLICABLE and not entered_live_phase:
+            elif (
+                tag == _INAPPLICABLE
+                and not entered_live_phase
+                and (not self.requires_body_ready or orchestration_input is not None)
+            ):
                 self.terminal = True
                 raise NativeProviderPrepareUnavailable("native Provider is unavailable")
             else:
@@ -1228,6 +1312,7 @@ def _invoke(
     conversation_append = isinstance(borrow, NativeConversationAppendRequest)
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
+    saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -1238,6 +1323,7 @@ def _invoke(
         or conversation_append != (operation == "conversation_append")
         or saved_receipt != (operation == "conversation_receipt")
         or turn_read != (operation == "turn_read")
+        or saved_orchestration != (operation == "saved_orchestration")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -1266,15 +1352,16 @@ def _invoke(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        plan_limit = (
-            _OWNER_RESULT_LIMIT
-            if (
-                model_settings or model_save or conversation_get
-                or saved_receipt or model_resolve or turn_read or turn_settlement
-                or conversation_append
-            )
-            else _JSON_LIMIT
-        )
+        if saved_orchestration:
+            plan_limit = MAX_CANONICAL_JSON_BYTES
+        elif (
+            model_settings or model_save or conversation_get
+            or saved_receipt or model_resolve or turn_read or turn_settlement
+            or conversation_append
+        ):
+            plan_limit = _OWNER_RESULT_LIMIT
+        else:
+            plan_limit = _JSON_LIMIT
         exchange = _Exchange(
             connection,
             plan_limit,
@@ -1283,6 +1370,7 @@ def _invoke(
                 or conversation_append
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
+            requires_body_ready=saved_orchestration,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)

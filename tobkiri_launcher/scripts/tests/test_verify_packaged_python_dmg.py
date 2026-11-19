@@ -454,15 +454,17 @@ def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> N
     assert "expected native Registry Packs receipt SHA-256 is invalid" in result.stderr
 
 
-def _write_registry_packs(app: Path, *, settlement: bool = False) -> str:
+def _write_registry_packs(app: Path, *, version: int = 1) -> str:
     directory = app / "Contents/Resources/app/native-registry-packs"
     directory.mkdir(parents=True)
     records = []
     pack_ids = [
         "local.provider-registry", "local.model-registry", "local.saved-conversation"
     ]
-    if settlement:
+    if version >= 2:
         pack_ids.append("local.saved-turn-runtime")
+    if version >= 3:
+        pack_ids.append("local.saved-orchestration")
     for pack_id in pack_ids:
         archive = f"{pack_id}.tpk"
         contents = f"fixture archive for {pack_id}".encode()
@@ -475,20 +477,19 @@ def _write_registry_packs(app: Path, *, settlement: bool = False) -> str:
             "archive_sha256": "sha256:" + hashlib.sha256(contents).hexdigest(),
             "manifest_sha256": "sha256:" + "a" * 64,
         })
-    version = 2 if settlement else 1
     receipt = {"format": f"tobkiri.registry-packs/{version}", "packs": records}
     data = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
     (directory / "receipt.json").write_bytes(data)
     return hashlib.sha256(data).hexdigest()
 
 
-@pytest.fixture(params=[False, True], ids=["three-packs", "with-settlement"])
+@pytest.fixture(params=[1, 2, 3], ids=["three-packs", "with-settlement", "with-orchestration"])
 def registry_mount(
     tmp_path: Path, request: pytest.FixtureRequest,
 ) -> Iterator[tuple[MODULE.MountedDmg, Path, str]]:
     root = tmp_path.resolve() / "mounted"
     app = root / "Fixture.app"
-    receipt_digest = _write_registry_packs(app, settlement=request.param)
+    receipt_digest = _write_registry_packs(app, version=request.param)
     mount = MODULE.MountedDmg.__new__(MODULE.MountedDmg)
     mount.path = root
     mount.name = root.name
@@ -649,14 +650,13 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
     directory = app / MODULE.NATIVE_REGISTRY_PACKS
     path = directory / "receipt.json"
     receipt = json.loads(path.read_bytes())
-    settlement = directory / "local.saved-turn-runtime.tpk"
-    if settlement.exists():
-        settlement.unlink()
+    if len(receipt["packs"]) > 3:
+        (directory / receipt["packs"][-1]["archive"]).unlink()
         with pytest.raises(MODULE.DmgVerificationError, match="missing required entries"):
             mount.verify_native_registry_packs(app, receipt_digest)
-        receipt["format"] = "tobkiri.registry-packs/1"
+        receipt["format"] = f'tobkiri.registry-packs/{len(receipt["packs"]) - 3}'
     else:
-        settlement.touch()
+        (directory / "local.saved-turn-runtime.tpk").touch()
         with pytest.raises(MODULE.DmgVerificationError, match="extra entries"):
             mount.verify_native_registry_packs(app, receipt_digest)
         receipt["format"] = "tobkiri.registry-packs/2"
@@ -665,6 +665,16 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
     path.write_bytes(payload)
     with pytest.raises(MODULE.DmgVerificationError, match="receipt has the wrong format"):
         mount.verify_native_registry_packs(app, hashlib.sha256(payload).hexdigest())
+
+
+def test_registry_receipt_pins_the_saved_orchestration_release(tmp_path: Path) -> None:
+    app = tmp_path / "Fixture.app"
+    _write_registry_packs(app, version=3)
+    path = app / MODULE.NATIVE_REGISTRY_PACKS / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["packs"][-1]["version"] = "0.1.1"
+    with pytest.raises(MODULE.DmgVerificationError, match="receipt has an invalid pin"):
+        MODULE._registry_archive_pins(json.dumps(receipt).encode())
 
 
 @pytest.mark.skipif(
@@ -687,7 +697,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
     component_bytes = b"fixed Wasm fixture"
     component.write_bytes(component_bytes)
     component_digest = hashlib.sha256(component_bytes).hexdigest()
-    registry_digest = _write_registry_packs(app)
+    registry_digest = _write_registry_packs(app, version=3)
     dmg = tmp_path / "fixture.dmg"
     subprocess.run(
         [

@@ -20,8 +20,10 @@ use tobkiri_core::{
     NativeArtifactError, NativeArtifactInspection, NativeRegistry, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
+pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
 use tobkiri_harness_native::{
-    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port, read_legacy_saved_turn,
+    invoke_original_saved_orchestration_port, invoke_original_saved_turn_port,
+    invoke_original_saved_turn_read_port, read_legacy_saved_turn,
     settle_legacy_saved_turn_from_admitted_port, LegacySavedTurnSettlementError,
     LegacySavedTurnSettlementRequest, OriginalSavedTurnCheck,
 };
@@ -34,9 +36,9 @@ use super::{
         reacquire_conversation_append_pack, reacquire_conversation_confirmation_pack,
         reacquire_conversation_read_pack, reacquire_model_resolve_pack, reacquire_model_save_pack,
         reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_saved_receipt_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
-        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch,
-        REGISTRY_VERIFICATION_BYTES,
+        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, ConversationReadCaller, SettlementCaller,
+        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -59,6 +61,8 @@ pub(crate) const CONVERSATION_APPEND_LIMIT: usize = 1024 * 1024;
 pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded saved Turn GET result accepted by the Host.
 pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
+/// Maximum original saved-orchestration input and result JSON.
+pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
 
 pub(crate) enum NativeRegistryRequest {
     Provider {
@@ -102,6 +106,9 @@ pub(crate) enum NativeRegistryRequest {
         expected_revision: Option<u64>,
         result_reference: String,
     },
+    SavedOrchestration {
+        input: Vec<u8>,
+    },
 }
 
 impl NativeRegistryRequest {
@@ -119,6 +126,7 @@ impl NativeRegistryRequest {
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
+            Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
         }
     }
 
@@ -158,6 +166,15 @@ impl NativeRegistryRequest {
                     "native Conversation append exceeds its input envelope"
                 );
                 return Ok(request.capacity());
+            }
+            Self::SavedOrchestration { input } => {
+                if input.is_empty() {
+                    return Err(SavedOrchestrationStepError::Invalid.into());
+                }
+                if input.capacity() > SAVED_ORCHESTRATION_FRAME_LIMIT {
+                    return Err(SavedOrchestrationStepError::Capacity.into());
+                }
+                return Ok(input.capacity());
             }
             Self::TurnSettlement {
                 turn_id,
@@ -480,7 +497,7 @@ async fn run(
         cancellation,
         execution_deadline,
         custody,
-        _input_funding,
+        mut input_funding,
         _control_funding,
         mut inspection,
     ) = match admitted {
@@ -850,6 +867,34 @@ async fn run(
                         document: None,
                     });
                 }
+                NativeRegistryRequest::SavedOrchestration { input } => {
+                    let pack = reacquire_saved_orchestration_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.saved-orchestration.legacy-step@1.0")?;
+                    let operation = OpName::parse("advance")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    revalidate()?;
+                    let funding = input_funding
+                        .take()
+                        .context("saved orchestration input funding is missing")?;
+                    let output =
+                        invoke_original_saved_orchestration_port(port, input, funding).await?;
+                    return decode_saved_orchestration_reply(output.as_str(), &graph);
+                }
             };
             let input = CoreValue::parse_guest(&request, &graph)?;
             drop(request);
@@ -1025,6 +1070,27 @@ fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
         }
         _ => error.into(),
     }
+}
+
+fn decode_saved_orchestration_reply(
+    output: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    if output.len() > SAVED_ORCHESTRATION_FRAME_LIMIT {
+        return Err(SavedOrchestrationStepError::Capacity.into());
+    }
+    let raw: &RawValue =
+        serde_json::from_str(output).context("saved orchestration port returned invalid JSON")?;
+    ensure!(
+        raw.get().starts_with('{'),
+        "saved orchestration port returned a non-object result"
+    );
+    let wire = CoreBuffer::copy_from(output.as_bytes(), budget)
+        .map_err(|_| SavedOrchestrationStepError::Capacity)?;
+    Ok(PreparedReply {
+        wire,
+        document: None,
+    })
 }
 
 fn conversation_registry_error(error: NativeArtifactError) -> anyhow::Error {
@@ -1367,6 +1433,74 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn saved_orchestration_uses_its_own_proof_and_funds_transport_capacity() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let proof =
+            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
+        let append = VerifiedRegistryLaunch::test_conversation_append_proof(identity, "catalog");
+        let input = |size| {
+            let mut input = Vec::with_capacity(size);
+            input.extend_from_slice(b"{}");
+            NativeRegistryRequest::SavedOrchestration { input }
+        };
+        let request = input(SAVED_ORCHESTRATION_FRAME_LIMIT);
+        assert!(request.has_launch_proof(&proof));
+        assert!(!request.has_launch_proof(&append));
+        assert!(!request.requires_publication_permit());
+        assert_eq!(
+            request.input_capacity().unwrap(),
+            SAVED_ORCHESTRATION_FRAME_LIMIT
+        );
+        assert_eq!(
+            input(SAVED_ORCHESTRATION_FRAME_LIMIT + 1)
+                .input_capacity()
+                .unwrap_err()
+                .downcast::<SavedOrchestrationStepError>()
+                .unwrap(),
+            SavedOrchestrationStepError::Capacity
+        );
+        let empty = NativeRegistryRequest::SavedOrchestration { input: Vec::new() };
+        assert_eq!(
+            empty
+                .input_capacity()
+                .unwrap_err()
+                .downcast::<SavedOrchestrationStepError>()
+                .unwrap(),
+            SavedOrchestrationStepError::Invalid
+        );
+    }
+
+    #[test]
+    fn saved_orchestration_returns_only_bounded_original_object_bytes() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let output = r#" {"kind":"intent", "sample":"日本語"} "#;
+        let reply = decode_saved_orchestration_reply(output, &budget).unwrap();
+        assert_eq!(reply.wire.as_bytes(), output.as_bytes());
+        assert!(reply.document.is_none());
+        for invalid in ["null", "[]", "{broken}", "{} {}"] {
+            assert!(decode_saved_orchestration_reply(invalid, &budget).is_err());
+        }
+        let oversized = format!(
+            "{{\"data\":\"{}\"}}",
+            "a".repeat(SAVED_ORCHESTRATION_FRAME_LIMIT)
+        );
+        let Err(error) = decode_saved_orchestration_reply(&oversized, &budget) else {
+            panic!("accepted an oversized result");
+        };
+        assert_eq!(
+            error.downcast::<SavedOrchestrationStepError>().unwrap(),
+            SavedOrchestrationStepError::Capacity
+        );
     }
 
     #[test]

@@ -20,7 +20,8 @@ use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
     OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
     OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalRoutePin, OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole,
+    OriginalSavedReceiptSelection,
 };
 use tobkiri_wasm::{
     verify_legacy_conversation_append_declaration,
@@ -66,6 +67,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     model_resolve: Option<VerifiedModelResolveSource>,
     conversation: Option<VerifiedConversationSource>,
     turn: Option<VerifiedTurnSource>,
+    orchestration: Option<VerifiedSavedOrchestrationSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -80,6 +82,11 @@ pub(crate) enum ConversationReadCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Require the original ordinary saved chain and verified pure Wasm computation.
+    pub(crate) fn permits_saved_orchestration(&self) -> bool {
+        self.orchestration.is_some()
+    }
+
     /// Require the Gateway role's own signed grant against the verified Model Pack.
     pub(crate) fn permits_model_resolve(&self, role: OriginalModelResolveRole) -> bool {
         self.model_resolve
@@ -228,6 +235,15 @@ struct VerifiedTurnSource {
     manifest_sha256: String,
 }
 
+/// The ordinary saved chain and its bundled executable computation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedSavedOrchestrationSource {
+    route: [VerifiedLegacyRoutePin; 2],
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
 impl VerifiedTurnSource {
     fn permits_settlement(&self, role: SettlementCaller) -> bool {
         self.settlement
@@ -287,6 +303,7 @@ impl VerifiedRegistryLaunch {
             model_resolve: None,
             conversation: None,
             turn: None,
+            orchestration: None,
         }
     }
 
@@ -309,6 +326,7 @@ impl VerifiedRegistryLaunch {
             model_resolve: None,
             conversation: None,
             turn: None,
+            orchestration: None,
         }
     }
 
@@ -332,6 +350,7 @@ impl VerifiedRegistryLaunch {
             model_resolve: None,
             conversation: None,
             turn: None,
+            orchestration: None,
         }
     }
 
@@ -360,6 +379,7 @@ impl VerifiedRegistryLaunch {
             }),
             conversation: None,
             turn: None,
+            orchestration: None,
         }
     }
 
@@ -388,6 +408,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             turn: None,
+            orchestration: None,
         }
     }
 
@@ -445,6 +466,7 @@ impl VerifiedRegistryLaunch {
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
             }),
+            orchestration: None,
         }
     }
 
@@ -462,6 +484,21 @@ impl VerifiedRegistryLaunch {
             archive_sha256: confirmation.archive_sha256,
             archive_bytes: confirmation.archive_bytes,
             manifest_sha256: confirmation.manifest_sha256,
+        });
+        proof
+    }
+
+    pub(crate) fn test_saved_orchestration_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.provider_prepare = None;
+        proof.orchestration = Some(VerifiedSavedOrchestrationSource {
+            route: std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+            archive_sha256: "sha256:archive".into(),
+            archive_bytes: 512,
+            manifest_sha256: "sha256:manifest".into(),
         });
         proof
     }
@@ -773,7 +810,7 @@ impl LaunchActivationObserver<'_> {
             locked.verify(checkpoint)?;
         }
         let verified_registry_pack_evidence =
-            registry_pack_receipt::verify_installed_with_settlement_archives(
+            registry_pack_receipt::verify_installed_with_orchestration_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
                 || checkpoint().map_err(io::Error::other),
@@ -904,12 +941,28 @@ impl LaunchActivationObserver<'_> {
                     verify_turn_source(inspection, active, receipt, input, checkpoint)
                         .map_err(io::Error::other)
                 },
+                |receipt, input| {
+                    verify_saved_orchestration_source(
+                        inspection, active, receipt, input, checkpoint,
+                    )
+                    .map_err(io::Error::other)
+                },
             )
             .context("bundled Registry Pack verification failed during Launch")?;
-        let (provider_prepare, (model_settings, model_save, model_resolve), conversation, turn) =
-            verified_registry_pack_evidence;
+        let (
+            provider_prepare,
+            (model_settings, model_save, model_resolve),
+            conversation,
+            turn,
+            orchestration,
+        ) = verified_registry_pack_evidence;
         let turn = turn.flatten();
-        if !has_existing_grants && conversation.is_none() && turn.is_none() {
+        let orchestration = orchestration.flatten();
+        if !has_existing_grants
+            && conversation.is_none()
+            && turn.is_none()
+            && orchestration.is_none()
+        {
             return Ok(None);
         }
         let security_epoch = active
@@ -952,6 +1005,7 @@ impl LaunchActivationObserver<'_> {
             model_resolve,
             conversation,
             turn,
+            orchestration,
         }))
     }
 }
@@ -1232,6 +1286,36 @@ fn reacquire_turn_archive(
     .context("bundled Registry receipt has no Turn archive")
 }
 
+/// Reopen the installed candidate under the original authority source and Launch receipt.
+pub(super) fn reacquire_saved_orchestration_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .orchestration
+        .as_ref()
+        .context("admitted launch has no verified Saved Orchestration source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_orchestration(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_saved_orchestration_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )?
+    .context("bundled Registry receipt has no Saved Orchestration archive")
+}
+
 fn observe_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<bool> {
     let declared = conversation_port_declared(pack, "local.saved-conversation.legacy-confirmation");
     if declared {
@@ -1420,11 +1504,73 @@ fn verify_turn_source(
     }))
 }
 
+fn verify_saved_orchestration_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedSavedOrchestrationSource>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(choice) = OriginalSavedOrchestrationChoice::select(active, budget)? else {
+        return Ok(None);
+    };
+    let locked = inspection.with_source(|sources| {
+        sources.saved_orchestration_bundle(choice.pins().each_ref(), None, budget)
+    })??;
+    locked.verify(checkpoint)?;
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_saved_orchestration_declaration(&pack)?;
+    Ok(Some(VerifiedSavedOrchestrationSource {
+        route: choice.pins().each_ref().map(Into::into),
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
 fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
         require_turn_settlement_declaration(pack)?,
         "bundled Turn Pack has no read port"
     );
+    Ok(())
+}
+
+const ORCHESTRATION_WIT_FILES: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.saved-orchestration-rust/wit/pack.wit"),
+    ),
+    (
+        "wit/deps/core.wit",
+        include_bytes!("../../../crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+    ),
+    (
+        "wit/legacy-step.shape.json",
+        include_bytes!("../../../packs/local.saved-orchestration-rust/wit/legacy-step.shape.json"),
+    ),
+];
+
+fn require_saved_orchestration_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(pack, registry_pack_receipt::ORCHESTRATION_PACK_ID, 1)?;
+    let manifest = &pack.manifest;
+    ensure!(
+        manifest.version == "0.1.0"
+            && manifest.files.len() == ORCHESTRATION_WIT_FILES.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && ORCHESTRATION_WIT_FILES.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled Saved Orchestration Pack has an unexpected WIT or version"
+    );
+    require_registry_ports(
+        pack,
+        "advance",
+        &["local.saved-orchestration.legacy-step@1.0"],
+    )?;
     Ok(())
 }
 
@@ -1462,34 +1608,14 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
         _ => anyhow::bail!("bundled Turn settlement Pack version is unsupported"),
     };
     let port_count = 1 + usize::from(read);
-    let permissions = PermissionSet {
-        wasm: manifest.permissions.wasm.clone(),
-        loops: manifest.permissions.loops.clone(),
-        ..PermissionSet::default()
-    };
-    ensure!(
-        manifest.id.as_str() == registry_pack_receipt::SETTLEMENT_PACK_ID
-            && manifest.ports.provides.len() == port_count
-            && manifest.ports.consumes.is_empty()
-            && manifest.ports.untyped.is_empty()
-            && manifest.inputs.is_empty()
-            && manifest.flows.is_empty()
-            && manifest.overlays.is_empty()
-            && manifest.stores.is_empty()
-            && manifest.ui.is_none()
-            && manifest.permissions == permissions,
-        "bundled Turn settlement Pack has unexpected capabilities"
-    );
+    verify_stateless_registry_surface(pack, registry_pack_receipt::SETTLEMENT_PACK_ID, port_count)?;
     let matches_wit = |(path, bytes): (&str, &[u8])| {
         pack.files
             .get(path)
             .is_some_and(|file| *file.digest() == Digest::hash(bytes))
     };
     ensure!(
-        matches!(&manifest.runtime, RuntimeSpec::Wasm { component, core_modules, config, .. }
-            if component == "component.wasm" && core_modules.is_empty() && config.is_none())
-            && manifest.shapes.len() == port_count
-            && manifest.shapes.iter().all(|shape| shape.wit == TURN_WIT.0)
+        manifest.shapes.iter().all(|shape| shape.wit == TURN_WIT.0)
             && manifest.files.len() == TURN_SETTLEMENT_WIT_FILES.len() + 2 + usize::from(read)
             && TURN_SETTLEMENT_WIT_FILES.into_iter().all(matches_wit)
             && pack
@@ -1504,6 +1630,35 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
         require_registry_ports(pack, "validate", &[READ])?;
     }
     Ok(read)
+}
+
+fn verify_stateless_registry_surface(pack: &VerifiedPack, id: &str, ports: usize) -> Result<()> {
+    let manifest = &pack.manifest;
+    let permissions = PermissionSet {
+        wasm: manifest.permissions.wasm.clone(),
+        loops: manifest.permissions.loops.clone(),
+        ..PermissionSet::default()
+    };
+    ensure!(
+        manifest.id.as_str() == id
+            && manifest.shapes.len() == ports
+            && manifest.ports.provides.len() == ports
+            && manifest.ports.consumes.is_empty()
+            && manifest.ports.untyped.is_empty()
+            && manifest.inputs.is_empty()
+            && manifest.flows.is_empty()
+            && manifest.overlays.is_empty()
+            && manifest.stores.is_empty()
+            && manifest.ui.is_none()
+            && manifest.permissions == permissions,
+        "bundled {id} Pack has unexpected capabilities"
+    );
+    ensure!(
+        matches!(&manifest.runtime, RuntimeSpec::Wasm { component, core_modules, config, .. }
+            if component == "component.wasm" && core_modules.is_empty() && config.is_none()),
+        "bundled {id} Pack has an unexpected runtime declaration"
+    );
+    Ok(())
 }
 
 fn verify_provider_prepare_archive(
@@ -1615,6 +1770,63 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn saved_orchestration_declaration_pins_the_effect_free_step() {
+        use std::{fs, path::PathBuf};
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-orchestration-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, wit) in ORCHESTRATION_WIT_FILES {
+            fs::write(path.join(relative), wit).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft = include_bytes!("../../../packs/local.saved-orchestration-rust/pack.draft.json");
+        let verify = |draft: &[u8]| {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_saved_orchestration_declaration(&verify(draft)).unwrap();
+
+        let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        modified["permissions"]["storage"] = serde_json::json!({"private": true});
+        assert!(require_saved_orchestration_declaration(&verify(
+            &serde_json::to_vec(&modified).unwrap()
+        ))
+        .unwrap_err()
+        .to_string()
+        .contains("unexpected capabilities"));
+        modified = serde_json::from_slice(draft).unwrap();
+        modified["version"] = serde_json::json!("0.1.1");
+        assert!(require_saved_orchestration_declaration(&verify(
+            &serde_json::to_vec(&modified).unwrap()
+        ))
+        .is_err());
+
+        let source = std::str::from_utf8(ORCHESTRATION_WIT_FILES[0].1).unwrap();
+        fs::write(
+            path.join("wit/pack.wit"),
+            source.replace("input: string", "input: u32"),
+        )
+        .unwrap();
+        assert!(require_saved_orchestration_declaration(&verify(draft))
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected WIT"));
+    }
 
     #[test]
     fn model_resolve_evidence_requires_the_exact_gateway_role() {

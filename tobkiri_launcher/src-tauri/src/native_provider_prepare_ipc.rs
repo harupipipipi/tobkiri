@@ -23,10 +23,10 @@ use crate::{
         start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ConversationWriteRequiresLegacyRead, ModelRegistryRequiresLegacyRead,
         NativeRegistryRequest, OriginalModelResolveRole, OriginalSavedReceiptRole,
-        PendingProviderPrepare, ProviderPrepareDeadline, SettlementCaller,
-        TurnSettlementRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
+        PendingProviderPrepare, ProviderPrepareDeadline, SavedOrchestrationStepError,
+        SettlementCaller, TurnSettlementRequiresLegacyCodec, CONVERSATION_APPEND_LIMIT,
         CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        TURN_READ_REPLY_LIMIT,
+        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -41,6 +41,8 @@ const INAPPLICABLE: u8 = 10;
 const PUBLISH_CHECK: u8 = 11;
 const PUBLISH_PERMIT: u8 = 12;
 const START_APPEND: u8 = 13;
+const BODY_READY: u8 = 14;
+const ORCHESTRATION_INPUT: u8 = 15;
 const JSON_LIMIT: usize = 16 * 1024;
 const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const SAVED_RECEIPT_TURN_ID_MAX_CHARS: usize = 2048;
@@ -81,11 +83,18 @@ struct Start<'a> {
     turn_settlement: Option<TurnSettlement>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_append: Option<ConversationAppend<'a>>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    saved_orchestration: Option<SavedOrchestrationStart>,
+}
+
+enum RequestStart {
+    Inline(NativeRegistryRequest),
+    SavedOrchestration { input_bytes: usize },
 }
 
 impl Start<'_> {
-    fn operation(&self) -> Result<NativeRegistryRequest> {
-        match (
+    fn request_start(&self) -> Result<RequestStart> {
+        let operation = match (
             &self.request,
             &self.model_list,
             &self.model_save,
@@ -96,9 +105,10 @@ impl Start<'_> {
             &self.turn_read,
             &self.turn_settlement,
             &self.conversation_append,
+            &self.saved_orchestration,
             self.apply,
         ) {
-            (Some(request), None, None, None, None, None, None, None, None, None, apply) => {
+            (Some(request), None, None, None, None, None, None, None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -106,62 +116,104 @@ impl Start<'_> {
                 );
                 // Preserve the frozen plan's exact JSON for the Core parser.
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
-                Ok(NativeRegistryRequest::Provider { request, apply })
+                NativeRegistryRequest::Provider { request, apply }
             }
-            (None, Some(_), None, None, None, None, None, None, None, None, None) => {
-                Ok(NativeRegistryRequest::ModelList)
+            (None, Some(_), None, None, None, None, None, None, None, None, None, None) => {
+                NativeRegistryRequest::ModelList
             }
-            (None, None, Some(save), None, None, None, None, None, None, None, None) => {
-                Ok(NativeRegistryRequest::ModelSave {
+            (None, None, Some(save), None, None, None, None, None, None, None, None, None) => {
+                NativeRegistryRequest::ModelSave {
                     request: save.request.get().as_bytes().to_vec(),
                     provider: save.provider.get().as_bytes().to_vec(),
-                })
+                }
             }
-            (None, None, None, Some(get), None, None, None, None, None, None, None) => {
-                Ok(NativeRegistryRequest::ConversationGet {
+            (None, None, None, Some(get), None, None, None, None, None, None, None, None) => {
+                NativeRegistryRequest::ConversationGet {
                     caller: get.caller,
                     conversation_id: get.conversation_id.clone(),
-                })
+                }
             }
-            (None, None, None, None, Some(receipt), None, None, None, None, None, None) => {
-                Ok(NativeRegistryRequest::ConversationReceipt {
+            (None, None, None, None, Some(receipt), None, None, None, None, None, None, None) => {
+                NativeRegistryRequest::ConversationReceipt {
                     caller: receipt.caller,
                     turn_id: receipt.turn_id.clone(),
-                })
+                }
             }
-            (None, None, None, None, None, Some(confirmation), None, None, None, None, None) => {
-                confirmation.operation(&self.identity.profile_id)
-            }
-            (None, None, None, None, None, None, Some(resolve), None, None, None, None) => {
-                Ok(NativeRegistryRequest::ModelResolve {
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(confirmation),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ) => confirmation.operation(&self.identity.profile_id)?,
+            (None, None, None, None, None, None, Some(resolve), None, None, None, None, None) => {
+                NativeRegistryRequest::ModelResolve {
                     role: resolve.role,
                     identifier: resolve.identifier.clone(),
-                })
+                }
             }
-            (None, None, None, None, None, None, None, Some(read), None, None, None) => {
-                Ok(NativeRegistryRequest::TurnRead {
+            (None, None, None, None, None, None, None, Some(read), None, None, None, None) => {
+                NativeRegistryRequest::TurnRead {
                     caller: read.caller,
                     turn_id: read.turn_id.clone(),
-                })
+                }
             }
-            (None, None, None, None, None, None, None, None, Some(settlement), None, None) => {
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(settlement),
+                None,
+                None,
+                None,
+            ) => {
                 ensure!(
                     !matches!(settlement.caller, SettlementCaller::SavedReconcile)
                         || settlement.expected_revision.is_some(),
                     "Turn settlement reconciliation requires an expected revision"
                 );
-                Ok(NativeRegistryRequest::TurnSettlement {
+                NativeRegistryRequest::TurnSettlement {
                     caller: settlement.caller,
                     turn_id: settlement.turn_id.clone(),
                     input_digest: settlement.input_digest.clone(),
                     expected_revision: settlement.expected_revision,
                     result_reference: settlement.result_reference.clone(),
-                })
+                }
             }
-            (None, None, None, None, None, None, None, None, None, Some(append), None) => {
-                append.operation()
+            (None, None, None, None, None, None, None, None, None, Some(append), None, None) => {
+                append.operation()?
+            }
+            (None, None, None, None, None, None, None, None, None, None, Some(saved), None) => {
+                ensure!(
+                    (1..=SAVED_ORCHESTRATION_FRAME_LIMIT).contains(&saved.input_bytes),
+                    "invalid Saved Orchestration input size"
+                );
+                return Ok(RequestStart::SavedOrchestration {
+                    input_bytes: saved.input_bytes,
+                });
             }
             _ => bail!("native Registry start must name exactly one operation"),
+        };
+        Ok(RequestStart::Inline(operation))
+    }
+
+    #[cfg(test)]
+    fn operation(&self) -> Result<NativeRegistryRequest> {
+        match self.request_start()? {
+            RequestStart::Inline(operation) => Ok(operation),
+            RequestStart::SavedOrchestration { .. } => bail!("request needs a body"),
         }
     }
 }
@@ -203,6 +255,12 @@ struct TurnRead {
     caller: OriginalSavedReceiptRole,
     #[serde(deserialize_with = "deserialize_turn_read_id")]
     turn_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedOrchestrationStart {
+    input_bytes: usize,
 }
 
 #[derive(Deserialize)]
@@ -690,13 +748,16 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     );
     ensure!(start.security_epoch != 0, "invalid Provider prepare epoch");
     let deadline = host_deadline(start.deadline_ns)?;
-    let operation = start.operation()?;
+    let request = start.request_start()?;
     let needs_active_host = matches!(
-        &operation,
-        NativeRegistryRequest::TurnRead { .. }
-            | NativeRegistryRequest::TurnSettlement { .. }
-            | NativeRegistryRequest::ConversationAppend { .. }
-            | NativeRegistryRequest::ConversationConfirmation { .. }
+        &request,
+        RequestStart::SavedOrchestration { .. }
+            | RequestStart::Inline(
+                NativeRegistryRequest::TurnRead { .. }
+                    | NativeRegistryRequest::TurnSettlement { .. }
+                    | NativeRegistryRequest::ConversationAppend { .. }
+                    | NativeRegistryRequest::ConversationConfirmation { .. }
+            )
     );
     let identity = ExecutionProfileIdentity::new(
         start.identity.profile_id,
@@ -740,7 +801,12 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
     manager.require_provider_prepare_admission(&candidate)?;
-    if !matches_runtime || !operation.has_launch_proof(candidate.verified_source()) {
+    let proof = candidate.verified_source();
+    let has_launch_proof = match &request {
+        RequestStart::Inline(operation) => operation.has_launch_proof(proof),
+        RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+    };
+    if !matches_runtime || !has_launch_proof {
         return send_frame(
             &mut stream,
             INAPPLICABLE,
@@ -749,6 +815,18 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
 
+    drop(bytes);
+    let operation = match request {
+        RequestStart::Inline(operation) => operation,
+        RequestStart::SavedOrchestration { input_bytes } => {
+            let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
+            let Some(input) = receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
+            else {
+                return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
+            };
+            NativeRegistryRequest::SavedOrchestration { input }
+        }
+    };
     let reply = match &operation {
         NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
         NativeRegistryRequest::ModelList => ReplyRole::ModelList,
@@ -762,8 +840,8 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
         NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
         NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
+        NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
     };
-    drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
     let connection = Arc::new(Connection {
         manager,
@@ -808,6 +886,7 @@ enum ReplyRole {
     ModelResolve,
     TurnRead,
     TurnSettlement,
+    SavedOrchestration,
 }
 
 impl ReplyRole {
@@ -839,6 +918,7 @@ impl ReplyRole {
             ),
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
+            Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
             Self::TurnSettlement if authority == WireAuthority::PublicationPermitted => {
                 (TURN_SETTLEMENT_RESULT_LIMIT, "unavailable")
             }
@@ -847,6 +927,18 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if self == Self::SavedOrchestration {
+            return match error.downcast_ref::<SavedOrchestrationStepError>() {
+                Some(SavedOrchestrationStepError::Invalid) => "invalid",
+                Some(SavedOrchestrationStepError::Capacity) => "limit-exceeded",
+                _ => match failure_code(error) {
+                    "cancelled" => "cancelled",
+                    "denied" => "denied",
+                    "limit-exceeded" => "limit-exceeded",
+                    _ => "unavailable",
+                },
+            };
+        }
         if self.uses_conversation_publication() {
             if authority == WireAuthority::PublicationPermitted {
                 return "publication-unconfirmed";
@@ -916,13 +1008,13 @@ impl ReplyRole {
         if output.len() > limit {
             return Err(overflow_code);
         }
-        if self == Self::TurnRead {
+        if matches!(self, Self::TurnRead | Self::SavedOrchestration) {
             if authority != WireAuthority::Live {
                 return Err("unavailable");
             }
             let text = std::str::from_utf8(output).map_err(|_| "internal")?;
             let raw = serde_json::from_str::<&RawValue>(text).map_err(|_| "internal")?;
-            if raw.get() != "null" && !raw.get().starts_with('{') {
+            if !(raw.get().starts_with('{') || (self == Self::TurnRead && raw.get() == "null")) {
                 return Err("internal");
             }
         }
@@ -1281,6 +1373,25 @@ fn read_header(stream: &mut UnixStream, deadline: Instant) -> Result<(u8, usize)
         header[0],
         u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize,
     ))
+}
+
+fn receive_orchestration_input(
+    stream: &mut UnixStream,
+    input_bytes: usize,
+    deadline: Instant,
+) -> Result<Option<Vec<u8>>> {
+    send_frame(stream, BODY_READY, &[], deadline)?;
+    let header = read_header(stream, deadline)?;
+    if header == (CANCEL, 0) {
+        return Ok(None);
+    }
+    ensure!(
+        header == (ORCHESTRATION_INPUT, input_bytes),
+        "invalid Saved Orchestration input frame"
+    );
+    let mut input = vec![0; input_bytes];
+    read_exact(stream, &mut input, deadline)?;
+    Ok(Some(input))
 }
 
 fn read_exact(stream: &mut UnixStream, mut bytes: &mut [u8], deadline: Instant) -> Result<()> {
@@ -1673,6 +1784,174 @@ mod tests {
         let mut received = [0u8; 11];
         read_exact(&mut receiver, &mut received[..utf8.len()], deadline).unwrap();
         assert_eq!(received[..utf8.len()], *utf8);
+    }
+
+    #[test]
+    fn saved_orchestration_start_requires_a_bounded_length_and_no_other_operation() {
+        let start = |descriptor: &str, extra: &str| {
+            start_frame(&format!(r#", "saved_orchestration":{descriptor}{extra}"#))
+        };
+        for input_bytes in [1, SAVED_ORCHESTRATION_FRAME_LIMIT] {
+            let frame = start(&format!(r#"{{"input_bytes":{input_bytes}}}"#), "");
+            validate_start_size(START, frame.len()).unwrap();
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::SavedOrchestration { input_bytes: declared })
+                    if declared == input_bytes
+            ));
+            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+        }
+        for descriptor in [
+            "{}".to_owned(),
+            "null".to_owned(),
+            "[1]".to_owned(),
+            r#"{"input_bytes":0}"#.to_owned(),
+            r#"{"input_bytes":-1}"#.to_owned(),
+            r#"{"input_bytes":true}"#.to_owned(),
+            r#"{"input_bytes":"1"}"#.to_owned(),
+            r#"{"input_bytes":1,"input_bytes":1}"#.to_owned(),
+            r#"{"input_bytes":1,"input":{}}"#.to_owned(),
+            format!(
+                r#"{{"input_bytes":{}}}"#,
+                SAVED_ORCHESTRATION_FRAME_LIMIT + 1
+            ),
+        ] {
+            let frame = start(&descriptor, "");
+            assert!(
+                parse_start(START, frame.as_bytes())
+                    .and_then(|start| start.request_start())
+                    .is_err(),
+                "{descriptor}"
+            );
+        }
+        for extra in [
+            PROVIDER_REQUEST,
+            r#", "model_list":{}"#,
+            r#", "apply":{}"#,
+            r#", "saved_orchestration":{"input_bytes":1}"#,
+        ] {
+            let frame = start(r#"{"input_bytes":1}"#, extra);
+            assert!(
+                parse_start(START, frame.as_bytes())
+                    .and_then(|start| start.request_start())
+                    .is_err(),
+                "{extra}"
+            );
+        }
+    }
+
+    #[test]
+    fn saved_orchestration_receives_large_exact_bytes_after_body_ready() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        client.set_nonblocking(true).unwrap();
+        server.set_nonblocking(true).unwrap();
+        let padding_bytes = SAVED_ORCHESTRATION_FRAME_LIMIT - r#"{"input":""}"#.len();
+        let padding = "猫".repeat(padding_bytes / "猫".len());
+        let remainder = "a".repeat(padding_bytes % "猫".len());
+        let input = format!(r#"{{"input":"{padding}{remainder}"}}"#).into_bytes();
+        assert_eq!(input.len(), SAVED_ORCHESTRATION_FRAME_LIMIT);
+        let input_bytes = input.len();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        let worker = thread::spawn(move || {
+            let input = receive_orchestration_input(&mut server, input_bytes, deadline)
+                .unwrap()
+                .unwrap();
+            let mut wire = Wire::new(server);
+            wire.exchange_authority(false, deadline).unwrap();
+            assert!(wire.authority == WireAuthority::Live);
+            input
+        });
+        assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+        send_frame(&mut client, ORCHESTRATION_INPUT, &input, deadline).unwrap();
+        assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
+        send_frame(&mut client, LIVE, &[], deadline).unwrap();
+        assert_eq!(worker.join().unwrap(), input);
+    }
+
+    #[test]
+    fn saved_orchestration_rejects_wrong_body_header_without_reading_a_body() {
+        let input_bytes = 17;
+        for (tag, size) in [
+            (LIVE, input_bytes),
+            (ORCHESTRATION_INPUT, 0),
+            (ORCHESTRATION_INPUT, input_bytes - 1),
+            (ORCHESTRATION_INPUT, input_bytes + 1),
+            (ORCHESTRATION_INPUT, u32::MAX),
+            (CANCEL, 1),
+        ] {
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            let [a, b, c, d] = size.to_be_bytes();
+            client.write_all(&[tag, a, b, c, d]).unwrap();
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            let error = receive_orchestration_input(&mut server, input_bytes as usize, deadline)
+                .unwrap_err();
+            assert_eq!(error.to_string(), "invalid Saved Orchestration input frame");
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+        }
+    }
+
+    #[test]
+    fn saved_orchestration_body_phase_honors_cancel_and_the_frame_deadline() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        send_frame(&mut client, CANCEL, &[], deadline).unwrap();
+        assert!(receive_orchestration_input(&mut server, 2, deadline)
+            .unwrap()
+            .is_none());
+        assert_eq!(read_header(&mut client, deadline).unwrap(), (BODY_READY, 0));
+
+        client
+            .write_all(&[ORCHESTRATION_INPUT, 0, 0, 0, 2, b'{'])
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_millis(30);
+        let error = receive_orchestration_input(&mut server, 2, deadline).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<io::Error>().unwrap().kind(),
+            io::ErrorKind::TimedOut
+        );
+    }
+
+    #[test]
+    fn saved_orchestration_requires_live_object_results_and_forbids_publication_and_fallback() {
+        let role = ReplyRole::SavedOrchestration;
+        assert!(!role.permits_publication());
+        for authority in [
+            WireAuthority::AwaitingLive,
+            WireAuthority::PublicationPermitted,
+        ] {
+            assert_eq!(role.validate_result(authority, b"{}"), Err("unavailable"));
+        }
+        let live = WireAuthority::Live;
+        assert_eq!(
+            role.validate_result(live, r#" {"猫":1} "#.as_bytes()),
+            Ok(())
+        );
+        for invalid in [b"".as_slice(), b"null", b"[]", b"{}{}", b"{\"\xff\":1}"] {
+            assert_eq!(role.validate_result(live, invalid), Err("internal"));
+        }
+        let at_limit = format!(
+            "{{\"result\":\"{}\"}}",
+            "a".repeat(SAVED_ORCHESTRATION_FRAME_LIMIT - 13)
+        );
+        assert_eq!(at_limit.len(), SAVED_ORCHESTRATION_FRAME_LIMIT);
+        assert_eq!(role.validate_result(live, at_limit.as_bytes()), Ok(()));
+        let too_large = at_limit + " ";
+        assert_eq!(
+            role.validate_result(live, too_large.as_bytes()),
+            Err("limit-exceeded")
+        );
+        assert_eq!(
+            role.failure_code(live, &ModelRegistryRequiresLegacyRead.into()),
+            "unavailable"
+        );
+        assert_eq!(
+            role.failure_code(live, &SavedOrchestrationStepError::Invalid.into()),
+            "invalid"
+        );
+        assert_eq!(
+            role.failure_code(live, &SavedOrchestrationStepError::Capacity.into()),
+            "limit-exceeded"
+        );
     }
 
     #[test]

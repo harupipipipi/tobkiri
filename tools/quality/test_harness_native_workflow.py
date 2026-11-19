@@ -108,6 +108,17 @@ class NativeWorkflowContracts(unittest.TestCase):
         staging = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
         self.assertIn("steps.launcher_staging.outputs.receipt_sha256", self.native)
         self.assertLess(staging.index("fingerprint(copied"), staging.index('>> "$GITHUB_OUTPUT"'))
+        self.assertIn(
+            'harness-native-orchestration-evidence.log" --expected-passed 1 --',
+            staging,
+        )
+        self.assertIn(
+            "--lib native_harness_bootstrap::launch_metadata::tests::"
+            "saved_orchestration_declaration_pins_the_effect_free_step -- --exact",
+            staging,
+        )
+        retained = step(self.native, "Retain actual native execution evidence")
+        self.assertIn("/harness-native-orchestration-evidence.log*", retained)
         package = job(self.workflow, "package-native-setup-dmg")
         for required in (
             "inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg",
@@ -130,9 +141,16 @@ class NativeWorkflowContracts(unittest.TestCase):
         for requirement in ('"$(uname -m)" = arm64', '"$(uname -r)" = 24.6.0', "apfs", "pwd -P"):
             self.assertIn(requirement, physical_owner)
         self.assertIn("steps.archives.outputs.receipt_sha256", registry)
-        self.assertIn("packs/stage_registry_packs.py", registry)
-        self.assertIn("-p tobkiri-pack-saved-turn-runtime-rust", registry)
-        self.assertIn("--pack saved-turn-runtime", registry)
+        archives = step(registry, "Build and verify the Registry Pack archives")
+        self.assertIn("packs/stage_registry_packs.py", archives)
+        for pack in (
+            "provider-registry", "model-registry", "saved-conversation",
+            "saved-turn-runtime", "saved-orchestration",
+        ):
+            self.assertIn(f"-p tobkiri-pack-{pack}-rust", archives)
+            self.assertIn(f"--pack {pack}", archives)
+        self.assertIn('--output "$RUNNER_TEMP/native-registry-packs"', archives)
+        self.assertIn('"$RUNNER_TEMP/native-registry-packs/receipt.json"', archives)
         self.assertIn("name: native-registry-packs", registry)
         saved_turn = step(registry, "Verify saved Turn Wasm against the original SQLite owner")
         self.assertIn("/native-registry-packs/local.saved-turn-runtime.tpk", saved_turn)
@@ -140,9 +158,11 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("--expected-passed 2", saved_turn)
         self.assertLess(registry.index(saved_turn), registry.index("name: native-registry-packs"))
         orchestration = step(registry, "Replay original saved orchestration against its Wasm component")
-        self.assertIn("/saved-orchestration-check/local.saved-orchestration.tpk", orchestration)
+        self.assertIn("/native-registry-packs/local.saved-orchestration.tpk", orchestration)
         self.assertIn("original_saved_steps_through_core -- --ignored --exact", orchestration)
-        self.assertNotIn("/native-registry-packs/", orchestration)
+        self.assertIn("--expected-passed 1", orchestration)
+        self.assertLess(registry.index(orchestration), registry.index("name: native-registry-packs"))
+        self.assertNotIn("stage_pack(", orchestration)
         registry_download = step(installer, "Download the same-run Registry Packs for the CI installer")
         self.assertIn("if: inputs.native_setup", registry_download)
         self.assertIn("name: native-registry-packs", registry_download)

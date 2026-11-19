@@ -18,6 +18,12 @@ mod original_authority;
 #[cfg(unix)]
 mod original_provider_prepare_selection;
 #[cfg(unix)]
+mod original_saved_orchestration;
+#[cfg(unix)]
+pub use original_saved_orchestration::{
+    SavedOrchestrationStepError, invoke_original_saved_orchestration_port,
+};
+#[cfg(unix)]
 mod original_saved_turn_settlement;
 #[cfg(unix)]
 pub use original_saved_turn_settlement::{

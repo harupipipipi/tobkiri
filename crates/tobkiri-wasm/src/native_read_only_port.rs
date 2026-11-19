@@ -8,7 +8,7 @@ use tobkiri_canon::{
     ids::{OpName, ProfileId, ShapeRef},
 };
 use tobkiri_gate::ControlKind;
-use tobkiri_manifest::{Cardinality, RuntimeSpec, ShapeKind, VerifiedPack, WitFunction};
+use tobkiri_manifest::{Cardinality, RuntimeSpec, ShapeKind, VerifiedPack, WitFunction, WitType};
 use wasmtime::{
     Engine, Store,
     component::{
@@ -196,7 +196,29 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
     /// Invoke once, keeping argument and result allocations in the original
     /// account. Arguments must use the original allocation owners. Successful
     /// lifting includes canonical post-return and the declared output bound.
-    pub async fn invoke(mut self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
+    pub async fn invoke(self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
+        self.invoke_bounded(parameters, false).await
+    }
+
+    /// Apply the admitted output limit to a successful document's UTF-8 bytes.
+    ///
+    /// Only a declared result with a string success type supports this path.
+    /// The result and errors still use the verified canonical ABI. The caller
+    /// validates the document before consuming it or dispatching a child.
+    pub async fn invoke_with_document_limit(self, parameters: &[Val]) -> Result<BudgetedVec<Val>> {
+        ensure!(
+            matches!(self.signature.result.as_ref(), Some(WitType::Result { ok, .. })
+                if matches!(ok.as_deref(), Some(WitType::String))),
+            "native read-only document output requires a string result"
+        );
+        self.invoke_bounded(parameters, true).await
+    }
+
+    async fn invoke_bounded(
+        mut self,
+        parameters: &[Val],
+        document_limit: bool,
+    ) -> Result<BudgetedVec<Val>> {
         let store = self
             .store
             .store
@@ -213,7 +235,17 @@ impl<T: Send + 'static> NativeReadOnlyPort<'_, T> {
             .map_err(anyhow::Error::from)
             .context("invoke verified native read-only port")?;
         ensure_active(store.data_mut())?;
-        check_output(store, self.signature, values.as_slice(), self.output_bytes)?;
+        if document_limit && let [Val::Result(Ok(Some(document)))] = values.as_slice() {
+            let Val::String(text) = &**document else {
+                bail!("native read-only document differs from its declaration");
+            };
+            ensure!(
+                text.as_str().len() as u64 <= self.output_bytes,
+                "native read-only port document exceeds its declared budget"
+            );
+        } else {
+            check_output(store, self.signature, values.as_slice(), self.output_bytes)?;
+        }
         ensure_active(store.data_mut())?;
         Ok(values)
     }

@@ -2044,6 +2044,278 @@ def test_saved_turn_read_rejects_malformed_results_and_publication(
         reader(_saved_turn_read_request(_Borrow()))
 
 
+def _saved_orchestration_request(
+    borrow: _Borrow, step_input: Mapping[str, Any],
+) -> ipc.NativeSavedOrchestrationRequest:
+    return ipc.NativeSavedOrchestrationRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        input=step_input,
+    )
+
+
+@contextmanager
+def _served_saved_orchestration(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedOrchestrationRequest], Mapping[str, Any]]]:
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    with _served(monkeypatch, serve):
+        step = ipc.capture_launcher_saved_orchestration_step()
+        assert step is not None
+        yield step
+
+
+def test_saved_orchestration_capture_requires_managed_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    assert ipc.capture_launcher_saved_orchestration_step() is None
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "true")
+    assert ipc.capture_launcher_saved_orchestration_step() is None
+    monkeypatch.delenv(ipc._SAVED_ORCHESTRATION_ENV)
+    assert ipc.capture_launcher_saved_orchestration_step() is None
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    assert ipc.capture_launcher_saved_orchestration_step() is not None
+
+
+@pytest.mark.parametrize("at_limit", [False, True])
+def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
+    monkeypatch: pytest.MonkeyPatch, at_limit: bool,
+) -> None:
+    borrow = _Borrow()
+    limit = 4 * 1024 * 1024
+    if at_limit:
+        fill = "x" * (limit - len(b'{"request":{"content":""}}'))
+        step_input = {"request": {"content": fill}}
+        expected_input = b'{"request":{"content":"' + fill.encode() + b'"}}'
+        assert len(expected_input) == limit
+        result = {"output": "y" * (limit - len(b'{"output":""}'))}
+        response = b'{"output":"' + result["output"].encode() + b'"}'
+        assert len(response) == limit
+    else:
+        step_input = {"state": {"z": "最後", "a": True}, "outcome": {"first": "\n"}}
+        expected_input = (
+            '{"outcome":{"first":"\\n"},"state":{"a":true,"z":"最後"}}'.encode()
+        )
+        result = {"output": {"done": True}}
+        response = b'{"output":{"done":true}}'
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "saved_orchestration": {"input_bytes": len(expected_input)},
+        }
+        peer.settimeout(0.02)
+        with pytest.raises(TimeoutError):
+            peer.recv(1)
+        peer.settimeout(5)
+        _send(peer, 14)
+        assert _receive(peer) == (15, expected_input)
+        for _ in range(2):
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, response)
+        assert peer.recv(1) == b""
+
+    with _served_saved_orchestration(monkeypatch, serve) as step:
+        monkeypatch.delenv(ipc._SAVED_ORCHESTRATION_ENV)
+        monkeypatch.delenv(ipc._SOCKET_ENV)
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        assert step(_saved_orchestration_request(borrow, step_input)) == result
+
+
+@pytest.mark.parametrize(
+    "step_input", [{"request": {}, "state": {}}, {"request": {"value": 0.5}}],
+)
+def test_saved_orchestration_rejects_invalid_input_before_start(
+    monkeypatch: pytest.MonkeyPatch, step_input: Mapping[str, Any],
+) -> None:
+    _reject_saved_orchestration_input(monkeypatch, step_input)
+
+
+def test_saved_orchestration_rejects_input_over_four_mib(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limit = 4 * 1024 * 1024
+    fill = "x" * (limit - len(b'{"request":{"content":""}}') + 1)
+    _reject_saved_orchestration_input(monkeypatch, {"request": {"content": fill}})
+
+
+def _reject_saved_orchestration_input(
+    monkeypatch: pytest.MonkeyPatch, step_input: Mapping[str, Any],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(ipc._ProtocolError, match="Saved Orchestration input is invalid"),
+    ):
+        step(_saved_orchestration_request(_Borrow(), step_input))
+
+
+@pytest.mark.parametrize(
+    ("body_sent", "tag", "payload", "expected"),
+    [
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"denied", ipc.NativeSavedOrchestrationFailure),
+        (True, 8, b"limit-exceeded", ipc.NativeSavedOrchestrationFailure),
+    ],
+)
+def test_saved_orchestration_distinguishes_typed_failure_from_inapplicability(
+    monkeypatch: pytest.MonkeyPatch, body_sent: bool, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if body_sent:
+            _send(peer, 14)
+            assert _receive(peer) == (15, b'{"request":{}}')
+        _send(peer, tag, payload)
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(expected) as failure,
+    ):
+        step(_saved_orchestration_request(_Borrow(), {"request": {}}))
+    if isinstance(failure.value, ipc.NativeSavedOrchestrationFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+def test_saved_orchestration_inapplicable_rechecks_the_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+    receive = ipc._Exchange.receive
+
+    def receive_and_revoke(
+        exchange: ipc._Exchange, wait_seconds: Callable[[], float],
+    ) -> tuple[int, bytes]:
+        frame = receive(exchange, wait_seconds)
+        if frame == (10, b""):
+            borrow.revoked.set()
+        return frame
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 10)
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    monkeypatch.setattr(ipc._Exchange, "receive", receive_and_revoke)
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(PermissionError, match="fixture lease revoked"),
+    ):
+        step(_saved_orchestration_request(borrow, {"request": {}}))
+
+
+@pytest.mark.parametrize(
+    ("phase", "tag", "payload", "invalid_header"),
+    [
+        ("start", 2, b"", False),
+        ("start", 7, b"{}", False),
+        ("start", 14, b"not empty", True),
+        ("body", 7, b"{}", False),
+        ("body", 10, b"", False),
+        ("body", 14, b"", False),
+        ("live", 11, b"", True),
+        ("live", 8, b"legacy-read-required", True),
+        ("live", 7, b"[]", False),
+        ("live", 7, b'{"field":null,"field":true}', False),
+    ],
+)
+def test_saved_orchestration_rejects_unexpected_frames(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    tag: int,
+    payload: bytes,
+    invalid_header: bool,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if phase != "start":
+            _send(peer, 14)
+            assert _receive(peer)[0] == 15
+        if phase == "live":
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, payload)
+        assert _receive(peer) == (9, b"")
+        if not invalid_header:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(ipc._ProtocolError),
+    ):
+        step(_saved_orchestration_request(_Borrow(), {"request": {}}))
+
+
+def test_saved_orchestration_rejects_plan_header_over_four_mib(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 14)
+        assert _receive(peer)[0] == 15
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        peer.sendall(_HEADER.pack(7, 4 * 1024 * 1024 + 1))
+        assert _receive(peer) == (9, b"")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(ipc._ProtocolError),
+    ):
+        step(_saved_orchestration_request(_Borrow(), {"request": {}}))
+
+
+@pytest.mark.parametrize("body_sent", [False, True])
+def test_saved_orchestration_cancels_after_guard_revocation(
+    monkeypatch: pytest.MonkeyPatch, body_sent: bool,
+) -> None:
+    borrow = _Borrow()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if body_sent:
+            _send(peer, 14)
+            assert _receive(peer)[0] == 15
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        borrow.revoked.set()
+        _send(peer, 2 if body_sent else 14)
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_orchestration(monkeypatch, serve) as step,
+        pytest.raises(PermissionError, match="fixture lease revoked"),
+    ):
+        step(_saved_orchestration_request(borrow, {"request": {}}))
+
+
 def _model_resolve_request(
     borrow: _Borrow,
     role: ipc.ModelResolveRole = "generate",

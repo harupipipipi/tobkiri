@@ -103,6 +103,44 @@ async fn original_saved_steps_through_core() -> Result<()> {
         .context("owner acknowledgement for two maximum-sized inline rasters was rejected")?;
     let ai: Value = serde_json::from_str(&ai)?;
     ensure!(ai["state"]["stage"] == "ai");
+
+    // A saved tool trace with escaped arguments and results is already JSON.
+    // Re-encoding it as a WIT string would overcount the admitted owner frame.
+    let mut state = ai["state"].clone();
+    state["stage"] = json!("tool");
+    state["request"]["tool_selection"] = json!({"mode":"auto"});
+    state["seen_tools"] = json!(["tool-1", "tool-2", "tool-3", "tool-4", "tool-5", "tool-6"]);
+    state["tool_count"] = json!(5);
+    let call = |index| {
+        json!({
+            "id":format!("tool-{index}"),"type":"function",
+            "function":{"name":"fixture.echo","arguments":"{}"}
+        })
+    };
+    let mut history = vec![json!({
+        "role":"assistant","content":"","tool_calls":(1..=6).map(call).collect::<Vec<_>>()
+    })];
+    for index in 1..=5 {
+        history.push(json!({
+            "role":"tool","tool_call_id":format!("tool-{index}"),"content":"\\".repeat(200_000)
+        }));
+    }
+    state["tool_messages"] = json!(history);
+    state["pending_tools"] = json!([{
+        "tool_id":"fixture.echo","tool_call_id":"tool-6","arguments":{},
+        "expected_definition_hash":"b".repeat(64)
+    }]);
+    let tool_ack = json!({"state":state, "outcome":{"status":"ok","value":{
+        "tool_id":"fixture.echo","tool_call_id":"tool-6","content":"\\".repeat(200_000)
+    }}});
+    let response = through_core(&engine, &account, &pack, &serde_json::to_string(&tool_ack)?)
+        .await?
+        .context("escape-heavy tool result was rejected")?;
+    ensure!(response.len() <= tobkiri_canon::MAX_BYTES);
+    ensure!(serde_json::to_string(&response)?.len() > tobkiri_canon::MAX_BYTES);
+    let intent: Value = serde_json::from_str(&response)?;
+    ensure!(intent["state"]["tool_count"] == 6);
+    ensure!(intent["state"]["stage"] == "ai");
     Ok(())
 }
 
@@ -126,7 +164,9 @@ async fn through_core(
             0,
         )
         .await?;
-    let output = port.invoke(&[Val::String(input)]).await?;
+    let output = port
+        .invoke_with_document_limit(&[Val::String(input)])
+        .await?;
     let response = match output.as_slice() {
         [Val::Result(Ok(Some(value)))] => match &**value {
             Val::String(value) => Some(value.as_str().to_owned()),
