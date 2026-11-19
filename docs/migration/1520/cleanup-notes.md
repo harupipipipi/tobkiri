@@ -3904,12 +3904,26 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   4つはそれぞれ現在のProfile・Plan・LockからModel Registryへの署名済み権限を選ぶ。
   選定12件で同じ操作を呼ぶ別のcaller間でも権限を流用できないことを確認し、
   元のSetupから発行されたProfileを使う統合試験1件で4つの権限とscopeを照合した。
-  通常の署名済み送信への接続では、元の保存ターンからGatewayまでの親リクエストを確認する。
+  通常の署名済み送信は、Shellから保存ターン、保存会話の完了、Gatewayを経由した場合に
+  この解決を呼ぶ。元のBrokerは4つの子呼出しのそれぞれで、保持中の親リクエスト、別個の
+  リースと予約、期限、起動世代を照合する。Launcherは元のBundleで子操作がreadである
+  ことと、各ロールのpinを確認する。Model Packのアーカイブ照合を一覧・保存で共用する。
+  1MiBの応答は認証したIPCを通してGatewayに返る。予約上限、対象外の起動証明、対応外の
+  旧JSONでは現行の権限を再確認して元の読取を使う。切断や権限失効では読取をやり直さない。
+  CPythonのIPC 98件とLauncher分離試験44件が通過。分離試験は実macOSソケットで
+  物理RegistryとWasmを使い、別ロールの拒否、別名・無効状態・非公開メタデータ、未登録、
+  旧JSONの切替を確認した。Tauriサービスはfixtureで、元のBundleとの4つの権限照合は
+  元のSetupの生成レコードを使って別に実行した。
+  署名済みHTTP試験では、既存の保存ターンとGatewayがバッファ応答とSSEを使い分け、
+  再送で生成しないことと、親の終了後に同じ子操作でも元の読取へ戻ることを確認した。
+  API鍵を含むProvider送信とLauncher応答はfixture。狭いHost回帰21件も通過した。
   `saved_bridge.py` の追記前の必須quote、任意のstream準備quote、実生成は、それぞれの
   権限で最新のRegistryを読む。共用するのは物理読取とWasmの解決処理までとし、各回で
   Registryの状態変更を検出する。旧Python分岐を除去する際はConversationと共通する
   1MiBの結果枠と旧JSON判定を見直せる。入力と文書の検証順序、無効モデルの扱いと
-  Gateway側のProvider・資格情報の制御を維持する。
+  Gateway側のProvider・資格情報の制御を維持する。GatewayとBrokerの所有者をRustへ
+  移した際は、Pythonの起動世代引き渡しとソケットを除去し、同じ親リースと物理終了証明を
+  Coreの直接呼び出しで照合する。
   Gemma 3 1BのCIは既存の認証付き通常Flowと、保存会話から選んだキー不要の経路を別々に実行する。
   [20ed649b4 の認証付き実1B 44364433650](https://github.com/harupipipipi/tobkiri/actions/runs/44364433650)
   では中断後のllama.cppスロット確認が再度失敗した。保存会話からの実1Bは独立して測る。
@@ -4223,6 +4237,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   署名済みHTTPと周辺回帰66件が通過した。Runtimeの公開切替とNamedLock内の承認失効では
   Registryの内容が維持され、再resumeによる保存もなかった。通常の認証情報付き設定を扱う
   試験は隔離されたOpenRouter登録の予算ポリシーをfixture上で選択しない構成に揃えた。
+  通常起動との互換には `owner_startup_generation_budget_template` の起点の整理が残る。
+  現状の署名済みソースは明示の指定がない場合も一つのOpenRouter接続・モデルだけを指定する。
+  通常のProvider登録を実DMGで確認する前に、隔離用テンプレートの新規適用と既存の予算記録の
+  復元を分け、登録済みの制限と不整合時の拒否を維持する必要がある。
   元の保存処理を移す際は、元の排他ロック、リビジョン照合、文書形式、結果の不確定時の
   確認まで同じ永続化境界で検証する。その段階でHost側の保存直前guardのためのRegistry
   派生クラスを除去できる。
@@ -4983,6 +5001,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   修正前の同じ上書きで128件が通過した後の3件で失敗した。失敗時と再実行時のGit blob 667件は
   同じmanifestに一致する。修正 `314c939c4` を含む
   [再実行44439801329](https://github.com/harupipipipi/tobkiri/actions/runs/44439801329) で確認を続ける。
+  そのコミットのLauncher stagingゲートにはIPCの期待件数6・ワーカー4が残っていた。
+  当時の実際の試験数は8・7。現行ソースの分離試験で実行した件数12・12に更新した。
   `launcher-snapshot-staging` の任意のDMG検証を、既存のCI用インストーラーワークフローへ接続。
   同じrunで生成したApp用Wasmを再照合し、先行ステージングで検証したv3レシートのSHA-256を
   Launcherビルドに渡す。検証専用のRust bindingはビルド環境へ渡さない。

@@ -9,8 +9,9 @@ use tobkiri_core::{
     Digest,
 };
 use tobkiri_harness_native::{
-    OriginalConversationReadSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
-    OriginalProviderPrepareSelection, OriginalRoutePin,
+    OriginalConversationReadSelection, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRoutePin,
 };
 
 /// The exact Bundle entries to reread, captured while the resolver source is borrowed.
@@ -19,6 +20,7 @@ pub(crate) struct LockedRegistryBundle<'pin> {
     provider_prepare: Option<[LockedRegistryRoute<'pin>; 2]>,
     model_list: Option<LockedRegistryRoute<'pin>>,
     model_save: Option<[LockedRegistryRoute<'pin>; 2]>,
+    model_resolve: [Option<LockedRegistryRoute<'pin>>; 4],
     conversation_read: [Option<LockedRegistryRoute<'pin>>; 3],
     budget: Arc<dyn AllocationBudget>,
 }
@@ -31,6 +33,7 @@ impl NativeApplicationSources {
         provider: Option<&'pin OriginalProviderPrepareSelection<'_>>,
         model: Option<&'pin OriginalModelSettingsSelection<'_>>,
         model_save: Option<&'pin OriginalModelSaveSelection<'_>>,
+        model_resolve: Option<&'pin OriginalModelResolveSelection<'_>>,
         conversation_read: Option<&'pin OriginalConversationReadSelection<'_>>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedRegistryBundle<'pin>> {
@@ -82,6 +85,20 @@ impl NativeApplicationSources {
                 ])
             })
             .transpose()?;
+        let mut model_resolve_routes = [None, None, None, None];
+        if let Some(selection) = model_resolve {
+            use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+            for (locked, role) in
+                model_resolve_routes
+                    .iter_mut()
+                    .zip([QuoteGenerate, QuoteStream, Generate, Stream])
+            {
+                *locked = selection
+                    .pin(role)
+                    .map(|pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget))
+                    .transpose()?;
+            }
+        }
         let mut conversation_routes = [None, None, None];
         if let Some(selection) = conversation_read {
             let shell = selection.shell();
@@ -106,6 +123,7 @@ impl NativeApplicationSources {
             provider_prepare,
             model_list,
             model_save,
+            model_resolve: model_resolve_routes,
             conversation_read: conversation_routes,
             budget: Arc::clone(budget),
         })
@@ -126,6 +144,17 @@ impl LockedRegistryBundle<'_> {
         if let Some([model_manage, provider_read]) = &self.model_save {
             model_manage.verify(root, &self.budget, &mut checkpoint)?;
             provider_read.verify(root, &self.budget, &mut checkpoint)?;
+        }
+        let mut model_resolve = self.model_resolve.iter().flatten();
+        if let Some(first) = model_resolve.next() {
+            // Every role targets the same locked Model Pack. Check each signed pin
+            // against that Pack and catalog, including the role's own operation.
+            let pack = first.pack.read(root, &self.budget, &mut checkpoint)?;
+            let catalog = first.catalog.read(root, &self.budget, &mut checkpoint)?;
+            for route in std::iter::once(first).chain(model_resolve) {
+                checkpoint()?;
+                route.verify_documents(&pack, &catalog, Some("read"))?;
+            }
         }
         for conversation_read in self.conversation_read.iter().flatten() {
             conversation_read.verify(root, &self.budget, &mut checkpoint)?;
@@ -181,10 +210,15 @@ impl<'pin> LockedRegistryRoute<'pin> {
     ) -> Result<()> {
         let pack = self.pack.read(root, budget, checkpoint)?;
         let catalog = self.catalog.read(root, budget, checkpoint)?;
-        self.verify_documents(&pack, &catalog)
+        self.verify_documents(&pack, &catalog, None)
     }
 
-    fn verify_documents(&self, pack: &CoreValue, catalog: &CoreValue) -> Result<()> {
+    fn verify_documents(
+        &self,
+        pack: &CoreValue,
+        catalog: &CoreValue,
+        effect_class: Option<&str>,
+    ) -> Result<()> {
         let pin = self.pin;
         let pack_identity = pack
             .get_key("pack")
@@ -232,6 +266,12 @@ impl<'pin> LockedRegistryRoute<'pin> {
         let variant = unique_row(catalog, "variants", "variant_id", pin.variant_id())?;
         let variant_operation =
             unique_row(&variant, "operations", "operation_id", pin.operation_id())?;
+        if let Some(effect_class) = effect_class {
+            ensure!(
+                text_matches(&variant_operation, "effect_class", effect_class),
+                "legacy Registry executable operation effect differs from the selected route"
+            );
+        }
         let implementation_path = variant.get_key("implementation_path");
         let implementation = unique_row(
             pack,

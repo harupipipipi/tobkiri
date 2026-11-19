@@ -289,7 +289,10 @@ def test_model_registry_factory_uses_bound_client_and_narrow_owner_operation(
             self,
             operation: str,
             value: Mapping[str, Any],
+            *,
+            provider_snapshot: Mapping[str, Any] | None = None,
         ) -> Mapping[str, Any]:
+            assert provider_snapshot is None
             calls.append((self.user_data_root, operation, value))
             return {"operation": operation}
 
@@ -424,7 +427,18 @@ def test_model_search_projection_carries_saved_preferred_model(
             contract_id: str,
             operation_id: str,
             payload: Mapping[str, Any],
+            *,
+            provider_instance_id: str | None = None,
         ) -> Mapping[str, Any]:
+            if contract_id == model_search.MODEL_CATALOG_CONTRACT:
+                assert operation_id == model_search.MODEL_CATALOG_OPERATION
+                assert provider_instance_id == model_search.MODEL_CATALOG_PROVIDER
+                assert not payload
+                return {"models": []}
+            assert contract_id == model_search.MODEL_PROFILE_CONTRACT
+            assert operation_id == model_search.MODEL_PROFILE_OPERATION
+            assert provider_instance_id is None
+            assert payload == {"profile_id": "defaults", "operation": "list"}
             return {"profiles": []}
 
     class _SearchInvocation:
@@ -532,7 +546,7 @@ def test_model_search_projection_carries_saved_preferred_model(
     assert invocation.client_calls == [
         {
             "allowed_contract_ids": frozenset(
-                {model_search.MODEL_PROFILE_CONTRACT}
+                {model_search.MODEL_PROFILE_CONTRACT, model_search.MODEL_CATALOG_CONTRACT}
             ),
             "consumer_pack_id": "tobkiri_ui_settings_pack",
             "include_credentials": False,

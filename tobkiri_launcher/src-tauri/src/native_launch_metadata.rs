@@ -17,11 +17,12 @@ use tobkiri_core::{
 use tobkiri_gate::{ControlKind, CoreCancellation};
 use tobkiri_harness_native::{
     OriginalActivationInspection, OriginalActiveProfile, OriginalConversationReadSelection,
-    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
-    OriginalRoutePin,
+    OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
+    OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalRoutePin,
 };
 use tobkiri_wasm::{
-    verify_legacy_conversation_read_declaration, verify_legacy_model_save_declaration,
+    verify_legacy_conversation_read_declaration, verify_legacy_model_resolve_declaration,
+    verify_legacy_model_save_declaration,
 };
 
 use super::{
@@ -55,6 +56,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     pub(crate) provider_prepare: Option<VerifiedProviderPrepareSource>,
     pub(crate) model_settings: Option<VerifiedModelSettingsSource>,
     pub(crate) model_save: Option<VerifiedModelSaveSource>,
+    model_resolve: Option<VerifiedModelResolveSource>,
     conversation_read: Option<VerifiedConversationReadSource>,
 }
 
@@ -70,6 +72,13 @@ pub(crate) enum ConversationReadCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Require the Gateway role's own signed grant against the verified Model Pack.
+    pub(crate) fn permits_model_resolve(&self, role: OriginalModelResolveRole) -> bool {
+        self.model_resolve
+            .as_ref()
+            .is_some_and(|source| source.permits(role))
+    }
+
     /// Require the caller's own legacy read edge against the verified replacement.
     pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
         self.conversation_read
@@ -105,6 +114,24 @@ pub(crate) struct VerifiedModelSaveSource {
     pub(crate) archive_sha256: String,
     pub(crate) archive_bytes: u64,
     pub(crate) manifest_sha256: String,
+}
+
+/// Independent Gateway role pins and the exact Model Pack receipt they share.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedModelResolveSource {
+    roles: [Option<(OriginalModelResolveRole, VerifiedLegacyRoutePin)>; 4],
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+impl VerifiedModelResolveSource {
+    fn permits(&self, role: OriginalModelResolveRole) -> bool {
+        self.roles
+            .iter()
+            .flatten()
+            .any(|(granted, _)| *granted == role)
+    }
 }
 
 /// Separate signed conversation-owner edges and the receipt identity they share.
@@ -168,6 +195,7 @@ impl VerifiedRegistryLaunch {
             }),
             model_settings: None,
             model_save: None,
+            model_resolve: None,
             conversation_read: None,
         }
     }
@@ -188,6 +216,7 @@ impl VerifiedRegistryLaunch {
                 manifest_sha256: "sha256:manifest".into(),
             }),
             model_save: None,
+            model_resolve: None,
             conversation_read: None,
         }
     }
@@ -205,6 +234,34 @@ impl VerifiedRegistryLaunch {
             model_save: Some(VerifiedModelSaveSource {
                 model_manage: VerifiedLegacyRoutePin::fixture(),
                 provider_read: VerifiedLegacyRoutePin::fixture(),
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
+            model_resolve: None,
+            conversation_read: None,
+        }
+    }
+
+    pub(crate) fn test_model_resolve_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalModelResolveRole,
+    ) -> Self {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: None,
+            model_settings: None,
+            model_save: None,
+            model_resolve: Some(VerifiedModelResolveSource {
+                roles: [
+                    Some((role, VerifiedLegacyRoutePin::fixture())),
+                    None,
+                    None,
+                    None,
+                ],
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -465,6 +522,10 @@ impl LaunchActivationObserver<'_> {
             .map(|active| OriginalModelSaveSelection::select(active, budget))
             .transpose()?
             .flatten();
+        let model_resolve_selection = active
+            .map(|active| OriginalModelResolveSelection::select(active, budget))
+            .transpose()?
+            .flatten();
         let conversation_read_selection = active
             .map(|active| OriginalConversationReadSelection::select(active, budget))
             .transpose()?
@@ -477,6 +538,7 @@ impl LaunchActivationObserver<'_> {
                     if provider_selection.is_none()
                         && model_selection.is_none()
                         && model_save_selection.is_none()
+                        && model_resolve_selection.is_none()
                         && conversation_read_selection.is_none()
                     {
                         return Ok(None);
@@ -492,6 +554,7 @@ impl LaunchActivationObserver<'_> {
                             provider_selection.as_ref(),
                             model_selection.as_ref(),
                             model_save_selection.as_ref(),
+                            model_resolve_selection.as_ref(),
                             conversation_read_selection.as_ref(),
                             budget,
                         )?,
@@ -514,7 +577,7 @@ impl LaunchActivationObserver<'_> {
             return Ok(None);
         };
         locked.verify(checkpoint)?;
-        let (provider_prepare, (model_settings, model_save), conversation_read) =
+        let (provider_prepare, (model_settings, model_save, model_resolve), conversation_read) =
             registry_pack_receipt::verify_installed_with_archives(
                 &app_root,
                 REGISTRY_RECEIPT_SHA256,
@@ -537,8 +600,9 @@ impl LaunchActivationObserver<'_> {
                 |receipt, input| {
                     let model_list = model_selection.as_ref();
                     let model_save = model_save_selection.as_ref();
-                    if model_list.is_none() && model_save.is_none() {
-                        return Ok((None, None));
+                    let model_resolve = model_resolve_selection.as_ref();
+                    if model_list.is_none() && model_save.is_none() && model_resolve.is_none() {
+                        return Ok((None, None, None));
                     }
                     let pack = verify_registry_archive(inspection, receipt, input)?;
                     let list = model_list
@@ -565,7 +629,24 @@ impl LaunchActivationObserver<'_> {
                             })
                         })
                         .transpose()?;
-                    Ok((list, save))
+                    let resolve = model_resolve
+                        .map(|selection| {
+                            verify_legacy_model_resolve_declaration(&pack)
+                                .map_err(io::Error::other)?;
+                            use OriginalModelResolveRole::{
+                                Generate, QuoteGenerate, QuoteStream, Stream,
+                            };
+                            let roles = [QuoteGenerate, QuoteStream, Generate, Stream]
+                                .map(|role| selection.pin(role).map(|pin| (role, pin.into())));
+                            Ok::<_, io::Error>(VerifiedModelResolveSource {
+                                roles,
+                                archive_sha256: receipt.archive_sha256().to_owned(),
+                                archive_bytes: receipt.archive_bytes(),
+                                manifest_sha256: receipt.manifest_sha256().to_owned(),
+                            })
+                        })
+                        .transpose()?;
+                    Ok((list, save, resolve))
                 },
                 |receipt, input| {
                     conversation_read_selection
@@ -596,6 +677,9 @@ impl LaunchActivationObserver<'_> {
         if model_save.is_some() {
             log::info!("verified the selected old Model save grants and its bundled Wasm replacement for this activation");
         }
+        if model_resolve.is_some() {
+            log::info!("verified selected old Model Resolve grants and their bundled Wasm replacement for this activation");
+        }
         if conversation_read.is_some() {
             log::info!("verified selected old Conversation read grants and their bundled Wasm replacement for this activation");
         }
@@ -606,6 +690,7 @@ impl LaunchActivationObserver<'_> {
             provider_prepare,
             model_settings,
             model_save,
+            model_resolve,
             conversation_read,
         }))
     }
@@ -695,6 +780,38 @@ pub(super) fn reacquire_model_save_pack(
         },
     )
     .context("bundled Model Save archive verification failed")
+}
+
+/// Reacquire the Model Pack using the Gateway role's grant and pinned archive.
+pub(super) fn reacquire_model_resolve_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalModelResolveRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .model_resolve
+        .as_ref()
+        .filter(|source| source.permits(role))
+        .context("admitted launch has no verified Model Resolve source for the Gateway role")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_model(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            verify_legacy_model_resolve_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )
+    .context("bundled Model Resolve archive verification failed")
 }
 
 /// Reacquire the Conversation Pack using the caller's own grant and pinned archive.
@@ -887,6 +1004,44 @@ fn validate_observed_activation(
 mod tests {
     use super::*;
     use crate::native_harness_bootstrap::NativeRegistryRequest;
+
+    #[test]
+    fn model_resolve_evidence_requires_the_exact_gateway_role() {
+        use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let catalog_revision = "catalog:fixture";
+        let roles = [QuoteGenerate, QuoteStream, Generate, Stream];
+        for proof in [
+            VerifiedRegistryLaunch::test_proof(identity.clone(), catalog_revision),
+            VerifiedRegistryLaunch::test_model_proof(identity.clone(), catalog_revision),
+            VerifiedRegistryLaunch::test_model_save_proof(identity.clone(), catalog_revision),
+        ] {
+            for role in roles {
+                assert!(!proof.permits_model_resolve(role));
+            }
+        }
+        for granted in roles {
+            let proof = VerifiedRegistryLaunch::test_model_resolve_proof(
+                identity.clone(),
+                catalog_revision,
+                granted,
+            );
+            for role in roles {
+                assert_eq!(proof.permits_model_resolve(role), role == granted);
+            }
+            assert!(!NativeRegistryRequest::ModelList.has_launch_proof(&proof));
+            assert!(!NativeRegistryRequest::ModelSave {
+                request: Vec::new(),
+                provider: Vec::new(),
+            }
+            .has_launch_proof(&proof));
+        }
+    }
 
     #[test]
     fn model_save_evidence_keeps_the_other_registry_operations_separate() {

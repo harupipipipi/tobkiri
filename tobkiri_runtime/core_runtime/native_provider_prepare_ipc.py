@@ -30,6 +30,7 @@ _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
+_MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 _SOL_LOCAL = 0
 _LOCAL_PEERPID = 2
 _SOCKET_PATH_MAX = 103  # Darwin sockaddr_un.sun_path includes the terminating NUL.
@@ -43,6 +44,7 @@ _OWNER_RESULT_LIMIT = 1024 * 1024
 # The Host borrows the same bridge allowance as the Registry owner routes.
 # The managed Launcher's Wasm instance has its own physical memory cap.
 CONVERSATION_GET_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+MODEL_RESOLVE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 _MODEL_SAVE_MAX_NODES = 100_000
@@ -79,6 +81,14 @@ class NativeConversationGetFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native Conversation GET failed ({code})")
+        self.code = code
+
+
+class NativeModelResolveFailure(RuntimeError):
+    """The Launcher returned a typed failure from the Model Registry owner."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Model Resolve failed ({code})")
         self.code = code
 
 
@@ -128,11 +138,27 @@ class NativeConversationGetRequest:
     conversation_id: str
 
 
+ModelResolveRole = Literal["quote-generate", "quote-stream", "generate", "stream"]
+
+
+@dataclass(frozen=True)
+class NativeModelResolveRequest:
+    """Borrow the original Model Resolve capture and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    role: ModelResolveRole
+    identifier: str
+
+
 _NativeBorrow = (
     NativeProviderPrepareBorrow
     | NativeModelSettingsRequest
     | NativeModelSaveRequest
     | NativeConversationGetRequest
+    | NativeModelResolveRequest
 )
 
 
@@ -232,6 +258,24 @@ def capture_launcher_conversation_get_reader() -> (
     return partial(_invoke, launcher, operation="conversation_get")
 
 
+def capture_launcher_model_resolve_reader() -> (
+    Callable[[NativeModelResolveRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for a private model read."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="model_resolve")
+
+
+def is_canonical_model_resolve_identifier(value: object) -> bool:
+    """Check that an identifier needs no legacy coercion or trimming."""
+    return (
+        isinstance(value, str)
+        and _MODEL_RESOLVE_IDENTIFIER.fullmatch(value) is not None
+    )
+
+
 def model_save_from_environment() -> (
     Callable[[NativeModelSaveRequest], Mapping[str, Any]] | None
 ):
@@ -286,6 +330,14 @@ def _start_payload(borrow: _NativeBorrow, deadline_ns: int) -> bytes:
             "caller": borrow.caller,
             "conversation_id": borrow.conversation_id,
         }
+    elif isinstance(borrow, NativeModelResolveRequest):
+        if (
+            type(borrow.role) is not str
+            or borrow.role not in ("quote-generate", "quote-stream", "generate", "stream")
+            or not is_canonical_model_resolve_identifier(borrow.identifier)
+        ):
+            raise _ProtocolError("native Model Resolve inputs are invalid")
+        frame["model_resolve"] = {"role": borrow.role, "identifier": borrow.identifier}
     else:
         request = borrow.request
         frame["request"] = {
@@ -359,6 +411,24 @@ def _decode_conversation_get(payload: bytes) -> dict[str, Any]:
         type(result) is not dict
         or set(result) != {"conversation"}
         or type(result["conversation"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_model_resolve(payload: bytes, identifier: str) -> dict[str, Any]:
+    invalid = "native Model Resolve owner result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if (
+        type(result) is not dict
+        or set(result) != {
+            "requested_id", "resolved_profile_id", "aliased", "profile",
+            "store_revision",
+        }
+        or result["requested_id"] != identifier
+        or type(result["resolved_profile_id"]) is not str
+        or result["aliased"] is not (result["resolved_profile_id"] != identifier)
+        or type(result["profile"]) is not dict
     ):
         raise _ProtocolError(invalid)
     return result
@@ -513,12 +583,15 @@ class _Exchange:
                     wait_seconds()
                     raise NativeModelSaveFailure(payload.decode("ascii"))
                 if (
-                    conversation_get
-                    and entered_live_phase
+                    entered_live_phase
                     and payload in (b"not-found", b"invalid", b"denied")
                 ):
-                    wait_seconds()
-                    raise NativeConversationGetFailure(payload.decode("ascii"))
+                    if conversation_get:
+                        wait_seconds()
+                        raise NativeConversationGetFailure(payload.decode("ascii"))
+                    if isinstance(borrow, NativeModelResolveRequest):
+                        wait_seconds()
+                        raise NativeModelResolveFailure(payload.decode("ascii"))
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
@@ -540,6 +613,8 @@ class _Exchange:
             elif tag == _PLAN and entered_live_phase:
                 if conversation_get:
                     plan = _decode_conversation_get(payload)
+                elif isinstance(borrow, NativeModelResolveRequest):
+                    plan = _decode_model_resolve(payload, borrow.identifier)
                 elif self.model_save:
                     plan = _decode_model_save(payload)
                 else:
@@ -560,15 +635,18 @@ def _invoke(
     *,
     operation: Literal[
         "provider_prepare", "model_list", "model_save", "conversation_get",
+        "model_resolve",
     ],
 ) -> Mapping[str, Any]:
     model_settings = isinstance(borrow, NativeModelSettingsRequest)
     model_save = isinstance(borrow, NativeModelSaveRequest)
     conversation_get = isinstance(borrow, NativeConversationGetRequest)
+    model_resolve = isinstance(borrow, NativeModelResolveRequest)
     if (
         model_settings != (operation == "model_list")
         or model_save != (operation == "model_save")
         or conversation_get != (operation == "conversation_get")
+        or model_resolve != (operation == "model_resolve")
     ):
         raise _ProtocolError("native Registry request role is invalid")
 
@@ -596,7 +674,7 @@ def _invoke(
         _authenticate(connection, launcher)
         plan_limit = (
             _OWNER_RESULT_LIMIT
-            if model_settings or model_save or conversation_get
+            if model_settings or model_save or conversation_get or model_resolve
             else _JSON_LIMIT
         )
         exchange = _Exchange(connection, plan_limit, model_save=model_save)

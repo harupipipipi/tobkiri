@@ -20,8 +20,9 @@ use crate::{
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
         start_provider_prepare, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
-        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
-        ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT,
+        ModelRegistryRequiresLegacyRead, NativeRegistryRequest, OriginalModelResolveRole,
+        PendingProviderPrepare, ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT,
+        MODEL_RESOLVE_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -57,8 +58,10 @@ struct Start<'a> {
     model_list: Option<ModelList>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     model_save: Option<ModelSave<'a>>,
-    #[serde(default, deserialize_with = "deserialize_conversation_get")]
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_get: Option<ConversationGet>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
+    model_resolve: Option<ModelResolve>,
 }
 
 impl Start<'_> {
@@ -68,9 +71,10 @@ impl Start<'_> {
             &self.model_list,
             &self.model_save,
             &self.conversation_get,
+            &self.model_resolve,
             self.apply,
         ) {
-            (Some(request), None, None, None, apply) => {
+            (Some(request), None, None, None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -80,15 +84,23 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None, None, None) => Ok(NativeRegistryRequest::ModelList),
-            (None, None, Some(save), None, None) => Ok(NativeRegistryRequest::ModelSave {
+            (None, Some(_), None, None, None, None) => Ok(NativeRegistryRequest::ModelList),
+            (None, None, Some(save), None, None, None) => Ok(NativeRegistryRequest::ModelSave {
                 request: save.request.get().as_bytes().to_vec(),
                 provider: save.provider.get().as_bytes().to_vec(),
             }),
-            (None, None, None, Some(get), None) => Ok(NativeRegistryRequest::ConversationGet {
-                caller: get.caller,
-                conversation_id: get.conversation_id.clone(),
-            }),
+            (None, None, None, Some(get), None, None) => {
+                Ok(NativeRegistryRequest::ConversationGet {
+                    caller: get.caller,
+                    conversation_id: get.conversation_id.clone(),
+                })
+            }
+            (None, None, None, None, Some(resolve), None) => {
+                Ok(NativeRegistryRequest::ModelResolve {
+                    role: resolve.role,
+                    identifier: resolve.identifier.clone(),
+                })
+            }
             _ => bail!("native Registry start must name exactly one operation"),
         }
     }
@@ -115,10 +127,53 @@ struct ConversationGet {
     conversation_id: String,
 }
 
-fn deserialize_conversation_get<'de, D>(
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelResolve {
+    #[serde(deserialize_with = "deserialize_model_resolve_role")]
+    role: OriginalModelResolveRole,
+    #[serde(deserialize_with = "deserialize_model_identifier")]
+    identifier: String,
+}
+
+fn deserialize_model_resolve_role<'de, D>(
     deserializer: D,
-) -> std::result::Result<Option<ConversationGet>, D::Error>
+) -> std::result::Result<OriginalModelResolveRole, D::Error>
 where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "quote-generate" => Ok(OriginalModelResolveRole::QuoteGenerate),
+        "quote-stream" => Ok(OriginalModelResolveRole::QuoteStream),
+        "generate" => Ok(OriginalModelResolveRole::Generate),
+        "stream" => Ok(OriginalModelResolveRole::Stream),
+        _ => Err(de::Error::custom("unknown Model Resolve role")),
+    }
+}
+
+fn deserialize_model_identifier<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let identifier = String::deserialize(deserializer)?;
+    let mut bytes = identifier.bytes();
+    if identifier.len() <= 256
+        && bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+    {
+        Ok(identifier)
+    } else {
+        Err(de::Error::custom("invalid Model Resolve identifier"))
+    }
+}
+
+fn deserialize_present_object<'de, T, D>(
+    deserializer: D,
+) -> std::result::Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
     D: Deserializer<'de>,
 {
     let object = deserialize_object(deserializer)?;
@@ -291,6 +346,7 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         NativeRegistryRequest::ModelList => ReplyRole::ModelList,
         NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
         NativeRegistryRequest::ConversationGet { .. } => ReplyRole::ConversationGet,
+        NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
     };
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
@@ -329,6 +385,7 @@ enum ReplyRole {
     ModelList,
     ModelSave,
     ConversationGet,
+    ModelResolve,
 }
 
 struct Connection {
@@ -464,6 +521,7 @@ impl Connection {
             ReplyRole::ModelList => (MODEL_RESULT_LIMIT, "legacy-read-required"),
             ReplyRole::ModelSave => (MODEL_RESULT_LIMIT, "limit-exceeded"),
             ReplyRole::ConversationGet => (CONVERSATION_GET_REPLY_LIMIT, "legacy-read-required"),
+            ReplyRole::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
         };
         match result {
             Ok(output) if output.len() <= limit => {
@@ -943,6 +1001,80 @@ mod tests {
             failure_code(&ConversationRegistryRequiresLegacyRead.into()),
             "legacy-read-required"
         );
+    }
+
+    #[test]
+    fn model_resolve_accepts_only_fixed_roles_and_canonical_identifiers() {
+        let identifier = format!("A._:/-{}", "9".repeat(250));
+        for (wire_role, expected_role) in [
+            ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
+            ("quote-stream", OriginalModelResolveRole::QuoteStream),
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start_frame(&format!(
+                r#", "model_resolve":{{"role":"{wire_role}","identifier":"{identifier}"}}"#
+            ));
+            let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+            let NativeRegistryRequest::ModelResolve {
+                role,
+                identifier: decoded_identifier,
+            } = start.operation().unwrap()
+            else {
+                panic!("expected Model Resolve");
+            };
+            assert_eq!(role, expected_role);
+            assert_eq!(decoded_identifier, identifier);
+        }
+
+        for invalid in ["", "-a", "a b", " a", "a ", "a\n", "a/猫", &"a".repeat(257)] {
+            let invalid = serde_json::to_string(invalid).unwrap();
+            let frame = start_frame(&format!(
+                r#", "model_resolve":{{"role":"generate","identifier":{invalid}}}"#
+            ));
+            assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
+        }
+
+        for body in [
+            r#"null"#,
+            r#"["generate","local"]"#,
+            r#"{"identifier":"local"}"#,
+            r#"{"role":"generate"}"#,
+            r#"{"role":"quote_generate","identifier":"local"}"#,
+            r#"{"role":{"generate":null},"identifier":"local"}"#,
+            r#"{"role":"generate","identifier":123}"#,
+            r#"{"role":"generate","identifier":"local","profile_id":"elsewhere"}"#,
+            r#"{"role":"generate","role":"stream","identifier":"local"}"#,
+            r#"{"role":"generate","identifier":"local","identifier":"elsewhere"}"#,
+        ] {
+            let frame = start_frame(&format!(r#", "model_resolve":{body}"#));
+            assert!(serde_json::from_str::<Start<'_>>(&frame).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn model_resolve_cannot_share_a_start_with_another_operation() {
+        let resolve = r#", "model_resolve":{"role":"generate","identifier":"local"}"#;
+        for extra in [
+            PROVIDER_REQUEST,
+            r#", "apply": {}"#,
+            r#", "model_list": {}"#,
+            r#", "model_save": {"request":{},"provider":{}}"#,
+            r#", "conversation_get": {"caller":"shell","conversation_id":"stored"}"#,
+        ] {
+            let frame = start_frame(&format!("{resolve}{extra}"));
+            assert!(serde_json::from_str::<Start<'_>>(&frame)
+                .unwrap()
+                .operation()
+                .is_err());
+        }
+        let repeated = start_frame(&format!("{resolve}{resolve}"));
+        assert!(serde_json::from_str::<Start<'_>>(&repeated).is_err());
+        assert_eq!(
+            failure_code(&ModelRegistryRequiresLegacyRead.into()),
+            "legacy-read-required"
+        );
+        assert_eq!(failure_code(&NativeArtifactError::Denied.into()), "denied");
     }
 
     #[test]

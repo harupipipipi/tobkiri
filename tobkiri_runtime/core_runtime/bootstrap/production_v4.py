@@ -19,6 +19,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -51,6 +52,7 @@ from tobkiri_host.broker import (
     AdmissionTicket,
     NestedCancellationProof,
     RequestAdmissionPort,
+    RequestEnvelope,
 )
 from tobkiri_host.chat_approval_continuation import (
     ChatApprovalContinuationController,
@@ -1827,18 +1829,24 @@ def capture_production_dispatch(
     from ..native_provider_prepare_ipc import (
         CONVERSATION_GET_MAX_ID_CHARS,
         CONVERSATION_GET_MINIMUM_MEMORY,
+        MODEL_RESOLVE_MINIMUM_MEMORY,
         ConversationGetCaller,
+        ModelResolveRole,
         NativeConversationGetFailure,
         NativeConversationGetRequest,
+        NativeModelResolveFailure,
+        NativeModelResolveRequest,
         NativeModelSaveFailure,
         NativeModelSavePublicationUnconfirmed,
         NativeModelSaveRequest,
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
         capture_launcher_conversation_get_reader,
+        capture_launcher_model_resolve_reader,
         capture_launcher_model_save_writer,
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
+        is_canonical_model_resolve_identifier,
     )
     from ..provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
@@ -1852,6 +1860,7 @@ def capture_production_dispatch(
     native_model_settings_reader = capture_launcher_model_settings_reader()
     native_model_save_writer = capture_launcher_model_save_writer()
     native_conversation_get_reader = capture_launcher_conversation_get_reader()
+    native_model_resolve_reader = capture_launcher_model_resolve_reader()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -3906,8 +3915,14 @@ def capture_production_dispatch(
         nonlocal native_provider_runtime
         native_provider_runtime = (instance, check)
 
-    def is_exact_legacy_host_edge(
-        edge: _CapturedPlanEdge, function_id: str, mode: str = "profile_grant",
+    def is_exact_original_python_edge(
+        edge: _CapturedPlanEdge,
+        function_id: str,
+        mode: str = "profile_grant",
+        *,
+        backend: str = "tobkiri.python-host-v4",
+        execution_kind: str = "host_extension",
+        domain_kind: str = "dedicated_process",
     ) -> bool:
         binding = edge.binding
         return (
@@ -3916,9 +3931,9 @@ def capture_production_dispatch(
             and binding.get("variant_id") == function_id + ".python"
             and binding.get("platform") == binding.get("architecture") == "any"
             and binding.get("runtime_abi") == "python3.13"
-            and binding.get("backend") == "tobkiri.python-host-v4"
-            and binding.get("execution_kind") == "host_extension"
-            and binding.get("domain_kind") == "dedicated_process"
+            and binding.get("backend") == backend
+            and binding.get("execution_kind") == execution_kind
+            and binding.get("domain_kind") == domain_kind
             and binding.get("adapter_digests") == []
             and edge.edge.get("requested_scope_template") == _operation_scope(
                 binding["contract_id"], binding["operation_id"], edge.target,
@@ -3935,7 +3950,7 @@ def capture_production_dispatch(
             edge for edge in captured_edges
             if edge.caller.principal_id in shell_principal_ids
             and edge.resolved_binding == coordinator_binding
-            and is_exact_legacy_host_edge(
+            and is_exact_original_python_edge(
                 edge, "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
             )
         )
@@ -3947,7 +3962,7 @@ def capture_production_dispatch(
             == NATIVE_PROVIDER_PREPARE_CONTRACT
             and edge.resolved_binding.operation.operation_id
             == NATIVE_PROVIDER_PREPARE_OPERATION
-            and is_exact_legacy_host_edge(edge, NATIVE_PROVIDER_PREPARE_FUNCTION)
+            and is_exact_original_python_edge(edge, NATIVE_PROVIDER_PREPARE_FUNCTION)
         )
         if len(shell_edges) == len(prepare_edges) == 1:
             native_prepare_edges = shell_edges[0], prepare_edges[0]
@@ -3960,7 +3975,7 @@ def capture_production_dispatch(
                 == NATIVE_PROVIDER_PREPARE_CONTRACT
                 and edge.resolved_binding.operation.operation_id
                 == NATIVE_PROVIDER_EXECUTE_OPERATION
-                and is_exact_legacy_host_edge(
+                and is_exact_original_python_edge(
                     edge, NATIVE_PROVIDER_EXECUTE_FUNCTION, "interactive_only",
                 )
             )
@@ -3982,7 +3997,7 @@ def capture_production_dispatch(
             and edge.resolved_binding.operation.operation_id
             == NATIVE_MODEL_SETTINGS_OPERATION
             and edge.resolved_binding.operation.effect_class is EffectClass.READ
-            and is_exact_legacy_host_edge(edge, NATIVE_MODEL_SETTINGS_FUNCTION)
+            and is_exact_original_python_edge(edge, NATIVE_MODEL_SETTINGS_FUNCTION)
         )
         if len(model_settings_edges) == 1:
             native_model_settings_edge = model_settings_edges[0]
@@ -3997,7 +4012,7 @@ def capture_production_dispatch(
             and edge.resolved_binding.operation.contract_id == _MODEL_SAVE_CONTRACT
             and edge.resolved_binding.operation.operation_id == _MODEL_SAVE_OPERATION
             and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
-            and is_exact_legacy_host_edge(edge, _MODEL_SAVE_FUNCTION)
+            and is_exact_original_python_edge(edge, _MODEL_SAVE_FUNCTION)
         )
         if len(save_edges) == 1:
             manage = save_edges[0]
@@ -4009,7 +4024,7 @@ def capture_production_dispatch(
                 and edge.resolved_binding.operation.operation_id == _MODEL_PROVIDER_OPERATION
                 # The original catalog classifies this Registry resource as privileged.
                 and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
-                and is_exact_legacy_host_edge(edge, _MODEL_PROVIDER_FUNCTION)
+                and is_exact_original_python_edge(edge, _MODEL_PROVIDER_FUNCTION)
             )
             if len(provider_reads) == 1:
                 native_model_save_edge = manage
@@ -4050,7 +4065,7 @@ def capture_production_dispatch(
                 == conversation_operation
                 and edge.resolved_binding.operation.effect_class
                 is EffectClass.PRIVILEGED
-                and is_exact_legacy_host_edge(edge, conversation_function)
+                and is_exact_original_python_edge(edge, conversation_function)
             )
             if len(matching) == 1:
                 edge = matching[0]
@@ -4157,6 +4172,220 @@ def capture_production_dispatch(
                     raise PermissionError(
                         "conversation read operation is denied",
                     ) from None
+                raise
+            guard()
+            return result
+
+        return replace(contribution, invoke=invoke)
+
+    model_resolve_routes: dict[
+        tuple[str, str], tuple[ModelResolveRole, tuple[_CapturedPlanEdge, ...]]
+    ] = {}
+    if native_model_resolve_reader is not None:
+        # These are the original Profile edges, including the guest's saved
+        # entry point. A different caller of the same Gateway stays on Python.
+        turn_pack = "rumi_turn_runtime_pack"
+        saved_pack = "tobkiri_conversation_orchestration_pack"
+        gateway_pack = "rumi_ai_gateway_pack"
+
+        def select_model_resolve_edge(
+            caller_ids: set[str],
+            pack_id: str,
+            contract_id: str,
+            operation_id: str,
+            function_id: str,
+            effect: EffectClass,
+        ) -> _CapturedPlanEdge | None:
+            matches = tuple(
+                edge for edge in captured_edges
+                if edge.caller.principal_id in caller_ids
+                and edge.resolved_binding.artifact.pack_id == pack_id
+                and edge.binding_key[1:] == (contract_id, operation_id)
+                and edge.resolved_binding.operation.effect_class is effect
+                and (
+                    is_exact_original_python_edge(
+                        edge, function_id, backend="tobkiri.python-pack-v4",
+                        execution_kind="pack_vm", domain_kind="pack_vm",
+                    ) if pack_id == saved_pack
+                    else is_exact_original_python_edge(edge, function_id)
+                )
+            )
+            return matches[0] if len(matches) == 1 else None
+
+        turn_edge = select_model_resolve_edge(
+            {
+                edge.caller.principal_id for edge in captured_edges
+                if edge.caller.principal_id in shell_principal_ids
+                and edge.caller.function_id == "shell.tauri.default"
+            },
+            turn_pack, "tobkiri.action.turn.saved.v1", f"{turn_pack}.turn-saved",
+            f"{turn_pack}.turn-runtime.saved", EffectClass.PRIVILEGED,
+        )
+        orchestration_edge = (
+            select_model_resolve_edge(
+                {turn_edge.target.principal_id}, saved_pack,
+                "conversation.saved-turn.v1", "saved_complete", f"{saved_pack}.saved",
+                EffectClass.PURE,
+            ) if turn_edge is not None else None
+        )
+        if turn_edge is not None and orchestration_edge is not None:
+            resolve_roles: tuple[tuple[ModelResolveRole, str, str, str], ...] = (
+                ("quote-generate", "tobkiri.resource.ai.route.quote.v1",
+                 "route-quote", "generate"),
+                ("quote-stream", "tobkiri.resource.ai.route.quote.v1",
+                 "route-quote", "stream"),
+                ("generate", "tobkiri.service.ai.generate.v1", "generate", "generate"),
+                ("stream", "tobkiri.service.ai.stream.v1", "stream", "stream"),
+            )
+            for role, gateway_contract, gateway_kind, model_kind in resolve_roles:
+                gateway_id = f"{gateway_pack}.ai-gateway.{gateway_kind}"
+                gateway_edge = select_model_resolve_edge(
+                    {orchestration_edge.target.principal_id}, gateway_pack,
+                    gateway_contract, gateway_id, gateway_id, EffectClass.PRIVILEGED,
+                )
+                if gateway_edge is None:
+                    continue
+                model_operation = f"{NATIVE_MODEL_SETTINGS_OPERATION}.{model_kind}"
+                model_edge = select_model_resolve_edge(
+                    {gateway_edge.target.principal_id}, NATIVE_MODEL_SETTINGS_PACK,
+                    NATIVE_MODEL_SETTINGS_CONTRACT, model_operation,
+                    NATIVE_MODEL_SETTINGS_FUNCTION, EffectClass.READ,
+                )
+                if model_edge is not None:
+                    key = gateway_edge.target.principal_id, model_operation
+                    model_resolve_routes[key] = (
+                        role, (model_edge, gateway_edge, orchestration_edge, turn_edge),
+                    )
+
+    def matches_model_resolve_edge(
+        envelope: RequestEnvelope, edge: _CapturedPlanEdge,
+    ) -> bool:
+        return (
+            envelope.context.caller_principal.value == edge.caller.principal_id
+            and envelope.target_principal == edge.resolved_binding.principal_ref
+            and (envelope.contract_id, envelope.operation_id) == edge.binding_key[1:]
+        )
+
+    def model_resolve_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+        operation_id: str,
+    ) -> tuple[ModelResolveRole, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
+        route = model_resolve_routes.get((context.caller_principal.value, operation_id))
+        if (
+            route is None
+            or set(payload) != {"identifier"}
+            or not is_canonical_model_resolve_identifier(payload["identifier"])
+        ):
+            return None
+        role, (model_edge, *parent_edges) = route
+        ancestors: list[RequestEnvelope] = []
+        for edge in parent_edges:
+            if parent is None or not matches_model_resolve_edge(parent.envelope, edge):
+                return None
+            ancestors.append(parent.envelope)
+            parent = parent.parent
+        if parent is not None:
+            return None
+        return role, model_edge, tuple(ancestors)
+
+    def is_native_model_resolve_route(
+        context: RequestContext, payload: Mapping[str, Any], *, operation_id: str,
+    ) -> bool:
+        return native_provider_runtime is not None and model_resolve_lineage(
+            context, payload,
+            parent_invocation_scopes.lookup(context.caller_session_id),
+            operation_id,
+        ) is not None
+
+    def wrap_native_model_resolve(
+        contribution: HostProviderContributionV4,
+        reader: Callable[[NativeModelResolveRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Model Resolve context is unavailable")
+            envelope = invocation.envelope
+            lineage = model_resolve_lineage(
+                envelope.context, payload, invocation.parent_invocation, operation_id,
+            )
+            pinned_runtime = native_provider_runtime
+            if lineage is None or pinned_runtime is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            role, model_edge, ancestors = lineage
+            if (
+                payload is not envelope.payload
+                or not matches_model_resolve_edge(envelope, model_edge)
+                or any(
+                    envelope.lease.token == ancestor.lease.token
+                    for ancestor in ancestors
+                )
+                or envelope.deadline_monotonic > ancestors[0].deadline_monotonic
+                or any(
+                    envelope.resource_reservation_id == ancestor.resource_reservation_id
+                    for ancestor in ancestors
+                )
+            ):
+                raise AuthorityDenied("native Model Resolve lineage changed")
+
+            def guard() -> None:
+                invocation.assert_current()
+                child = envelope
+                for ancestor in ancestors:
+                    retained = parent_invocation_scopes.lookup(
+                        child.context.caller_session_id,
+                    )
+                    if retained is None or retained.envelope is not ancestor:
+                        raise AuthorityDenied("native Model Resolve parent changed")
+                    child = ancestor
+                if (
+                    native_provider_runtime is not pinned_runtime
+                    or parent_invocation_scopes.lookup(child.context.caller_session_id)
+                    is not None
+                ):
+                    raise AuthorityDenied("native Model Resolve capture changed")
+                pinned_runtime[1]()
+                production_admission.native_resources(envelope.resource_reservation_id)
+
+            def legacy_read() -> Mapping[str, Any]:
+                guard()
+                result = contribution.invoke(operation_id, payload, invocation)
+                guard()
+                return result
+
+            guard()
+            resources = production_admission.native_resources(
+                envelope.resource_reservation_id,
+            )
+            if resources.memory_bytes < MODEL_RESOLVE_MINIMUM_MEMORY:
+                return legacy_read()
+            try:
+                result = reader(NativeModelResolveRequest(
+                    context=envelope.context,
+                    runtime_instance=pinned_runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    role=role,
+                    identifier=payload["identifier"],
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return legacy_read()
+            except NativeModelResolveFailure as error:
+                guard()
+                if error.code == "not-found":
+                    raise KeyError("model profile or alias is unknown") from None
+                if error.code == "invalid":
+                    raise ValueError("model registry identifier is invalid") from None
+                if error.code == "denied":
+                    raise PermissionError("model registry resolve is denied") from None
                 raise
             guard()
             return result
@@ -4632,6 +4861,9 @@ def capture_production_dispatch(
     native_conversation_get_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
+    native_model_resolve_bindings: dict[
+        tuple[str, str, str], ResolvedOperationBinding
+    ] = {}
     captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
                                    ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
@@ -4709,6 +4941,18 @@ def capture_production_dispatch(
                     pass  # Keep the original invalid-capture error primary.
             raise
         contributions = captured_provider.contributions
+        if native_model_resolve_reader is not None:
+            resolve_bindings = {
+                (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
+                for _role, (edge, *_parents) in model_resolve_routes.values()
+                if edge.resolved_binding in captured_bindings
+            }
+            native_model_resolve_bindings.update(resolve_bindings)
+            contributions = tuple(
+                wrap_native_model_resolve(item, native_model_resolve_reader)
+                if item.key in resolve_bindings else item
+                for item in contributions
+            )
         if native_conversation_get_reader is not None:
             conversation_bindings = {
                 (
@@ -4810,6 +5054,7 @@ def capture_production_dispatch(
                         native_model_settings_key,
                         native_model_save_key,
                     } or item.key in native_conversation_get_bindings
+                    or item.key in native_model_resolve_bindings
                 ),
             ),
         )
@@ -4933,6 +5178,14 @@ def capture_production_dispatch(
         )
         for binding in native_conversation_get_bindings.values()
     ]
+    native_admission_rules.extend(
+        (
+            binding,
+            MODEL_RESOLVE_MINIMUM_MEMORY,
+            partial(is_native_model_resolve_route, operation_id=operation_id),
+        )
+        for (_, operation_id, _), binding in native_model_resolve_bindings.items()
+    )
     if native_model_save_key is not None and native_model_save_edge is not None:
         native_admission_rules.append((
             native_model_save_edge.resolved_binding,
@@ -5690,7 +5943,8 @@ def capture_production_dispatch(
         before_close_callbacks=(close_wake_drivers,),
         native_provider_runtime_publish=(
             publish_native_provider_runtime
-            if native_execute_key is not None or native_conversation_get_bindings
+            if (native_execute_key is not None or native_conversation_get_bindings
+                or native_model_resolve_bindings)
             else None
         ),
     )

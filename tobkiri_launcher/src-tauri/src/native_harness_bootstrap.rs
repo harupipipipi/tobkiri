@@ -46,13 +46,15 @@ pub(crate) use launch_metadata::{
     VerifiedRegistryLaunch,
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) use tobkiri_harness_native::OriginalModelResolveRole;
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 #[path = "native_provider_prepare_job.rs"]
 mod provider_prepare;
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) use provider_prepare::{
     start_provider_prepare, ConversationRegistryRequiresLegacyRead,
     ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
-    ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT,
+    ProviderPrepareDeadline, CONVERSATION_GET_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
 };
 
 enum OwnedRuntime {

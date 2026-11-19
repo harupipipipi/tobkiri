@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
 import struct
@@ -742,18 +743,30 @@ def test_deadline_keeps_original_failure_after_cancel_cleanup(
             planner.plan(borrow)
 
 
-def test_real_child_rejects_socket_owned_by_a_different_same_uid_process() -> None:
+@pytest.mark.parametrize("model_resolve", [False, True])
+def test_real_child_rejects_socket_owned_by_a_different_same_uid_process(
+    model_resolve: bool,
+) -> None:
     runtime = Path(__file__).resolve().parents[1]
     child_code = """
+import sys
 import time
 from types import SimpleNamespace
 from core_runtime import native_provider_prepare_ipc
-planner = native_provider_prepare_ipc.capture_launcher_provider_prepare_planner()
 borrow = SimpleNamespace(
     deadline_monotonic=time.monotonic() + 4, assert_current=lambda: None,
 )
+if sys.argv[1] == "True":
+    invoke = native_provider_prepare_ipc.capture_launcher_model_resolve_reader()
+    borrow = native_provider_prepare_ipc.NativeModelResolveRequest(
+        None, "a" * 32, borrow.deadline_monotonic, borrow.assert_current,
+        "generate", "fixture",
+    )
+else:
+    planner = native_provider_prepare_ipc.capture_launcher_provider_prepare_planner()
+    invoke = planner.plan
 try:
-    planner.plan(borrow)
+    invoke(borrow)
 except PermissionError as error:
     if str(error) != 'native Provider preparation peer could not be verified':
         raise
@@ -784,7 +797,7 @@ with socket.socket(socket.AF_UNIX) as listener:
                 assert server.stdout is not None
                 assert server.stdout.readline() == b"ready\n"
                 subprocess.run(
-                    [sys.executable, "-B", "-c", child_code],
+                    [sys.executable, "-B", "-c", child_code, str(model_resolve)],
                     env=environment, cwd=runtime, timeout=6, check=True,
                 )
                 assert server.wait(timeout=6) == 0
@@ -928,3 +941,222 @@ def test_conversation_get_rejects_malformed_results_and_publication(
         pytest.raises(ipc._ProtocolError, match=message),
     ):
         reader(_conversation_get_request(_Borrow()))
+
+
+def _model_resolve_request(
+    borrow: _Borrow,
+    role: ipc.ModelResolveRole = "generate",
+    identifier: str = "fixture/gpt_1-x.y:z",
+) -> ipc.NativeModelResolveRequest:
+    return ipc.NativeModelResolveRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        role=role,
+        identifier=identifier,
+    )
+
+
+@contextmanager
+def _served_model_resolve(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeModelResolveRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        reader = ipc.capture_launcher_model_resolve_reader()
+        assert reader is not None
+        yield reader
+
+
+@pytest.mark.parametrize(
+    "role", ["quote-generate", "quote-stream", "generate", "stream"],
+)
+def test_model_resolve_preserves_original_owner_values_and_order(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole,
+) -> None:
+    borrow = _Borrow()
+    request = _model_resolve_request(borrow, role)
+    expected = {
+        "requested_id": request.identifier,
+        "resolved_profile_id": "saved",
+        "aliased": True,
+        "profile": {
+            "credential_handle": "credential:synthetic",
+            "parameters": {"temperature": -0.0, "top_p": 2e-7, "seed": (1 << 145)},
+            "requirements": {"preferred_provider_instance_id": "local"},
+            "metadata": {"policy": {"z": 1, "a": "日本語"}},
+        },
+        "store_revision": False if role == "quote-stream" else (1 << 100),
+    }
+    response = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+    response = response.ljust(1024 * 1024, b" ")
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert tag == 1
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": borrow.runtime_instance,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "model_resolve": {"role": role, "identifier": request.identifier},
+        }
+        for _ in range(2):
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 7, response)
+        assert peer.recv(1) == b""
+
+    with _served_model_resolve(monkeypatch, serve) as reader:
+        monkeypatch.setenv(ipc._SOCKET_ENV, "/invalidated-after-capture")
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        actual = reader(request)
+        assert dict(actual) == expected
+        assert json.dumps(actual, ensure_ascii=False).encode() == response.rstrip()
+        assert math.copysign(1.0, actual["profile"]["parameters"]["temperature"]) == -1
+
+
+@pytest.mark.parametrize(
+    ("role", "identifier"),
+    [
+        ("shell", "fixture"),
+        ("generate", ""),
+        ("generate", "a" * 257),
+        ("generate", "äbc"),
+        ("generate", "-leading"),
+        ("generate", " spaced"),
+        ("generate", "a\n"),
+        ("generate", "embedded space"),
+        ("generate", 42),
+    ],
+)
+def test_model_resolve_refuses_open_roles_and_noncanonical_identifiers(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole, identifier: str,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_resolve(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match="Model Resolve inputs are invalid"),
+    ):
+        reader(_model_resolve_request(_Borrow(), role, identifier))
+
+
+def test_model_resolve_reader_requires_the_correct_request_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        reader = ipc.capture_launcher_model_resolve_reader()
+        planner = ipc.capture_launcher_provider_prepare_planner()
+        assert reader is not None
+        assert planner is not None
+        with pytest.raises(ipc._ProtocolError, match="request role is invalid"):
+            reader(_conversation_get_request(_Borrow()))
+        with pytest.raises(ipc._ProtocolError, match="request role is invalid"):
+            planner.plan(_model_resolve_request(_Borrow()))
+
+
+@pytest.mark.parametrize(
+    ("live", "tag", "payload", "expected"),
+    [
+        (False, 10, b"", ipc.NativeProviderPrepareUnavailable),
+        (False, 8, b"legacy-read-required", ipc._ProtocolError),
+        (False, 8, b"not-found", ipc._ProtocolError),
+        (
+            True, 8, b"legacy-read-required",
+            ipc.NativeProviderRegistryRequiresLegacyRead,
+        ),
+        (True, 8, b"not-found", ipc.NativeModelResolveFailure),
+        (True, 8, b"invalid", ipc.NativeModelResolveFailure),
+        (True, 8, b"denied", ipc.NativeModelResolveFailure),
+        (True, 8, b"internal", ipc._ProtocolError),
+        (True, 10, b"", ipc._ProtocolError),
+    ],
+)
+def test_model_resolve_distinguishes_authenticated_fallback_and_owner_failure(
+    monkeypatch: pytest.MonkeyPatch, live: bool, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, tag, payload)
+        if live and tag == 10:
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_resolve(monkeypatch, serve) as reader,
+        pytest.raises(expected) as failure,
+    ):
+        reader(_model_resolve_request(_Borrow(), identifier="a" * 256))
+    if isinstance(failure.value, ipc.NativeModelResolveFailure):
+        assert failure.value.code == payload.decode("ascii")
+
+
+@pytest.mark.parametrize(
+    ("tag", "size", "payload"),
+    [
+        (7, 1024 * 1024 + 1, b""),
+        (7, None, b'{"model":"\xff"}'),
+        (7, None, b'{"model":1e999}'),
+        (7, None, b'{"model":0,"model":1}'),
+        (7, None, b'{"owner_result":"{}"}'),
+        (11, 0, b""),
+    ],
+)
+def test_model_resolve_rejects_malformed_results_and_publication(
+    monkeypatch: pytest.MonkeyPatch, tag: int, size: int | None, payload: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        length = len(payload) if size is None else size
+        peer.sendall(_HEADER.pack(tag, length) + payload)
+        assert _receive(peer) == (9, b"")
+        if size is None:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    message = "owner result is invalid" if size is None else "cleanup was unconfirmed"
+    with (
+        _served_model_resolve(monkeypatch, serve) as reader,
+        pytest.raises(ipc._ProtocolError, match=message),
+    ):
+        reader(_model_resolve_request(_Borrow()))
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_model_resolve_requires_a_live_guard_during_result_delivery(
+    monkeypatch: pytest.MonkeyPatch, revoked: bool,
+) -> None:
+    borrow = _Borrow(lifetime=3 if revoked else 0.5)
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        failure = b"legacy-read-required"
+        peer.sendall(_HEADER.pack(8, len(failure)) + failure[:1])
+        if revoked:
+            borrow.revoked.set()
+        assert _receive(peer) == (9, b"")
+        peer.sendall(failure[1:])
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_resolve(monkeypatch, serve) as reader,
+        pytest.raises(PermissionError if revoked else TimeoutError),
+    ):
+        reader(_model_resolve_request(borrow))

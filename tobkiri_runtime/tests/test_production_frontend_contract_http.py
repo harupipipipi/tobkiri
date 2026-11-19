@@ -5748,6 +5748,241 @@ def test_saved_settings_reach_host_credential_transport(
         servers.close()
 
 
+def test_saved_model_resolve_borrows_each_signed_gateway_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the original saved-turn chain with a private Launcher reader."""
+    import io
+
+    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap import production_v4
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from tobkiri_host.admission import (
+        DurableResourceLedger, ResourceAmount, ResourceReservation,
+    )
+    from tobkiri_host.credential_store import host_credential_store_factory
+    from tobkiri_host.errors import ResourceExhaustedError
+
+    root = tmp_path / "user-data"
+    models = ModelRegistry("defaults", user_data_root=root)
+    store = ConversationStore("defaults", user_data_root=root)
+    mode = "buffered"
+    reads: list[ipc.NativeModelResolveRequest] = []
+    envelopes: list[RequestEnvelope] = []
+    legacy_reads: list[str] = []
+    provider_requests: list[Mapping[str, object]] = []
+    legacy_read = Path.read_text
+    reserve = DurableResourceLedger.reserve
+
+    def observe_legacy_read(path: Path, *args, **kwargs) -> str:
+        if path == models.path:
+            legacy_reads.append(mode)
+        return legacy_read(path, *args, **kwargs)
+
+    def reserve_read(
+        ledger: DurableResourceLedger, profile_id: str, amount: ResourceAmount,
+        *, detached: bool = False,
+    ) -> ResourceReservation:
+        if (
+            mode == "unfunded"
+            and amount.memory_bytes == ipc.MODEL_RESOLVE_MINIMUM_MEMORY
+        ):
+            raise ResourceExhaustedError("fixture Model Resolve capacity")
+        return reserve(ledger, profile_id, amount, detached=detached)
+
+    def read(request: ipc.NativeModelResolveRequest) -> Mapping[str, object]:
+        request.assert_current()
+        reads.append(request)
+        envelope = next(item for item in envelopes if item.context is request.context)
+        assert envelope.deadline_monotonic == request.deadline_monotonic
+        assert envelope.resource_reservation_id
+        assert envelope.payload == {"identifier": request.identifier}
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        if mode == "inapplicable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if mode == "compatibility":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "transport":
+            raise RuntimeError("fixture transport ended before a result")
+        if mode == "stale":
+            with server._lifecycle_lock:
+                server._native_provider_prepare_instance = "0" * 32
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if mode == "buffered" and request.role == "quote-stream":
+            raise ipc.NativeModelResolveFailure("not-found")
+        if mode in {"not-found", "invalid", "denied"}:
+            raise ipc.NativeModelResolveFailure(mode)
+        document = json.loads(models.path.read_bytes())
+        target = document["aliases"][request.identifier]
+        return {
+            "requested_id": request.identifier,
+            "resolved_profile_id": target,
+            "aliased": True,
+            "profile": document["profiles"][target],
+            "store_revision": document["revision"],
+        }
+
+    def open_provider(request, *, timeout, **lifetime):
+        assert timeout > 0
+        assert request.get_header("Authorization") == (
+            "Bearer fixture-secret-provider-configuration"
+        )
+        body = json.loads(request.data)
+        assert body["model"] == "organization/raw-model"
+        assert body["max_tokens"] == 16
+        provider_requests.append(body)
+        if body.get("stream"):
+            chunk = {
+                "choices": [{"delta": {"content": "Reply"}, "finish_reason": "stop"}],
+            }
+            return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": "Reply"}, "finish_reason": "stop"}],
+        }).encode())
+
+    monkeypatch.setattr(Path, "read_text", observe_legacy_read)
+    monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    monkeypatch.setattr(
+        production_v4, "owner_startup_generation_budget_template",
+        lambda _template: None,
+    )
+    monkeypatch.setenv(
+        "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/resolve.sock",
+    )
+    monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: read)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, _authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        model = models.save({
+            "model_profile_id": "daily", "model_id": "organization/raw-model",
+            "parameters": {"max_tokens": 16, "temperature": 0.25},
+            "metadata": {"provider_connection_id": "provider.fixture",
+                         "private_fixture_marker": "private-resolve-value"},
+        }, expected_revision=0)["profile"]
+        models.set_alias("my-alias", "daily", expected_revision=1)
+        legacy_reads.clear()
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            if envelope.operation_id in {
+                "rumi_model_registry_pack.model-profile-resource.generate",
+                "rumi_model_registry_pack.model-profile-resource.stream",
+            }:
+                envelopes.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        cookie, csrf, origin = _authenticate(server)
+
+        def post_turn(turn: dict[str, object]) -> tuple[int, dict[str, object]]:
+            status, response, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": turn}, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert "private-resolve-value" not in json.dumps(response)
+            return status, response
+
+        def new_turn(name: str) -> dict[str, object]:
+            store.create(
+                {"id": name, "model_reference": "my-alias"},
+                expected_revision=store.snapshot()["revision"],
+            )
+            return {"turn_id": name, "conversation_id": name,
+                    "conversation_revision": 1, "content": "Hello"}
+
+        original_document = models.path.read_bytes()
+        for mode, generation_role in (
+            ("buffered", "generate"), ("streaming", "stream"),
+        ):
+            turn = new_turn(mode)
+            reads.clear()
+            envelopes.clear()
+            status, response = post_turn(turn)
+            assert status == 200 and response["data"]["status"] == "completed", response
+            assert [item.role for item in reads] == [
+                "quote-generate", "quote-stream", generation_role,
+            ]
+            assert all(request.identifier == "my-alias" for request in reads)
+            assert len({item.lease.token for item in envelopes}) == len(reads)
+            reservation_ids = {item.resource_reservation_id for item in envelopes}
+            assert len(reservation_ids) == len(reads)
+            assert not legacy_reads
+            assert [item["content"] for item in store.get(mode)["messages"]] == [
+                "Hello", "Reply",
+            ]
+            count = len(provider_requests)
+            status, replay = post_turn(turn)
+            assert status == 200 and replay["data"]["status"] == "existing", replay
+            assert len(reads) == 3 and len(provider_requests) == count
+            for request in reads:
+                with pytest.raises(PermissionError):
+                    request.assert_current()
+
+        assert models.path.read_bytes() == original_document
+        assert len(provider_requests) == 2
+        assert not provider_requests[0].get("stream")
+        assert provider_requests[1]["stream"] is True
+
+        # Hold the same authenticated Broker caller/operation but remove the
+        # invocation ancestry by calling after its parent has drained.
+        mode = "outside-saved-parent"
+        child = envelopes[0]
+        context = replace(child.context, request_id=f"request.{uuid.uuid4().hex}")
+        scope = session.effect_scope_for(
+            child.contract_id, child.operation_id, child.payload, context,
+        )
+        result = session.broker.invoke(
+            InvocationFrame(
+                contract_id=child.contract_id, version_range=None,
+                operation_id=child.operation_id, payload=child.payload,
+            ), context, effect_scope=scope,
+        )
+        assert result["resolved_profile_id"] == "daily"
+        assert len(reads) == 3 and legacy_reads == [mode]
+
+        for mode in ("inapplicable", "compatibility", "unfunded"):
+            reads.clear()
+            legacy_reads.clear()
+            status, response = post_turn(new_turn(mode))
+            assert status == 200 and response["data"]["status"] == "completed", response
+            assert len(legacy_reads) == 3
+            assert len(reads) == (0 if mode == "unfunded" else 3)
+
+        count = len(provider_requests)
+        models.save({**model, "enabled": False}, expected_revision=2)
+        instance = server._native_provider_prepare_instance
+        for mode in (
+            "disabled", "not-found", "invalid", "denied", "transport", "stale",
+        ):
+            reads.clear()
+            legacy_reads.clear()
+            try:
+                status, response = post_turn(new_turn(mode))
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            assert status != 200 or response["data"]["status"] != "completed", response
+            assert [item.role for item in reads] == ["quote-generate"]
+            assert store.get(mode)["messages"] == []
+            assert not legacy_reads and len(provider_requests) == count
+
+
 def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     command_vertical_server,
     tmp_path: Path,
