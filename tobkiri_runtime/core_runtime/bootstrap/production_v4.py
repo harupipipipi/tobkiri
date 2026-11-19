@@ -1875,6 +1875,7 @@ def capture_production_dispatch(
 
     from ..native_provider_prepare_ipc import (
         AI_ROUTING_MINIMUM_MEMORY,
+        AI_TOOL_INTENTS_INPUT_FIELDS,
         AI_USAGE_COST_INPUT_FIELDS,
         CONVERSATION_APPEND_MINIMUM_MEMORY,
         CONVERSATION_CONFIRMATION_MINIMUM_MEMORY,
@@ -1924,6 +1925,7 @@ def capture_production_dispatch(
         SavedTurnStartAction,
         capture_launcher_ai_routing_evaluator,
         capture_launcher_ai_stream_result_normalizer,
+        capture_launcher_ai_tool_intents_normalizer,
         capture_launcher_ai_usage_cost_calculator,
         capture_launcher_conversation_append_writer,
         capture_launcher_conversation_confirmation_writer,
@@ -1957,6 +1959,7 @@ def capture_production_dispatch(
     native_model_resolve_reader = capture_launcher_model_resolve_reader()
     native_ai_routing_evaluator = capture_launcher_ai_routing_evaluator()
     native_ai_stream_result_normalizer = capture_launcher_ai_stream_result_normalizer()
+    native_ai_tool_intents_normalizer = capture_launcher_ai_tool_intents_normalizer()
     native_ai_usage_cost_calculator = capture_launcher_ai_usage_cost_calculator()
     native_confirmation_writer = capture_launcher_conversation_confirmation_writer()
     native_append_writer = capture_launcher_conversation_append_writer()
@@ -5654,12 +5657,19 @@ def capture_production_dispatch(
     usage_operations = {
         role: f"{usage_pack}.ai-usage-cost.{role}" for role in ("generate", "stream")
     }
+    tool_bridge_pack = "rumi_ai_tool_bridge_pack"
+    tool_intent_operations = {
+        role: f"{tool_bridge_pack}.ai-tool-intent-normalize.{role}"
+        for role in ("generate", "stream")
+    }
 
     def ai_gateway_child_kind(operation_id: str) -> str:
         if operation_id == stream_operation:
             return "AI stream normalization"
         if operation_id in usage_operations.values():
             return "AI Usage Cost"
+        if operation_id in tool_intent_operations.values():
+            return "AI tool intent normalization"
         return "AI routing"
 
     append_edges: tuple[_CapturedPlanEdge, _CapturedPlanEdge, _CapturedPlanEdge] | None = None
@@ -5673,6 +5683,7 @@ def capture_production_dispatch(
         or native_ai_routing_evaluator is not None
         or native_ai_stream_result_normalizer is not None
         or native_ai_usage_cost_calculator is not None
+        or native_ai_tool_intents_normalizer is not None
         or native_append_writer is not None
     ):
         turn_edge, orchestration_edge = ordinary_turn_edge, ordinary_orchestration_edge
@@ -5693,7 +5704,8 @@ def capture_production_dispatch(
             (native_model_resolve_reader is not None
              or native_ai_routing_evaluator is not None
              or native_ai_stream_result_normalizer is not None
-             or native_ai_usage_cost_calculator is not None)
+             or native_ai_usage_cost_calculator is not None
+             or native_ai_tool_intents_normalizer is not None)
             and turn_edge is not None
             and orchestration_edge is not None
         ):
@@ -5758,6 +5770,18 @@ def capture_production_dispatch(
                     if usage_edge is not None:
                         ai_routing_routes[gateway_principal, usage_operation] = (
                             role, (usage_edge, *parents),
+                        )
+                tool_intent_operation = tool_intent_operations.get(role)
+                if native_ai_tool_intents_normalizer is not None and tool_intent_operation:
+                    tool_intent_edge = select_original_chat_edge(
+                        {gateway_principal}, tool_bridge_pack,
+                        "tobkiri.service.ai.tool_intent.normalize.v1",
+                        tool_intent_operation, f"{tool_bridge_pack}.ai-tool-bridge.normalize",
+                        EffectClass.PRIVILEGED,
+                    )
+                    if tool_intent_edge is not None:
+                        ai_routing_routes[gateway_principal, tool_intent_operation] = (
+                            role, (tool_intent_edge, *parents),
                         )
 
     def saved_append_lineage(
@@ -6053,6 +6077,8 @@ def capture_production_dispatch(
             expected_fields = {"request_id", "provider_attempt", "value"}
         elif operation_id in usage_operations.values():
             expected_fields = AI_USAGE_COST_INPUT_FIELDS
+        elif operation_id in tool_intent_operations.values():
+            expected_fields = AI_TOOL_INTENTS_INPUT_FIELDS
         else:
             expected_fields = {
                 "models", "execution_providers", "health", "requirements",
@@ -6085,6 +6111,7 @@ def capture_production_dispatch(
     ) -> HostProviderContributionV4:
         stream_result = contribution.operation_id == stream_operation
         usage_cost = contribution.operation_id in usage_operations.values()
+        tool_intents = contribution.operation_id in tool_intent_operations.values()
         kind = ai_gateway_child_kind(contribution.operation_id)
 
         def invoke(
@@ -6156,6 +6183,7 @@ def capture_production_dispatch(
                     input=payload,
                     stream_result=stream_result,
                     usage_cost=usage_cost,
+                    tool_intents=tool_intents,
                 ))
             except (
                 NativeProviderPrepareUnavailable,
@@ -6819,6 +6847,7 @@ def capture_production_dispatch(
             ("AI routing", native_ai_routing_evaluator),
             ("AI stream normalization", native_ai_stream_result_normalizer),
             ("AI Usage Cost", native_ai_usage_cost_calculator),
+            ("AI tool intent normalization", native_ai_tool_intents_normalizer),
         ):
             if evaluator is None:
                 continue

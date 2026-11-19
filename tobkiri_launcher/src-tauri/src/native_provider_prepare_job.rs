@@ -44,14 +44,14 @@ use super::{
         reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
         reacquire_provider_prepare_pack, reacquire_saved_local_chat_adapter,
         reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
-        reacquire_stream_result_pack, reacquire_turn_read_pack, reacquire_turn_settlement_pack,
-        reacquire_turn_start_pack, reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle,
-        ConversationReadCaller, SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION,
-        AI_ROUTING_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
-        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
+        reacquire_turn_settlement_pack, reacquire_turn_start_pack, reacquire_usage_cost_pack,
+        saved_local_chat_dispatch_bundle, ConversationReadCaller, SettlementCaller,
+        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, PROVIDER_ADAPTER_OPERATION,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE,
-        USAGE_COST_OPERATION, USAGE_COST_SHAPE,
+        TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE, USAGE_COST_OPERATION, USAGE_COST_SHAPE,
     },
     NativeRuntimeState, OriginalModelResolveRole, OriginalSavedReceiptRole,
 };
@@ -87,6 +87,7 @@ pub(crate) enum AiGatewayDataOperation {
     Route(OriginalModelResolveRole),
     StreamResult,
     UsageCost(OriginalModelResolveRole),
+    ToolIntents(OriginalModelResolveRole),
 }
 
 impl AiGatewayDataOperation {
@@ -95,6 +96,7 @@ impl AiGatewayDataOperation {
             Self::Route(role) => proof.permits_ai_routing(role),
             Self::StreamResult => proof.permits_stream_result(),
             Self::UsageCost(role) => proof.permits_usage_cost(role),
+            Self::ToolIntents(role) => proof.permits_tool_intents(role),
         }
     }
 }
@@ -1167,6 +1169,11 @@ async fn run(
                             reacquire_usage_cost_pack(&inspection, source, role, checkpoint)?,
                             USAGE_COST_SHAPE,
                             USAGE_COST_OPERATION,
+                        ),
+                        AiGatewayDataOperation::ToolIntents(role) => (
+                            reacquire_tool_intents_pack(&inspection, source, role, checkpoint)?,
+                            TOOL_INTENTS_SHAPE,
+                            TOOL_INTENTS_OPERATION,
                         ),
                     };
                     revalidate()?;

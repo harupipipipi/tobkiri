@@ -68,7 +68,7 @@ pub use original_provider_prepare_selection::{
     OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
     OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
     OriginalSavedTurnSettlementRole, OriginalSavedTurnStartChoice, OriginalStreamResultSelection,
-    OriginalUsageCostChoice, select_original_saved_turn_settlement,
+    OriginalToolIntentsChoice, OriginalUsageCostChoice, select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

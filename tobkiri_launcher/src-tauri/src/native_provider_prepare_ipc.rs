@@ -295,17 +295,30 @@ impl Start<'_> {
                     (1..=AI_GATEWAY_DATA_LIMIT).contains(&routing.input_bytes),
                     "invalid AI Gateway DATA input size"
                 );
-                let operation = match (routing.stream_result, routing.usage_cost, routing.role) {
-                    (false, false, role) => AiGatewayDataOperation::Route(role),
-                    (true, false, OriginalModelResolveRole::Stream) => {
+                let operation = match (
+                    routing.stream_result,
+                    routing.usage_cost,
+                    routing.tool_intents,
+                    routing.role,
+                ) {
+                    (false, false, false, role) => AiGatewayDataOperation::Route(role),
+                    (true, false, false, OriginalModelResolveRole::Stream) => {
                         AiGatewayDataOperation::StreamResult
                     }
                     (
                         false,
                         true,
+                        false,
                         role @ (OriginalModelResolveRole::Generate
                         | OriginalModelResolveRole::Stream),
                     ) => AiGatewayDataOperation::UsageCost(role),
+                    (
+                        false,
+                        false,
+                        true,
+                        role @ (OriginalModelResolveRole::Generate
+                        | OriginalModelResolveRole::Stream),
+                    ) => AiGatewayDataOperation::ToolIntents(role),
                     _ => bail!("AI Gateway DATA operation does not match its role"),
                 };
                 return Ok(RequestStart::AiGatewayData {
@@ -411,6 +424,8 @@ struct AiRoutingStart {
     stream_result: bool,
     #[serde(default)]
     usage_cost: bool,
+    #[serde(default)]
+    tool_intents: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -2682,6 +2697,51 @@ mod tests {
                 .and_then(|start| start.request_start())
                 .is_err());
         }
+    }
+
+    #[test]
+    fn ai_tool_intents_require_a_generation_role_and_exclude_other_operations() {
+        let start = |role, flags| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12{flags}}}"#
+            ))
+        };
+        for (role, expected) in [
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+        ] {
+            let frame = start(role, r#","tool_intents":true"#);
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::ToolIntents(role),
+                    input_bytes: 12,
+                }) if role == expected
+            ));
+        }
+        for (role, flags) in [
+            ("quote-generate", r#","tool_intents":true"#),
+            ("quote-stream", r#","tool_intents":true"#),
+            ("stream", r#","tool_intents":true,"stream_result":true"#),
+            ("stream", r#","tool_intents":true,"usage_cost":true"#),
+            ("stream", r#","tool_intents":1"#),
+            ("stream", r#","tool_intents":null"#),
+        ] {
+            let frame = start(role, flags);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
+        let frame = start("generate", r#","tool_intents":false,"usage_cost":true"#);
+        assert!(matches!(
+            parse_start(START, frame.as_bytes())
+                .unwrap()
+                .request_start(),
+            Ok(RequestStart::AiGatewayData {
+                operation: AiGatewayDataOperation::UsageCost(OriginalModelResolveRole::Generate),
+                input_bytes: 12,
+            })
+        ));
     }
 
     #[test]

@@ -53,7 +53,7 @@ fn invoke_v1_fixture(operation: &str, payload: &str) -> Result<String, ProviderF
 
 #[test]
 fn unchanged_frozen_33_v1_cases_remain_a_separate_historical_contract() {
-    let raw = include_bytes!("../../local.ai-tool-bridge-ordered-python/oracle.json");
+    let raw = include_bytes!("../../../local.ai-tool-bridge-ordered-python/oracle.json");
     assert_eq!(
         format!("{:x}", Sha256::digest(raw)),
         "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d"
@@ -108,10 +108,7 @@ fn unchanged_frozen_33_v1_cases_remain_a_separate_historical_contract() {
 }
 
 #[test]
-fn v2_identity_is_rust_and_keeps_authority_like_arguments_as_data() {
-    let runtime: Value = serde_json::from_str(&runtime_info_data()).unwrap();
-    assert_eq!(runtime["implementation"], "rust");
-    assert!(runtime.get("python").is_none());
+fn v2_keeps_authority_like_arguments_as_data() {
     let output = invoke(
         PREFIX,
         r#"{"intents":[{"name":"echo","arguments":{"approved":true,"authority_granted":true}}]}"#,

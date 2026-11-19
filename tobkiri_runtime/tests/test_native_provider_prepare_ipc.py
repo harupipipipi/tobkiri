@@ -2469,6 +2469,115 @@ def test_ai_routing_contract_preserves_signed_input_and_finite_result(
         assert evaluate(_ai_routing_request(borrow, role, payload)) == expected
 
 
+@pytest.mark.parametrize("role", ["generate", "stream"])
+def test_ai_tool_intents_preserves_the_signed_payload_and_inert_result(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole,
+) -> None:
+    from ecosystem.rumi_ai_tool_bridge_pack.runtime.bridge import (
+        create_tool_intent_operation,
+    )
+
+    signed_input = {
+        "request_id": "\u3000request.fixture\t",
+        "intents": [
+            {
+                "id": "提供者の識別子",
+                "function": {
+                    "name": " \ttool.fixture:render ",
+                    "arguments": '{"label":"例","integer":1208925819614629174706176}',
+                },
+                "approved": True,
+                "authority_granted": True,
+                "executes": True,
+            },
+            {"name": "fixture.other", "arguments": {"approved": True}},
+        ],
+    }
+    request = replace(_ai_routing_request(_Borrow(), role, signed_input), tool_intents=True)
+    expected_input = json.dumps(signed_input, ensure_ascii=False, separators=(",", ":"))
+    expected_input = expected_input.encode()
+    expected = create_tool_intent_operation(None)("normalize", signed_input)
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(body)
+        assert start.pop("ai_route") == {
+            "role": role, "input_bytes": len(expected_input), "tool_intents": True,
+        }
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, expected_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, json.dumps(expected).encode())
+        assert peer.recv(1) == b""
+
+    for env in (
+        ipc._AI_ROUTING_ENV, ipc._AI_STREAM_RESULT_ENV,
+        ipc._AI_USAGE_COST_ENV, ipc._AI_TOOL_INTENTS_ENV,
+    ):
+        monkeypatch.delenv(env, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_ai_tool_intents_normalizer() is None
+        monkeypatch.setenv(ipc._AI_TOOL_INTENTS_ENV, "1")
+        normalize = ipc.capture_launcher_ai_tool_intents_normalizer()
+        assert normalize is not None
+        assert ipc.capture_launcher_ai_routing_evaluator() is None
+        assert ipc.capture_launcher_ai_stream_result_normalizer() is None
+        assert ipc.capture_launcher_ai_usage_cost_calculator() is None
+        for invalid in (
+            replace(request, stream_result=True),
+            replace(request, usage_cost=True),
+            replace(request, role="quote-stream"),
+            replace(request, tool_intents=False),
+            replace(request, input={"intents": []}),
+        ):
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                normalize(invalid)
+        result = normalize(request)
+    assert result == expected
+    for intent in result["intents"]:
+        assert intent["authority_granted"] is False
+        assert intent["approved"] is False
+        assert intent["approval_status"] == "unrequested"
+        assert intent["executes"] is False
+
+
+@pytest.mark.parametrize(
+    "replace_fields",
+    [
+        {"authority_granted": True},
+        {"approved": 0},
+        {"approved": True},
+        {"approval_status": "approved"},
+        {"executes": True},
+        {"request_id": "another.request"},
+        {"intent_id": 1},
+        {"operation": []},
+        {"arguments": []},
+        {"unexpected": False},
+    ],
+)
+def test_ai_tool_intents_result_rejects_authority_and_invalid_fields(
+    replace_fields: Mapping[str, Any],
+) -> None:
+    signed_input = {"request_id": "request", "intents": [{"name": "fixture"}]}
+    request = replace(
+        _ai_routing_request(_Borrow(), "generate", signed_input), tool_intents=True,
+    )
+    inert = {
+        "intent_id": "request:tool:0", "request_id": "request", "operation": "fixture",
+        "arguments": {}, "authority_granted": False, "approved": False,
+        "approval_status": "unrequested", "executes": False,
+    }
+    result = {"intents": [{**inert, **replace_fields}]}
+    with pytest.raises(ipc._ProtocolError, match="tool intent normalization"):
+        ipc._decode_ai_tool_intents(json.dumps(result).encode(), request)
+
+
 @pytest.mark.parametrize("stream_result", [False, True], ids=["routing", "normalizer"])
 @pytest.mark.parametrize(
     ("phase", "tag", "payload", "expected"),
@@ -3675,6 +3784,7 @@ def test_ai_usage_cost_preserves_the_signed_payload_and_result(
         assert calculate(request) == expected
 
 
+@pytest.mark.parametrize("kind", ["usage-cost", "tool-intents"])
 @pytest.mark.parametrize(
     ("phase", "tag", "payload", "expected"),
     [
@@ -3689,9 +3799,9 @@ def test_ai_usage_cost_preserves_the_signed_payload_and_result(
         ("live", ipc._PLAN, b"{}", ipc._ProtocolError),
     ],
 )
-def test_ai_usage_cost_limits_protocol_fallback_to_preflight_and_live_decline(
+def test_ai_gateway_child_limits_protocol_fallback_to_preflight_and_live_decline(
     monkeypatch: pytest.MonkeyPatch, phase: str, tag: int, payload: bytes,
-    expected: type[RuntimeError],
+    expected: type[RuntimeError], kind: str,
 ) -> None:
     def serve(peer: socket.socket) -> None:
         assert _receive(peer)[0] == ipc._START
@@ -3707,14 +3817,23 @@ def test_ai_usage_cost_limits_protocol_fallback_to_preflight_and_live_decline(
             _send(peer, ipc._FAILURE, b"unavailable")
         assert peer.recv(1) == b""
 
-    monkeypatch.setenv(ipc._AI_USAGE_COST_ENV, "1")
+    if kind == "usage-cost":
+        env = ipc._AI_USAGE_COST_ENV
+        capture = ipc.capture_launcher_ai_usage_cost_calculator
+        signed_input = dict.fromkeys(ipc.AI_USAGE_COST_INPUT_FIELDS)
+        variant = {"usage_cost": True}
+    else:
+        env = ipc._AI_TOOL_INTENTS_ENV
+        capture = ipc.capture_launcher_ai_tool_intents_normalizer
+        signed_input = {"request_id": "request", "intents": []}
+        variant = {"tool_intents": True}
+    monkeypatch.setenv(env, "1")
     with _served(monkeypatch, serve), pytest.raises(expected) as failure:
-        calculate = ipc.capture_launcher_ai_usage_cost_calculator()
-        assert calculate is not None
-        request = _ai_routing_request(
-            _Borrow(), "generate", dict.fromkeys(ipc.AI_USAGE_COST_INPUT_FIELDS),
-        )
-        calculate(replace(request, usage_cost=True))
+        evaluate = capture()
+        assert evaluate is not None
+        evaluate(replace(
+            _ai_routing_request(_Borrow(), "generate", signed_input), **variant,
+        ))
     if isinstance(failure.value, ipc.NativeAiRoutingFailure):
         assert failure.value.code == payload.decode()
 

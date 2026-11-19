@@ -274,6 +274,20 @@ static AI_USAGE_COST_STREAM: Route = Route {
     ..AI_USAGE_COST_GENERATE
 };
 
+static AI_TOOL_INTENTS_GENERATE: Route = Route {
+    pack: "rumi_ai_tool_bridge_pack",
+    function: "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+    contract: "tobkiri.service.ai.tool_intent.normalize.v1",
+    operation: "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+    variant: "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize.python",
+    execution: PYTHON_HOST,
+};
+
+static AI_TOOL_INTENTS_STREAM: Route = Route {
+    operation: "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+    ..AI_TOOL_INTENTS_GENERATE
+};
+
 static PROVIDER_GENERATE: Route = Route {
     pack: "rumi_provider_adapters_pack",
     function: "rumi_provider_adapters_pack.provider.compatibility.generate",
@@ -986,6 +1000,38 @@ impl<'a> OriginalUsageCostChoice<'a> {
     }
 }
 
+/// The signed ordinary saved grants to one original Gateway tool-intent normalization operation.
+pub struct OriginalToolIntentsChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalToolIntentsChoice<'a> {
+    /// Select the complete Generate or Stream chain from the authenticated records.
+    /// Verify every returned pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        role: OriginalModelResolveRole,
+    ) -> Result<Option<Self>> {
+        Ok(select_saved_role_records(
+            active.records(),
+            budget,
+            role,
+            [&AI_TOOL_INTENTS_GENERATE, &AI_TOOL_INTENTS_STREAM],
+        )?
+        .map(|pins| Self {
+            _active: active,
+            pins,
+        }))
+    }
+
+    /// Ordered grants from Shell to the selected original tool-intent normalizer operation.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
 /// Immutable metadata for the two Profile grant edges to old Provider prepare.
 pub struct OriginalProviderPrepareSelection<'a> {
     _active: &'a OriginalActiveProfile,
@@ -1265,9 +1311,23 @@ fn select_usage_cost_records(
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalModelResolveRole,
 ) -> Result<Option<[OriginalRoutePin; 4]>> {
-    let cost = match role {
-        OriginalModelResolveRole::Generate => &AI_USAGE_COST_GENERATE,
-        OriginalModelResolveRole::Stream => &AI_USAGE_COST_STREAM,
+    select_saved_role_records(
+        active,
+        budget,
+        role,
+        [&AI_USAGE_COST_GENERATE, &AI_USAGE_COST_STREAM],
+    )
+}
+
+fn select_saved_role_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    role: OriginalModelResolveRole,
+    [generate, stream]: [&'static Route; 2],
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let child = match role {
+        OriginalModelResolveRole::Generate => generate,
+        OriginalModelResolveRole::Stream => stream,
         OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::QuoteStream => {
             return Ok(None);
         }
@@ -1278,7 +1338,7 @@ fn select_usage_cost_records(
     let Some(saved) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)? else {
         return Ok(None);
     };
-    select_saved_gateway_child(&records, saved, role.gateway_route(), cost)
+    select_saved_gateway_child(&records, saved, role.gateway_route(), child)
 }
 
 fn select_saved_gateway_child(
@@ -1917,6 +1977,20 @@ mod tests {
                 "sha256:04a8f126370dafe88c38fe8b465b97e666097e515823d55921d98f0c588d68fc",
                 "sha256:742b951d24cb5133eb32c76ac8189d2b646f5a927d77251ea91246a38ddd72c6",
             ),
+            (
+                &AI_TOOL_INTENTS_GENERATE,
+                GATEWAY_GENERATE_CALLER,
+                "authority-ref:2f4b6034050be06a46540b5106faf247f6cb1343bbe9d73043147e0ba3c02cdd",
+                "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+                "sha256:fa057f5213e0169559a113db4049be08e89e72009532d2b5d331f2fadb86675e",
+            ),
+            (
+                &AI_TOOL_INTENTS_STREAM,
+                GATEWAY_STREAM_CALLER,
+                "authority-ref:7bdfdb9836c8f97d367562cd407397c29839167b2ed948115dd3ed0bf263d238",
+                "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+                "sha256:65a9e1a0fafefe735fdc1494ed454f695a32e60d8c269bcb9ecf4597e64b62be",
+            ),
         ];
         for (route, caller, reference, revision, scope_digest) in rows {
             let artifact = Digest::hash(route.pack.as_bytes());
@@ -2088,6 +2162,8 @@ mod tests {
     const STREAM_RESULT_ROW: usize = 33;
     const USAGE_COST_GENERATE_ROW: usize = 34;
     const USAGE_COST_STREAM_ROW: usize = 35;
+    const TOOL_INTENTS_GENERATE_ROW: usize = 36;
+    const TOOL_INTENTS_STREAM_ROW: usize = 37;
 
     fn select_saved_local_chat(
         records: &Value,
@@ -2112,43 +2188,64 @@ mod tests {
 
     #[test]
     fn usage_cost_requires_only_its_own_exact_ordinary_gateway_chain() {
+        assert_exact_ordinary_gateway_chains(
+            [&AI_USAGE_COST_GENERATE, &AI_USAGE_COST_STREAM],
+            [USAGE_COST_GENERATE_ROW, USAGE_COST_STREAM_ROW],
+            GATEWAY_QUOTE_ROW..=STREAM_RESULT_ROW,
+        );
+    }
+
+    #[test]
+    fn tool_intents_require_only_their_own_exact_ordinary_gateway_chain() {
+        assert_exact_ordinary_gateway_chains(
+            [&AI_TOOL_INTENTS_GENERATE, &AI_TOOL_INTENTS_STREAM],
+            [TOOL_INTENTS_GENERATE_ROW, TOOL_INTENTS_STREAM_ROW],
+            GATEWAY_QUOTE_ROW..=USAGE_COST_STREAM_ROW,
+        );
+    }
+
+    fn assert_exact_ordinary_gateway_chains(
+        [generate, stream]: [&'static Route; 2],
+        [generate_row, stream_row]: [usize; 2],
+        unrelated_rows: std::ops::RangeInclusive<usize>,
+    ) {
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
 
         let select = |records: &Value, role| {
             let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
             let [profile, lock, plan] = parse_records(records, &budget);
-            select_usage_cost_records((&profile, &lock, &plan), &budget, role)
+            select_saved_role_records((&profile, &lock, &plan), &budget, role, [generate, stream])
         };
         let fixture = records();
         assert!(select(&fixture, QuoteGenerate).unwrap().is_none());
         assert!(select(&fixture, QuoteStream).unwrap().is_none());
-        for (role, other, gateway_row, child_row, cost) in [
+        for (role, other, gateway_row, child_row, child_route) in [
             (
                 Generate,
                 Stream,
                 LOCAL_CHAT_GENERATE_ROWS[0],
-                USAGE_COST_GENERATE_ROW,
-                &AI_USAGE_COST_GENERATE,
+                generate_row,
+                generate,
             ),
             (
                 Stream,
                 Generate,
                 LOCAL_CHAT_STREAM_ROWS[0],
-                USAGE_COST_STREAM_ROW,
-                &AI_USAGE_COST_STREAM,
+                stream_row,
+                stream,
             ),
         ] {
-            let [turn, orchestration, gateway, usage] = select(&fixture, role).unwrap().unwrap();
+            let [turn, orchestration, gateway, child] = select(&fixture, role).unwrap().unwrap();
             assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
             assert_eq!(turn.function_id(), SAVED_TURN.function);
             assert_eq!(orchestration.caller_function_id(), turn.function_id());
             assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
             assert_eq!(gateway.caller_function_id(), orchestration.function_id());
             assert_eq!(gateway.function_id(), role.gateway_route().function);
-            assert_eq!(usage.caller_function_id(), gateway.function_id());
-            assert_eq!(usage.function_id(), cost.function);
-            assert_eq!(usage.contract_id(), cost.contract);
-            assert_eq!(usage.operation_id(), cost.operation);
+            assert_eq!(child.caller_function_id(), gateway.function_id());
+            assert_eq!(child.function_id(), child_route.function);
+            assert_eq!(child.contract_id(), child_route.contract);
+            assert_eq!(child.operation_id(), child_route.operation);
 
             for row in [
                 SAVED_TURN_SETTLEMENT_ROW,
@@ -2174,9 +2271,15 @@ mod tests {
                 json!(GATEWAY_QUOTE_CALLER);
             assert!(select(&candidate, role).unwrap().is_none());
             assert!(select(&candidate, other).unwrap().is_some());
+
+            let mut candidate = fixture.clone();
+            candidate["plan"]["bindings"][child_row]["requested_scope_digest"] =
+                json!(Digest::hash(b"other scope").as_str());
+            assert!(matches!(select(&candidate, role), Err(Inconsistent(_))));
+            assert!(select(&candidate, other).unwrap().is_some());
         }
         let mut unrelated = fixture.clone();
-        for row in (GATEWAY_QUOTE_ROW..=STREAM_RESULT_ROW).rev() {
+        for row in unrelated_rows.rev() {
             unrelated["profile"]["requested_edges"]
                 .as_array_mut()
                 .unwrap()

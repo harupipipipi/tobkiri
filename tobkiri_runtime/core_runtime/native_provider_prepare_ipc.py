@@ -43,6 +43,7 @@ _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
 _AI_STREAM_RESULT_ENV = "TOBKIRI_NATIVE_AI_STREAM_RESULT"
 _AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
+_AI_TOOL_INTENTS_ENV = "TOBKIRI_NATIVE_AI_TOOL_INTENTS"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -86,6 +87,7 @@ _AI_ROUTING_LIMIT = 1024 * 1024
 AI_USAGE_COST_INPUT_FIELDS = frozenset({
     "usage", "pricing", "usage_provenance", "pricing_revision",
 })
+AI_TOOL_INTENTS_INPUT_FIELDS = frozenset({"request_id", "intents"})
 # Reserve START identity space even if each ID character needs a JSON escape.
 CONVERSATION_GET_MAX_ID_CHARS = _JSON_LIMIT // 8
 SAVED_RECEIPT_MAX_ID_CHARS = _JSON_LIMIT // 8
@@ -424,6 +426,7 @@ class NativeAiRoutingRequest:
     input: Mapping[str, Any]
     stream_result: bool = False
     usage_cost: bool = False
+    tool_intents: bool = False
 
 
 _NativeBorrow = (
@@ -652,6 +655,18 @@ def capture_launcher_ai_usage_cost_calculator() -> (
     return partial(_invoke_ai_route, launcher, stream_result=False, usage_cost=True)
 
 
+def capture_launcher_ai_tool_intents_normalizer() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for inert tool intents."""
+    if os.environ.get(_AI_TOOL_INTENTS_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=False, tool_intents=True)
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -833,6 +848,8 @@ def _start_payload(
             frame["ai_route"]["stream_result"] = True
         elif borrow.usage_cost:
             frame["ai_route"]["usage_cost"] = True
+        elif borrow.tool_intents:
+            frame["ai_route"]["tool_intents"] = True
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -936,8 +953,16 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
             borrow.usage_cost
             and (borrow.stream_result or borrow.role not in ("generate", "stream"))
         )
+        or (
+            borrow.tool_intents
+            and (
+                borrow.stream_result or borrow.usage_cost
+                or borrow.role not in ("generate", "stream")
+            )
+        )
         or not isinstance(borrow.input, Mapping)
         or (borrow.usage_cost and borrow.input.keys() != AI_USAGE_COST_INPUT_FIELDS)
+        or (borrow.tool_intents and borrow.input.keys() != AI_TOOL_INTENTS_INPUT_FIELDS)
     ):
         raise NativeAiRoutingFailure("invalid")
     try:
@@ -1276,6 +1301,42 @@ def _decode_ai_usage_cost(payload: bytes) -> dict[str, Any]:
             raise _ProtocolError(invalid)
     elif result["cost"] is not None or result["currency"] is not None:
         raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_tool_intents(
+    payload: bytes, borrow: NativeAiRoutingRequest,
+) -> dict[str, Any]:
+    invalid = "native AI tool intent normalization result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    values = borrow.input["intents"]
+    count = len(values) if isinstance(values, list) else 0
+    if (
+        type(result) is not dict
+        or result.keys() != {"intents"}
+        or type(result["intents"]) is not list
+        or len(result["intents"]) != count
+    ):
+        raise _ProtocolError(invalid)
+    request_id = str(borrow.input["request_id"] or "").strip()
+    fields = {
+        "intent_id", "request_id", "operation", "arguments",
+        "authority_granted", "approved", "approval_status", "executes",
+    }
+    for intent in result["intents"]:
+        if (
+            type(intent) is not dict
+            or intent.keys() != fields
+            or type(intent["intent_id"]) is not str
+            or intent["request_id"] != request_id
+            or type(intent["operation"]) is not str
+            or type(intent["arguments"]) is not dict
+            or intent["authority_granted"] is not False
+            or intent["approved"] is not False
+            or intent["approval_status"] != "unrequested"
+            or intent["executes"] is not False
+        ):
+            raise _ProtocolError(invalid)
     return result
 
 
@@ -1834,6 +1895,8 @@ class _Exchange:
                         plan = _decode_ai_stream_result(payload, borrow)
                     elif borrow.usage_cost:
                         plan = _decode_ai_usage_cost(payload)
+                    elif borrow.tool_intents:
+                        plan = _decode_ai_tool_intents(payload, borrow)
                     else:
                         plan = _decode_ai_routing(payload)
                 else:
@@ -1952,8 +2015,13 @@ def _invoke_ai_route(
     *,
     stream_result: bool,
     usage_cost: bool = False,
+    tool_intents: bool = False,
 ) -> dict[str, Any]:
-    if borrow.stream_result is not stream_result or borrow.usage_cost is not usage_cost:
+    if (
+        borrow.stream_result is not stream_result
+        or borrow.usage_cost is not usage_cost
+        or borrow.tool_intents is not tool_intents
+    ):
         raise NativeAiRoutingFailure("invalid")
     return _invoke(launcher, borrow, operation="ai_route")
 

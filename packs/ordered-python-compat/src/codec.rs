@@ -755,7 +755,16 @@ pub fn dumps_pretty_document(value: &PyValue, maximum: usize) -> Result<String, 
 /// Surrogate, nonfinite, byte and node failures are selected only when their
 /// original output position is visited, after provider normalization succeeds.
 pub fn dumps_python_json(value: &PythonJson) -> Result<String, CodecError> {
-    encode(Part::PythonJson(value), MAX_BYTES, Layout::Compact)
+    dumps_python_json_bounded(value, MAX_BYTES)
+}
+
+/// Encode mixed native and opaque Python JSON within a UTF-8 byte ceiling.
+pub fn dumps_python_json_bounded(value: &PythonJson, maximum: usize) -> Result<String, CodecError> {
+    encode(
+        Part::PythonJson(value),
+        maximum.min(MAX_BYTES),
+        Layout::Compact,
+    )
 }
 
 /// Encode fields in their supplied order with Python's default JSON separators.

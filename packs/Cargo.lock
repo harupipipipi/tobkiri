@@ -644,6 +644,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-ai-tool-bridge-core"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "tobkiri-ai-usage-cost-core"
 version = "0.1.0"
 dependencies = [
@@ -696,6 +705,7 @@ version = "0.1.0"
 dependencies = [
  "ordered-python-compat",
  "tobkiri-ai-stream-normalizer-core",
+ "tobkiri-ai-tool-bridge-core",
  "tobkiri-ai-usage-cost-core",
  "wit-bindgen",
 ]
@@ -715,9 +725,9 @@ dependencies = [
 name = "tobkiri-pack-ai-tool-bridge-rust"
 version = "0.1.0"
 dependencies = [
- "ordered-python-compat",
  "serde_json",
  "sha2",
+ "tobkiri-ai-tool-bridge-core",
  "wit-bindgen",
 ]
 

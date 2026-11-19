@@ -24,10 +24,19 @@ interface usage-cost {
   calculate: func(request: string) -> result<string, error>;
 }
 
+interface tool-intents {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project Gateway tool intents as non-authoritative operation descriptors.
+  /// An empty result leaves normalization to the original tool bridge provider.
+  normalize: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
   export routing;
   export stream-result;
   export usage-cost;
+  export tool-intents;
 }

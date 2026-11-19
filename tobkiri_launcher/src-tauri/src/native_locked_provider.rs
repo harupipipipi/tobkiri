@@ -16,7 +16,7 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
-    OriginalUsageCostChoice,
+    OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
     OriginalConversationAppendChoice, OriginalConversationConfirmationChoice,
@@ -188,6 +188,16 @@ impl NativeApplicationSources {
     pub(crate) fn usage_cost_bundle<'pin>(
         &self,
         choice: &'pin OriginalUsageCostChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
+        self.ordinary_ai_bundle([Some(choice.pins())], budget)
+    }
+
+    /// Capture one tool-intent normalization chain using the original signed Bundle document pins.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn tool_intents_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalToolIntentsChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedAiRoutingBundle<'pin, 1>> {
         self.ordinary_ai_bundle([Some(choice.pins())], budget)

@@ -1,4 +1,4 @@
-//! Effect-free routing, Gateway stream result normalization and usage cost calculation.
+//! Effect-free routing and Gateway stream, usage, and tool intent projections.
 
 use std::{
     cmp::Ordering,
@@ -14,6 +14,12 @@ use ordered_python_compat::{
 mod component;
 
 const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+
+/// Project Gateway tool intent payloads as non-authoritative descriptors.
+/// Return `None` for requests that require the original tool bridge provider.
+pub fn normalize_tool_intents(request: &str) -> Option<String> {
+    tobkiri_ai_tool_bridge_core::normalize_gateway_tool_intents(request)
+}
 
 /// Project usage cost from supplied usage and pricing in ordered finite JSON.
 /// Return `None` when the request or result requires the original provider.
@@ -407,3 +413,6 @@ fn object<const N: usize>(fields: [(&str, PyValue); N]) -> PyValue {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tool_intent_tests;

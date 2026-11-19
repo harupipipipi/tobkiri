@@ -4,7 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::local::ai_routing::{routing, stream_result, usage_cost};
+use exports::local::ai_routing::{routing, stream_result, tool_intents, usage_cost};
 use tobkiri::core::types::Error;
 
 struct Pack;
@@ -32,6 +32,12 @@ impl stream_result::Guest for Pack {
 impl usage_cost::Guest for Pack {
     fn calculate(request: String) -> Result<String, Error> {
         Ok(crate::calculate_usage_cost(&request).unwrap_or_default())
+    }
+}
+
+impl tool_intents::Guest for Pack {
+    fn normalize(request: String) -> Result<String, Error> {
+        Ok(crate::normalize_tool_intents(&request).unwrap_or_default())
     }
 }
 

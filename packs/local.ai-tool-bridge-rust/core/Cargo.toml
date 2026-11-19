@@ -1,0 +1,13 @@
+[package]
+name = "tobkiri-ai-tool-bridge-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ordered-python-compat = { path = "../../ordered-python-compat" }
+
+[dev-dependencies]
+serde_json.workspace = true
+sha2 = "=0.10.9"

@@ -1,4 +1,4 @@
-//! The original Gateway's pure routing, stream and cost results through verified Wasm.
+//! The original Gateway's pure DATA results through verified Wasm.
 
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -128,5 +128,45 @@ async fn ai_routing_uses_verified_wasm_port() -> Result<()> {
     );
     let outside_domain = r#"{"usage":{"input_tokens":1e308,"output_tokens":1e308},"pricing":{"input":1,"output":1}}"#;
     ensure!(invoke(&shape, &operation, outside_domain).await?.is_empty());
+
+    let shape = ShapeRef::parse("local.ai-routing.tool-intents@1.0")?;
+    let operation = OpName::parse("normalize")?;
+    let tool_intents = r#"{"request_id":" fixture-tools ","intents":[{"function":{"name":" notes.lookup ","arguments":"{\"text\":\"こんにちは\",\"items\":[2,null]}"},"authority_granted":true,"approved":true,"executes":true},{"id":"fixture-note","name":"notes.describe","arguments":{}}]}"#;
+    let reply = invoke(&shape, &operation, tool_intents).await?;
+    let reply: Value = serde_json::from_str(&reply)?;
+    ensure!(
+        reply
+            == json!({
+                "intents": [
+                    {
+                        "intent_id": "fixture-tools:tool:0",
+                        "request_id": "fixture-tools",
+                        "operation": "notes.lookup",
+                        "arguments": {"text": "こんにちは", "items": [2, null]},
+                        "authority_granted": false,
+                        "approved": false,
+                        "approval_status": "unrequested",
+                        "executes": false,
+                    },
+                    {
+                        "intent_id": "fixture-note",
+                        "request_id": "fixture-tools",
+                        "operation": "notes.describe",
+                        "arguments": {},
+                        "authority_granted": false,
+                        "approved": false,
+                        "approval_status": "unrequested",
+                        "executes": false,
+                    },
+                ]
+            })
+    );
+    let invalid_arguments =
+        r#"{"request_id":"fixture-tools","intents":[{"name":"notes.lookup","arguments":"[]"}]}"#;
+    ensure!(
+        invoke(&shape, &operation, invalid_arguments)
+            .await?
+            .is_empty()
+    );
     Ok(())
 }
