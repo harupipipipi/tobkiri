@@ -17,6 +17,12 @@ mod init_trace;
 mod original_authority;
 #[cfg(unix)]
 mod original_provider_prepare_selection;
+#[cfg(unix)]
+mod original_saved_turn_settlement;
+#[cfg(unix)]
+pub use original_saved_turn_settlement::{
+    LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, settle_legacy_saved_turn,
+};
 mod preparation;
 #[cfg(unix)]
 pub use original_authority::{OriginalActivationInspection, OriginalActiveProfile};

@@ -809,6 +809,33 @@ impl DataRoot {
     ) -> Result<(rusqlite::Connection, crate::vfs::DatabaseGuard), StoreError> {
         self.database_mode(path, true)
     }
+    /// Run a trusted migration operation against an existing database, keeping
+    /// SQLite and its descriptor-bound directory alive in that order.
+    ///
+    /// The database and its sidecars must be regular, single-link files.
+    /// Opening does not create a main database or change its journal mode.
+    /// Guest storage continues to use the admitted DATA API.
+    #[cfg(unix)]
+    pub fn with_existing_database<R>(
+        &self,
+        path: &Path,
+        run: impl FnOnce(&rusqlite::Connection) -> R,
+    ) -> Result<R, StoreError> {
+        if self.file_len(path)?.is_none() {
+            return Err(StoreError::NotFound);
+        }
+        let name = path
+            .file_name()
+            .ok_or_else(|| StoreError::Invalid("database filename is missing".into()))?;
+        for suffix in ["-journal", "-wal", "-shm"] {
+            let mut sidecar = name.to_owned();
+            sidecar.push(suffix);
+            self.file_len(path.with_file_name(sidecar))?;
+        }
+        let database = self.database_mode(path, false)?;
+        Ok(run(&database.0))
+    }
+
     fn database_mode(
         &self,
         path: &Path,

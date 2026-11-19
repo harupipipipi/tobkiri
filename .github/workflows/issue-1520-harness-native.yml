@@ -216,7 +216,9 @@ jobs:
   execute-original-native-bootstrap:
     needs: build-whole-native-harness
     runs-on: macos-15
-    timeout-minutes: 45
+    # Snapshot DMG validation adds the full Launcher test build and installer
+    # package to the same runner that verified the original bootstrap.
+    timeout-minutes: ${{ inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg && 75 || 45 }}
     outputs:
       launcher_receipt_sha256: ${{ steps.launcher_staging.outputs.receipt_sha256 }}
     env:

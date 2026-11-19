@@ -1,0 +1,49 @@
+package local:saved-turn-runtime@1.0.0;
+
+interface legacy-settlement {
+  use tobkiri:core/types@1.2.0.{error};
+
+  enum settlement-error {
+    invalid-request,
+    not-found,
+    invalid-record,
+    invalid-reference,
+    conflict,
+    requires-legacy-codec,
+    capacity,
+    revoked,
+    storage,
+    commit-unconfirmed,
+  }
+
+  record replacement {
+    updated-at: s64,
+    /// Original Turn owner JSON, at most 1 MiB UTF-8.
+    body: string,
+  }
+
+  variant settlement-outcome {
+    replay,
+    update(replacement),
+    rejected(settlement-error),
+  }
+
+  /// Prepare the receipt decision for one indexed row in Core's live Profile.
+  /// The infrastructure owner applies any replacement under its existing transaction.
+  prepare: func(
+    turn-id: string,
+    request-id: string,
+    body: string,
+    input-digest: string,
+    expected-revision: option<u64>,
+    result-reference: string,
+  ) -> result<settlement-outcome, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  import tobkiri:core/flow@1.2.0;
+  import tobkiri:core/clock@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export legacy-settlement;
+}

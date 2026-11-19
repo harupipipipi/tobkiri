@@ -3911,6 +3911,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `_restore` で二度検証してから保存する。一行の観測と遷移を共用する際も、
   `BEGIN IMMEDIATE` 内の再照合、完了済み同一レシートの無書込再送、照合側の期待revision、
   停止要求と停止確定の扱い、guidanceとイベント順序を保持する。会話側の確認は別の書込境界。
+  既存ファイルの更新はRustの移行ブリッジに追加した。ターン固有の判定はPack側に置き、
+  既存の順序付きPython JSON互換処理を共用した。CoreのStoreは既存SQLiteを開く汎用処理を
+  提供する。元の`turns.sqlite3`の一行だけを対象にし、新しいテーブルを作らない。
+  最終権限照合はSQLiteが確定用のロックを得た後に行う。拒否時は変更をロールバックし、
+  確定失敗の結果が不明な場合は元の行を再確認する。行・一時作業・返却値は別々に予算を確保する。
+  macOSの物理SQLite試験9件で既存スキーマ、無変更の再送、独立した停止書込み、リーダーが
+  確定を遅らせた間の権限失効、64MiB予算と、確定前後のSIGKILLからの復旧を確認した。
+  実Python版とはrunning、waiting、未確定の停止とguidanceの3例で保存行をバイト照合した。
+  Packの判定試験4件が通過。実Wasmをビルドし、WITとPackアーカイブを検証した。
+  分離したWasmtimeでは48MiBのゲスト上限の下、更新案、時刻を取得しない再送、revision競合、
+  別Profile拒否を確認した。Profileと時刻をテストで供給し、SQLite書込試験とは別に実施した。
+  通常送信への接続には元のShell→Turnの権限と予約を使う。Conversationレシート読取の子リースと
+  独立した確定用の境界、明示Reconcileの観測revision、結果喪失時の再観測が必要。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは
@@ -5042,7 +5055,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   そのrunではLauncher stagingのIPCが8件すべて通過した後、旧期待件数6で停止した。
   当時の実際の試験数はIPC 8・ワーカー7。現行の実行件数12・12への更新を含む
   [3c134cc6d の検証用DMG CI 44446050664](https://github.com/harupipipipi/tobkiri/actions/runs/44446050664)
-  を実行。
+  はLauncherのテストビルド中に45分のジョブ上限で終了した。DMGを作る場合だけ75分に延長した。
   `launcher-snapshot-staging` の任意のDMG検証を、既存のCI用インストーラーワークフローへ接続。
   同じrunで生成したApp用Wasmを再照合し、先行ステージングで検証したv3レシートのSHA-256を
   Launcherビルドに渡す。検証専用のRust bindingはビルド環境へ渡さない。

@@ -870,6 +870,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-saved-turn-runtime-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde_json",
+ "thiserror",
+ "tobkiri-canon",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-terminal-input"
 version = "0.1.0"
 dependencies = [

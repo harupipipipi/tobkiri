@@ -1547,6 +1547,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
+name = "ordered-python-compat"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tobkiri-canon",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2581,6 +2589,8 @@ dependencies = [
  "tobkiri-canon",
  "tobkiri-core",
  "tobkiri-gate",
+ "tobkiri-pack-saved-turn-runtime-rust",
+ "tobkiri-store",
  "tobkiri-wasm",
  "tokio",
  "wasmtime",
@@ -2621,6 +2631,15 @@ dependencies = [
  "tobkiri-gate",
  "tobkiri-wit",
  "wit-parser",
+]
+
+[[package]]
+name = "tobkiri-pack-saved-turn-runtime-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "thiserror 2.0.21",
+ "tobkiri-canon",
 ]
 
 [[package]]

@@ -21,6 +21,8 @@ rusqlite.workspace = true
 sha2.workspace = true
 tobkiri-canon.workspace = true
 tobkiri-gate.workspace = true
+tobkiri-store.workspace = true
+tobkiri-pack-saved-turn-runtime-rust = { path = "../../packs/local.saved-turn-runtime-rust" }
 tobkiri-wasm.workspace = true
 wasmtime.workspace = true
 zeroize.workspace = true
