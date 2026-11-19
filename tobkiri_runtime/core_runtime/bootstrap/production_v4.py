@@ -5837,6 +5837,11 @@ def capture_production_dispatch(
                                 role, (failover_edge, *parents),
                             )
 
+    gateway_result_keys = {
+        (*edges[0].binding_key[1:], principal)
+        for principal, (_, edges) in gateway_result_routes.items()
+    }
+
     def saved_append_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -7170,6 +7175,7 @@ def capture_production_dispatch(
                     or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
                     or item.key in native_ai_routing_bindings
+                    or item.key in gateway_result_keys
                     or item.key in native_turn_settlement_bindings
                     or item.key in native_conversation_confirmation_bindings
                     or item.key in native_saved_turn_read_bindings
