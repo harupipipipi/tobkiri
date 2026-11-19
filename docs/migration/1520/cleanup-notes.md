@@ -6145,6 +6145,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Setupから会話までを同じインストール済みアプリで通した結果は引き続き必要。
 - [Gemma 3 1Bの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44588924001) は
   `7fa028932` で通過した。Adapterの新しい起動時IPCをつなぐ前のビルドを対象とする。
+- `03c92d9f7` と `9538438c2` は、通常会話とSide ChatのGatewayが行うRegistry読み取りを
+  Rust＋Wasmへつないだ。通常生成、ストリーム、両方のルート確認に、それぞれ元のGatewayと
+  Registryの署名済みGrantを使う。同じターンでも各呼び出しで現在のRegistryを読み、
+  Adapterも従来の個別認可で読む。旧Launcher、旧Pack、互換範囲の入力では元の所有者に戻る。
+  Launcherの型検査とHostのIPC関連59件が通過した。
+- 署名済みProfileを使うHTTP回帰で通常会話とSide Chatそれぞれ8ケースが通過した。
+  各Registry呼び出しのLeaseと容量予約を照合し、互換読み取りと拒否も確認した。
+  RegistryとモデルのIPC応答にはfixtureを使用した。
+- LauncherのIPC・ジョブ・サービスの分離試験90件と、Gatewayの署名選択試験が通過した。
+  macOS上で署名済みSide ChatのHTTP、実ソケット、配布用Wasmを接続した分離試験では、
+  2種類のルート確認、ストリームGateway、AdapterのRegistry応答4件が元の所有者と一致した。
+  各読み取りは0.48〜0.54秒。Rustプロセスがループバック疑似APIに一度だけPOSTし、返信を
+  29.11秒で保存した（30秒期限まで0.77秒）。試験用のプロセス起動と既存Hostを使用した。
+- 旧 `snapshot` を削除する前に、Defaultsの署名済みProfileに残る呼び出し元を移す必要が
+  ある。接続先と資格情報を省く応答はShell、Model Registry更新、Commandのデータソース、
+  モデル検索が使う。テキスト生成、Messages API、音声のGateway・Adapterには生のRegistry
+  が必要。各入口で今と同じ応答と認可を確認するまで、共通のPython所有者を残す。
 
 ## 057 ProfileのPackバージョン保存後に編集を再開
 
