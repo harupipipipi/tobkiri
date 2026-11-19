@@ -56,6 +56,14 @@ interface gateway-result {
   project: func(request: string) -> result<string, error>;
 }
 
+interface gateway-policy {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Project supplied model profile or route requirement policy data.
+  /// An empty result leaves projection and exceptions to the original Gateway.
+  project: func(request: string) -> result<string, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   export tobkiri:core/lifecycle@1.2.0;
@@ -66,4 +74,5 @@ world pack {
   export request-prepare;
   export failover;
   export gateway-result;
+  export gateway-policy;
 }

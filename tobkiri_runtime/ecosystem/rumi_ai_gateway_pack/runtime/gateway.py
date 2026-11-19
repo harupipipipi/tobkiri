@@ -366,7 +366,7 @@ def _invoke(
     _resolve_model_reference(client, request, streaming=streaming)
     request_id = str(request["request_id"])
     deadline = float(request["deadline"])
-    requirement = _requirement(request)
+    requirement = _route_requirement(client, request)
     provider_contract = (
         STREAM_PROVIDER_CONTRACT if streaming else GENERATE_PROVIDER_CONTRACT
     )
@@ -678,6 +678,23 @@ def _finalize_stream_result(
     }, packvm_response)
 
 
+def _route_requirement(
+    client: GlobalContractClient, request: Mapping[str, Any],
+) -> RouteRequirement:
+    project = getattr(client, "host_gateway_policy", None)
+    projected = None if project is None else project({
+        "phase": "route-requirement",
+        "requirements": request.get("requirements"),
+    })
+    if projected is None:
+        return _requirement(request)
+    return RouteRequirement(**{
+        **projected,
+        "modalities": frozenset(projected["modalities"]),
+        "capabilities": frozenset(projected["capabilities"]),
+    })
+
+
 def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
     requirement = request.get("requirements")
     requirement = requirement if isinstance(requirement, Mapping) else {}
@@ -888,20 +905,34 @@ def _resolve_model_reference(
         raise GlobalContractInvocationError(
             "unresolved_profile", "model profile is disabled"
         )
-    request["model_profile_id"] = str(
-        resolved.get("resolved_profile_id") or identifier
-    )
-    request["requirements"] = _merge_requirements(
-        profile.get("requirements"),
-        request.get("requirements"),
-        model_id=str(profile.get("model_id") or ""),
-    )
-    from .model_parameters import bounded_model_parameters
+    project = getattr(client, "host_gateway_policy", None)
+    projected = None if project is None else project({
+        "phase": "model-profile",
+        "identifier": identifier,
+        "resolved_profile_id": resolved.get("resolved_profile_id"),
+        "model_id": profile.get("model_id"),
+        "profile_requirements": profile.get("requirements"),
+        "request_requirements": request.get("requirements"),
+        "profile_parameters": profile.get("parameters"),
+        "request_parameters": request.get("parameters"),
+    })
+    if projected is None:
+        request["model_profile_id"] = str(
+            resolved.get("resolved_profile_id") or identifier
+        )
+        request["requirements"] = _merge_requirements(
+            profile.get("requirements"),
+            request.get("requirements"),
+            model_id=str(profile.get("model_id") or ""),
+        )
+        from .model_parameters import bounded_model_parameters
 
-    parameters = bounded_model_parameters(
-        dict(profile.get("parameters") or {}), dict(request.get("parameters") or {})
-    )
-    request["parameters"] = parameters
+        request["parameters"] = bounded_model_parameters(
+            dict(profile.get("parameters") or {}), dict(request.get("parameters") or {})
+        )
+    else:
+        for field in ("model_profile_id", "requirements", "parameters"):
+            request[field] = projected[field]
     # Legacy model profiles may retain an opaque credential reference, but
     # credentials belong exclusively to the current Provider connection owner.
     # Do not turn that stored metadata into a caller-supplied credential override.

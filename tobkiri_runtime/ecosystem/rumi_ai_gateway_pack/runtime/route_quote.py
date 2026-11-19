@@ -90,6 +90,7 @@ def create_route_quote_operation(
         session=_ReadOnlyDispatch(client.session),
         allowed_contract_ids=client.allowed_contract_ids & _CONTRACTS,
         consumer_pack_id=client.consumer_pack_id,
+        host_gateway_policy=getattr(client, "host_gateway_policy", None),
     )
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:

@@ -58,18 +58,18 @@ pub use original_authority::{
 pub use original_provider_prepare_selection::{
     OriginalAiRoutingSelection, OriginalConversationAppendChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayResultChoice, OriginalModelResolveRole,
-    OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
-    OriginalProviderPrepareSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
-    OriginalRoutePin as OriginalProviderPreparePin, OriginalRouteSelectionError,
-    OriginalRouteSelectionError as OriginalModelResolveSelectionError,
+    OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRequestPrepareChoice, OriginalRoutePin, OriginalRoutePin as OriginalProviderPreparePin,
+    OriginalRouteSelectionError, OriginalRouteSelectionError as OriginalModelResolveSelectionError,
     OriginalRouteSelectionError as OriginalModelSaveSelectionError,
     OriginalRouteSelectionError as OriginalModelSettingsSelectionError,
     OriginalRouteSelectionError as OriginalProviderPrepareSelectionError,
-    OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
-    OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnSettlementChoice,
-    OriginalSavedTurnSettlementRole, OriginalSavedTurnStartChoice, OriginalStreamResultSelection,
-    OriginalToolIntentsChoice, OriginalUsageCostChoice, select_original_saved_turn_settlement,
+    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole,
+    OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
+    OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
+    OriginalSavedTurnStartChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
+    OriginalUsageCostChoice, select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

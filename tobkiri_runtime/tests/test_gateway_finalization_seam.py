@@ -334,6 +334,13 @@ def test_frozen_source_identity_and_exact_branch_extraction() -> None:
         )
 
     class RestoreBranches(ast.NodeTransformer):
+        def visit_Call(self, node: ast.Call) -> ast.Call:
+            if isinstance(node.func, ast.Name) and node.func.id == "_route_requirement":
+                assert ast.unparse(node) == "_route_requirement(client, request)"
+                return ast.Call(func=ast.Name(id="_requirement", ctx=ast.Load()),
+                                args=[node.args[1]], keywords=[])
+            return self.generic_visit(node)
+
         def visit_If(self, node: ast.If) -> ast.If:
             if (
                 isinstance(node.test, ast.Name)

@@ -149,7 +149,7 @@ pub fn decide_failover(request: &str) -> Option<String> {
     .ok()
 }
 
-fn load_request(request: &str) -> Option<PyValue> {
+pub(super) fn load_request(request: &str) -> Option<PyValue> {
     if request.len() > MAX_OUTPUT_BYTES {
         return None;
     }
@@ -158,7 +158,7 @@ fn load_request(request: &str) -> Option<PyValue> {
     Some(payload)
 }
 
-fn int_or(value: Option<&PyValue>, default: &str) -> Option<String> {
+pub(super) fn int_or(value: Option<&PyValue>, default: &str) -> Option<String> {
     match value.filter(|value| pytruthy(value)) {
         Some(value) => pyint(value).ok(),
         None => Some(default.into()),
@@ -187,7 +187,7 @@ fn list_or_empty(value: PyValue) -> Option<Vec<PyValue>> {
     }
 }
 
-fn dict_or_empty(value: PyValue) -> Option<Vec<(String, PyValue)>> {
+pub(super) fn dict_or_empty(value: PyValue) -> Option<Vec<(String, PyValue)>> {
     if !pytruthy(&value) {
         return Some(Vec::new());
     }

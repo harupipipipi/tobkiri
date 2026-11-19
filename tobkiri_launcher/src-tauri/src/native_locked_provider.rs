@@ -15,8 +15,8 @@ use tobkiri_core::{
 };
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
-    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalGatewayResultChoice,
-    OriginalRequestPrepareChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
+    OriginalAiRoutingSelection, OriginalFailoverChoice, OriginalRequestPrepareChoice,
+    OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice, OriginalStreamResultSelection,
     OriginalToolIntentsChoice, OriginalUsageCostChoice,
 };
 use tobkiri_harness_native::{
@@ -226,9 +226,9 @@ impl NativeApplicationSources {
 
     /// Capture the signed Bundle documents through the original Gateway itself.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn gateway_result_bundle<'pin>(
+    pub(crate) fn saved_gateway_bundle<'pin>(
         &self,
-        choice: &'pin OriginalGatewayResultChoice<'_>,
+        choice: &'pin OriginalSavedGatewayChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedAiRoutingBundle<'pin, 1, 3>> {
         let pins = choice.pins();

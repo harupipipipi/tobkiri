@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:062baedf91ae12f4d135491fb066204db2f1f036604e681d55c64a2288646ed2",
+  "source_identity": "sha256:a7e968db43a3f8c8ac175e6f8fd0c6607bc2f9dc827f80ce217f129f27588cbc",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:1958b5aa0d29adf4653ea5f09d12513c25340e9f9a60248f1a2bdf3dc60dde37",
+      "implementation_digest": "sha256:b27f9be09ba37eb881aa2c96dd024a4b0dde90d950317069cbe031599c9516ba",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -144,7 +144,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.route-quote.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "implementation_path": "runtime/route_quote.py",
-      "implementation_digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2",
+      "implementation_digest": "sha256:3613dc481d2b4c37c494179bb52339402b971f7679eb1510acabcc08bcf22fa7",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -366,7 +366,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:1958b5aa0d29adf4653ea5f09d12513c25340e9f9a60248f1a2bdf3dc60dde37",
+      "implementation_digest": "sha256:b27f9be09ba37eb881aa2c96dd024a4b0dde90d950317069cbe031599c9516ba",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -400,7 +400,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:1958b5aa0d29adf4653ea5f09d12513c25340e9f9a60248f1a2bdf3dc60dde37",
+      "implementation_digest": "sha256:b27f9be09ba37eb881aa2c96dd024a4b0dde90d950317069cbe031599c9516ba",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -536,6 +536,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:a0db236e79cd9ece94ccc68c9dd19d9ae0cbd525ceeed55dacb8aa7b0946c14d",
-  "catalog_digest": "sha256:7aa8a848aab198cab7cf06f5bdd73a385d2fbff7ec1343fdb3d597414c1f2aa6"
+  "materialization_catalog_digest": "sha256:81d2cbcc9f843dcb1d9a16a41f7a39830dbe337790a47ffbfc93558418c642c1",
+  "catalog_digest": "sha256:5e3cd8234d384de2af9f00ec463ae077670319e509a7f75dbd50a821a2d7cd43"
 }

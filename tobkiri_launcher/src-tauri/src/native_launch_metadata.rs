@@ -19,9 +19,9 @@ use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalConversationAppendChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayResultChoice, OriginalModelResolveRole,
-    OriginalModelResolveSelection, OriginalModelSaveSelection, OriginalModelSettingsSelection,
-    OriginalProviderPrepareSelection, OriginalRequestPrepareChoice, OriginalRoutePin,
+    OriginalFailoverChoice, OriginalModelResolveRole, OriginalModelResolveSelection,
+    OriginalModelSaveSelection, OriginalModelSettingsSelection, OriginalProviderPrepareSelection,
+    OriginalRequestPrepareChoice, OriginalRoutePin, OriginalSavedGatewayChoice,
     OriginalSavedLocalChatChoice, OriginalSavedLocalChatRole, OriginalSavedOrchestrationChoice,
     OriginalSavedReceiptRole, OriginalSavedReceiptSelection, OriginalSavedTurnStartChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
@@ -170,6 +170,14 @@ impl VerifiedRegistryLaunch {
             .is_some()
     }
 
+    /// Require the exact saved Gateway role and the verified stateless policy port.
+    pub(crate) fn permits_gateway_policy(&self, role: OriginalModelResolveRole) -> bool {
+        self.ai_routing
+            .as_ref()
+            .and_then(|source| source.gateway_policy(role))
+            .is_some()
+    }
+
     /// Require the caller's own legacy read edge against the verified replacement.
     pub(crate) fn permits_conversation_read(&self, caller: ConversationReadCaller) -> bool {
         self.conversation
@@ -276,7 +284,7 @@ struct VerifiedAiRoutingSource {
     request_prepare: [Option<VerifiedAiGatewayRole>; 4],
     failover: Option<VerifiedAiGatewayRole>,
     tool_intents: [Option<VerifiedAiGatewayRole>; 2],
-    gateway_result: [Option<VerifiedAiGatewayRole<3>>; 2],
+    saved_gateway: Option<VerifiedSavedGatewaySource>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -315,10 +323,47 @@ impl VerifiedAiRoutingSource {
     }
 
     fn gateway_result(&self, role: OriginalModelResolveRole) -> Option<&VerifiedAiGatewayRole<3>> {
-        self.gateway_result
+        let gateway = self.saved_gateway.as_ref()?;
+        if gateway.result && AI_GATEWAY_ROLES.contains(&role) {
+            gateway.grant(role)
+        } else {
+            None
+        }
+    }
+
+    fn gateway_policy(&self, role: OriginalModelResolveRole) -> Option<&VerifiedAiGatewayRole<3>> {
+        let gateway = self.saved_gateway.as_ref()?;
+        if gateway.policy {
+            gateway.grant(role)
+        } else {
+            None
+        }
+    }
+}
+
+/// Original Gateway grants and the replacement ports independently verified at Launch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedSavedGatewaySource {
+    grants: [Option<VerifiedAiGatewayRole<3>>; 3],
+    result: bool,
+    policy: bool,
+}
+
+impl VerifiedSavedGatewaySource {
+    fn grant(&self, role: OriginalModelResolveRole) -> Option<&VerifiedAiGatewayRole<3>> {
+        // Both delivery modes of Quote use the same signed Gateway edge.
+        let physical_role = saved_gateway_physical_role(role);
+        self.grants
             .iter()
             .flatten()
-            .find(|grant| grant.role == role)
+            .find(|grant| grant.role == physical_role)
+    }
+}
+
+const fn saved_gateway_physical_role(role: OriginalModelResolveRole) -> OriginalModelResolveRole {
+    match role {
+        OriginalModelResolveRole::QuoteStream => OriginalModelResolveRole::QuoteGenerate,
+        _ => role,
     }
 }
 
@@ -588,7 +633,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
-            gateway_result: [None, None],
+            saved_gateway: None,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -612,7 +657,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
-            gateway_result: [None, None],
+            saved_gateway: None,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -634,7 +679,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
-            gateway_result: [None, None],
+            saved_gateway: None,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -656,7 +701,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: Self::test_ai_gateway_roles(role),
-            gateway_result: [None, None],
+            saved_gateway: None,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -693,8 +738,30 @@ impl VerifiedRegistryLaunch {
         role: OriginalModelResolveRole,
     ) -> Self {
         let mut proof = Self::test_pipeline_proof(identity, catalog_revision);
-        proof.ai_routing.as_mut().unwrap().gateway_result = AI_GATEWAY_ROLES
-            .map(|candidate| (candidate == role).then(|| Self::test_ai_gateway_grant(role)));
+        proof.ai_routing.as_mut().unwrap().saved_gateway = Some(VerifiedSavedGatewaySource {
+            grants: SAVED_GATEWAY_ROLES.map(|candidate| {
+                (AI_GATEWAY_ROLES.contains(&role) && candidate == role)
+                    .then(|| Self::test_ai_gateway_grant(role))
+            }),
+            result: true,
+            policy: false,
+        });
+        proof
+    }
+
+    pub(crate) fn test_gateway_policy_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        role: OriginalModelResolveRole,
+    ) -> Self {
+        let mut proof = Self::test_pipeline_proof(identity, catalog_revision);
+        let role = saved_gateway_physical_role(role);
+        proof.ai_routing.as_mut().unwrap().saved_gateway = Some(VerifiedSavedGatewaySource {
+            grants: SAVED_GATEWAY_ROLES
+                .map(|candidate| (candidate == role).then(|| Self::test_ai_gateway_grant(role))),
+            result: false,
+            policy: true,
+        });
         proof
     }
 
@@ -708,7 +775,7 @@ impl VerifiedRegistryLaunch {
             request_prepare: [None, None, None, None],
             failover: None,
             tool_intents: [None, None],
-            gateway_result: [None, None],
+            saved_gateway: None,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -1700,6 +1767,29 @@ pub(super) fn reacquire_gateway_result_pack(
     Ok(pack)
 }
 
+/// Reacquire the stateless policy port under the original saved Gateway grant.
+pub(super) fn reacquire_gateway_policy_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    role: OriginalModelResolveRole,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .ai_routing
+        .as_ref()
+        .context("admitted launch has no verified AI Routing archive")?;
+    let grant = source.gateway_policy(role).context(
+        "admitted launch has no verified ordinary saved Gateway policy grant for the role",
+    )?;
+    let (pack, declaration) =
+        reacquire_ai_routing_archive(inspection, proof, source, &grant.bundle, checkpoint)?;
+    ensure!(
+        declaration.has_gateway_policy(),
+        "bundled AI Routing Pack has no verified Gateway policy port"
+    );
+    Ok(pack)
+}
+
 fn reacquire_ai_routing_archive(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -2274,6 +2364,7 @@ fn verify_ai_routing_source(
             | TOOL_INTENTS_PACK_VERSION
             | PIPELINE_PACK_VERSION
             | GATEWAY_RESULT_PACK_VERSION
+            | GATEWAY_POLICY_PACK_VERSION
     ) {
         OriginalStreamResultSelection::select(active, budget)?
     } else {
@@ -2286,6 +2377,7 @@ fn verify_ai_routing_source(
             | TOOL_INTENTS_PACK_VERSION
             | PIPELINE_PACK_VERSION
             | GATEWAY_RESULT_PACK_VERSION
+            | GATEWAY_POLICY_PACK_VERSION
     ) {
         for (selection, role) in usage_cost_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
             *selection =
@@ -2295,7 +2387,10 @@ fn verify_ai_routing_source(
     let mut tool_intents_selections = [None, None];
     if matches!(
         receipt.version(),
-        TOOL_INTENTS_PACK_VERSION | PIPELINE_PACK_VERSION | GATEWAY_RESULT_PACK_VERSION
+        TOOL_INTENTS_PACK_VERSION
+            | PIPELINE_PACK_VERSION
+            | GATEWAY_RESULT_PACK_VERSION
+            | GATEWAY_POLICY_PACK_VERSION
     ) {
         for (selection, role) in tool_intents_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
             *selection = OriginalToolIntentsChoice::select(active, budget, role)?
@@ -2306,7 +2401,7 @@ fn verify_ai_routing_source(
     let mut failover_selection = None;
     if matches!(
         receipt.version(),
-        PIPELINE_PACK_VERSION | GATEWAY_RESULT_PACK_VERSION
+        PIPELINE_PACK_VERSION | GATEWAY_RESULT_PACK_VERSION | GATEWAY_POLICY_PACK_VERSION
     ) {
         failover_selection = OriginalFailoverChoice::select(active, budget)?;
         for (selection, role) in request_prepare_selections
@@ -2317,10 +2412,13 @@ fn verify_ai_routing_source(
                 .map(|choice| (role, choice));
         }
     }
-    let mut gateway_result_selections = [None, None];
-    if receipt.version() == GATEWAY_RESULT_PACK_VERSION {
-        for (selection, role) in gateway_result_selections.iter_mut().zip(AI_GATEWAY_ROLES) {
-            *selection = OriginalGatewayResultChoice::select(active, budget, role)?
+    let mut saved_gateway_selections = [None, None, None];
+    for (selection, role) in saved_gateway_selections.iter_mut().zip(SAVED_GATEWAY_ROLES) {
+        if receipt.version() == GATEWAY_POLICY_PACK_VERSION
+            || (receipt.version() == GATEWAY_RESULT_PACK_VERSION
+                && AI_GATEWAY_ROLES.contains(&role))
+        {
+            *selection = OriginalSavedGatewayChoice::select(active, budget, role)?
                 .map(|choice| (role, choice));
         }
     }
@@ -2330,7 +2428,7 @@ fn verify_ai_routing_source(
         && request_prepare_selections.iter().all(Option::is_none)
         && failover_selection.is_none()
         && tool_intents_selections.iter().all(Option::is_none)
-        && gateway_result_selections.iter().all(Option::is_none)
+        && saved_gateway_selections.iter().all(Option::is_none)
     {
         return Ok(None);
     }
@@ -2429,23 +2527,36 @@ fn verify_ai_routing_source(
     } else {
         None
     };
-    let mut gateway_result = [None, None];
-    for (grant, selection) in gateway_result.iter_mut().zip(gateway_result_selections) {
+    let mut saved_gateway_grants = [None, None, None];
+    for (grant, selection) in saved_gateway_grants
+        .iter_mut()
+        .zip(saved_gateway_selections)
+    {
         let Some((role, choice)) = selection else {
             continue;
         };
         ensure!(
-            declaration.has_gateway_result(),
-            "bundled AI Routing Pack has no verified Gateway result port"
+            declaration.has_gateway_policy()
+                || (declaration.has_gateway_result() && AI_GATEWAY_ROLES.contains(&role)),
+            "bundled AI Routing Pack has no verified stateless port for the saved Gateway role"
         );
         let locked =
-            inspection.with_source(|sources| sources.gateway_result_bundle(&choice, budget))??;
+            inspection.with_source(|sources| sources.saved_gateway_bundle(&choice, budget))??;
         *grant = Some(VerifiedAiGatewayRole {
             role,
             bundle: locked.verify(&checkpoint)?,
             pins: choice.pins().each_ref().map(Into::into),
         });
     }
+    let saved_gateway =
+        saved_gateway_grants
+            .iter()
+            .any(Option::is_some)
+            .then_some(VerifiedSavedGatewaySource {
+                grants: saved_gateway_grants,
+                result: declaration.has_gateway_result(),
+                policy: declaration.has_gateway_policy(),
+            });
     Ok(Some(VerifiedAiRoutingSource {
         routing,
         stream_result,
@@ -2453,7 +2564,7 @@ fn verify_ai_routing_source(
         request_prepare,
         failover,
         tool_intents,
-        gateway_result,
+        saved_gateway,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -2474,6 +2585,9 @@ pub(super) const FAILOVER_SHAPE: &str = "local.ai-routing.failover@1.0";
 pub(super) const FAILOVER_OPERATION: &str = "decide";
 pub(super) const GATEWAY_RESULT_SHAPE: &str = "local.ai-routing.gateway-result@1.0";
 pub(super) const GATEWAY_RESULT_OPERATION: &str = "project";
+pub(super) const GATEWAY_POLICY_SHAPE: &str = "local.ai-routing.gateway-policy@1.0";
+pub(super) const GATEWAY_POLICY_OPERATION: &str = "project";
+const GATEWAY_POLICY_PACK_VERSION: &str = "0.7.0";
 const GATEWAY_RESULT_PACK_VERSION: &str = "0.6.0";
 const PIPELINE_PACK_VERSION: &str = "0.5.0";
 const STREAM_RESULT_PACK_VERSION: &str = "0.2.0";
@@ -2482,6 +2596,12 @@ const TOOL_INTENTS_PACK_VERSION: &str = "0.4.0";
 const AI_GATEWAY_ROLES: [OriginalModelResolveRole; 2] = [
     OriginalModelResolveRole::Generate,
     OriginalModelResolveRole::Stream,
+];
+
+const SAVED_GATEWAY_ROLES: [OriginalModelResolveRole; 3] = [
+    OriginalModelResolveRole::Generate,
+    OriginalModelResolveRole::Stream,
+    OriginalModelResolveRole::QuoteGenerate,
 ];
 
 // Published WIT and sidecar digests for earlier AI Routing Pack versions.
@@ -2495,6 +2615,8 @@ const AI_ROUTING_TOOL_INTENTS_WIT: &str =
     "sha256:4f70172ce8537aeb23fcf67b605a3608ec0232a03face1f9df1969c2c62b6289";
 const AI_ROUTING_PIPELINE_WIT: &str =
     "sha256:93e81c7f38f59735f23075a06b4dcf01f8c5997531d149904ca253c40d5908e1";
+const AI_ROUTING_GATEWAY_RESULT_WIT: &str =
+    "sha256:169c11de102d54c130f530f8960ec1a3f770f9451d6b08850964daa07157b1e2";
 const AI_ROUTING_LEGACY_CORE_WIT: &str =
     "sha256:b5604d1611c56eff3078e43b6f0ba30a10f6b2793c8fe9480c240c58a6c390d5";
 const AI_ROUTING_LEGACY_SIDECAR: &str =
@@ -2536,6 +2658,11 @@ const GATEWAY_RESULT_SIDECAR: (&str, &[u8]) = (
     include_bytes!("../../../packs/local.ai-routing-rust/wit/gateway-result.shape.json"),
 );
 
+const GATEWAY_POLICY_SIDECAR: (&str, &[u8]) = (
+    "wit/gateway-policy.shape.json",
+    include_bytes!("../../../packs/local.ai-routing-rust/wit/gateway-policy.shape.json"),
+);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AiRoutingDeclaration {
     Routing,
@@ -2544,6 +2671,7 @@ enum AiRoutingDeclaration {
     RoutingWithToolIntents,
     RoutingWithPipeline,
     RoutingWithGatewayResult,
+    RoutingWithGatewayPolicy,
 }
 
 impl AiRoutingDeclaration {
@@ -2558,6 +2686,7 @@ impl AiRoutingDeclaration {
                 | Self::RoutingWithToolIntents
                 | Self::RoutingWithPipeline
                 | Self::RoutingWithGatewayResult
+                | Self::RoutingWithGatewayPolicy
         )
     }
 
@@ -2567,13 +2696,16 @@ impl AiRoutingDeclaration {
             Self::RoutingWithToolIntents
                 | Self::RoutingWithPipeline
                 | Self::RoutingWithGatewayResult
+                | Self::RoutingWithGatewayPolicy
         )
     }
 
     fn has_request_prepare(self) -> bool {
         matches!(
             self,
-            Self::RoutingWithPipeline | Self::RoutingWithGatewayResult
+            Self::RoutingWithPipeline
+                | Self::RoutingWithGatewayResult
+                | Self::RoutingWithGatewayPolicy
         )
     }
 
@@ -2582,7 +2714,14 @@ impl AiRoutingDeclaration {
     }
 
     fn has_gateway_result(self) -> bool {
-        self == Self::RoutingWithGatewayResult
+        matches!(
+            self,
+            Self::RoutingWithGatewayResult | Self::RoutingWithGatewayPolicy
+        )
+    }
+
+    fn has_gateway_policy(self) -> bool {
+        self == Self::RoutingWithGatewayPolicy
     }
 }
 
@@ -2616,8 +2755,13 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
         ),
         GATEWAY_RESULT_PACK_VERSION => (
             AiRoutingDeclaration::RoutingWithGatewayResult,
-            Digest::hash(AI_ROUTING_WIT.1),
+            Digest::parse(AI_ROUTING_GATEWAY_RESULT_WIT)?,
             7,
+        ),
+        GATEWAY_POLICY_PACK_VERSION => (
+            AiRoutingDeclaration::RoutingWithGatewayPolicy,
+            Digest::hash(AI_ROUTING_WIT.1),
+            8,
         ),
         _ => bail!("bundled AI Routing Pack has an unsupported version"),
     };
@@ -2658,6 +2802,11 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
                 || file_matches(
                     GATEWAY_RESULT_SIDECAR.0,
                     &Digest::hash(GATEWAY_RESULT_SIDECAR.1)
+                ))
+            && (!declaration.has_gateway_policy()
+                || file_matches(
+                    GATEWAY_POLICY_SIDECAR.0,
+                    &Digest::hash(GATEWAY_POLICY_SIDECAR.1)
                 )),
         "bundled AI Routing Pack has unexpected WIT files"
     );
@@ -2679,6 +2828,9 @@ fn require_ai_routing_declaration(pack: &VerifiedPack) -> Result<AiRoutingDeclar
     }
     if declaration.has_gateway_result() {
         require_registry_ports(pack, GATEWAY_RESULT_OPERATION, &[GATEWAY_RESULT_SHAPE])?;
+    }
+    if declaration.has_gateway_policy() {
+        require_registry_ports(pack, GATEWAY_POLICY_OPERATION, &[GATEWAY_POLICY_SHAPE])?;
     }
     Ok(declaration)
 }
@@ -3067,6 +3219,7 @@ mod tests {
             REQUEST_PREPARE_SIDECAR,
             FAILOVER_SIDECAR,
             GATEWAY_RESULT_SIDECAR,
+            GATEWAY_POLICY_SIDECAR,
         ]) {
             fs::write(path.join(relative), wit).unwrap();
         }
@@ -3078,13 +3231,14 @@ mod tests {
             verify_directory(&path, &Default::default()).unwrap()
         };
         let declaration = require_ai_routing_declaration(&verify(draft)).unwrap();
-        assert_eq!(declaration, AiRoutingDeclaration::RoutingWithGatewayResult);
+        assert_eq!(declaration, AiRoutingDeclaration::RoutingWithGatewayPolicy);
         assert!(declaration.has_stream_result());
         assert!(declaration.has_usage_cost());
         assert!(declaration.has_tool_intents());
         assert!(declaration.has_request_prepare());
         assert!(declaration.has_failover());
         assert!(declaration.has_gateway_result());
+        assert!(declaration.has_gateway_policy());
 
         let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
         modified["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -3107,6 +3261,7 @@ mod tests {
             REQUEST_PREPARE_SIDECAR,
             FAILOVER_SIDECAR,
             GATEWAY_RESULT_SIDECAR,
+            GATEWAY_POLICY_SIDECAR,
         ] {
             let sidecar = std::str::from_utf8(sidecar).unwrap();
             fs::write(path.join(relative), format!("{sidecar}\n")).unwrap();
@@ -3154,6 +3309,17 @@ mod tests {
                 fs::write(path.join(AI_ROUTING_WIT.0), &legacy_wit).unwrap();
                 fs::remove_file(path.join(removed_sidecar)).unwrap();
             };
+        remove_port(&mut legacy, "gateway-policy", GATEWAY_POLICY_SIDECAR.0);
+        assert!(
+            require_ai_routing_declaration(&verify(&serde_json::to_vec(&legacy).unwrap())).is_err()
+        );
+        legacy["version"] = serde_json::json!(GATEWAY_RESULT_PACK_VERSION);
+        let result_draft = serde_json::to_vec(&legacy).unwrap();
+        let result = require_ai_routing_declaration(&verify(&result_draft)).unwrap();
+        assert_eq!(result, AiRoutingDeclaration::RoutingWithGatewayResult);
+        assert!(result.has_gateway_result());
+        assert!(!result.has_gateway_policy());
+
         remove_port(&mut legacy, "gateway-result", GATEWAY_RESULT_SIDECAR.0);
         assert!(
             require_ai_routing_declaration(&verify(&serde_json::to_vec(&legacy).unwrap())).is_err()
@@ -3165,6 +3331,7 @@ mod tests {
         assert!(pipeline.has_request_prepare());
         assert!(pipeline.has_failover());
         assert!(!pipeline.has_gateway_result());
+        assert!(!pipeline.has_gateway_policy());
         // A .5 declaration still needs both ports even after the bytes are re-hashed.
         remove_port(&mut legacy, "failover", FAILOVER_SIDECAR.0);
         let missing_failover = serde_json::to_vec(&legacy).unwrap();
@@ -3203,6 +3370,7 @@ mod tests {
             assert!(!verified.has_request_prepare());
             assert!(!verified.has_failover());
             assert!(!verified.has_gateway_result());
+            assert!(!verified.has_gateway_policy());
             assert_eq!(
                 verified.has_tool_intents(),
                 version == TOOL_INTENTS_PACK_VERSION
@@ -3292,6 +3460,46 @@ mod tests {
             }
             assert!(!result.permits_stream_result());
             assert!(!result.permits_failover());
+        }
+    }
+
+    #[test]
+    fn gateway_policy_evidence_is_independent_of_the_result_and_gateway_child_ports() {
+        use OriginalModelResolveRole::{QuoteGenerate, QuoteStream};
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let catalog = "catalog:fixture";
+        for granted in OriginalModelResolveRole::ALL {
+            let policy = VerifiedRegistryLaunch::test_gateway_policy_proof(
+                identity.clone(),
+                catalog,
+                granted,
+            );
+            let result = VerifiedRegistryLaunch::test_gateway_result_proof(
+                identity.clone(),
+                catalog,
+                granted,
+            );
+            for role in OriginalModelResolveRole::ALL {
+                let quote_roles = [QuoteGenerate, QuoteStream];
+                let same_edge = granted == role
+                    || (quote_roles.contains(&granted) && quote_roles.contains(&role));
+                assert_eq!(policy.permits_gateway_policy(role), same_edge);
+                assert!(!result.permits_gateway_policy(role));
+                assert!(!policy.permits_gateway_result(role));
+                assert!(!policy.permits_ai_routing(role));
+                assert!(!policy.permits_model_resolve(role));
+                assert!(!policy.permits_usage_cost(role));
+                assert!(!policy.permits_tool_intents(role));
+                assert!(!policy.permits_request_prepare(role));
+            }
+            assert!(!policy.permits_stream_result());
+            assert!(!policy.permits_failover());
         }
     }
 

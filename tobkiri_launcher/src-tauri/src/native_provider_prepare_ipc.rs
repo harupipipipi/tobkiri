@@ -295,65 +295,7 @@ impl Start<'_> {
                     (1..=AI_GATEWAY_DATA_LIMIT).contains(&routing.input_bytes),
                     "invalid AI Gateway DATA input size"
                 );
-                let operation = match (
-                    routing.stream_result,
-                    routing.usage_cost,
-                    routing.tool_intents,
-                    routing.pipeline,
-                    routing.gateway_result,
-                    routing.role,
-                ) {
-                    (false, false, false, AiPipelineStart::Off, false, role) => {
-                        AiGatewayDataOperation::Route(role)
-                    }
-                    (
-                        true,
-                        false,
-                        false,
-                        AiPipelineStart::Off,
-                        false,
-                        OriginalModelResolveRole::Stream,
-                    ) => AiGatewayDataOperation::StreamResult,
-                    (
-                        false,
-                        true,
-                        false,
-                        AiPipelineStart::Off,
-                        false,
-                        role @ (OriginalModelResolveRole::Generate
-                        | OriginalModelResolveRole::Stream),
-                    ) => AiGatewayDataOperation::UsageCost(role),
-                    (
-                        false,
-                        false,
-                        true,
-                        AiPipelineStart::Off,
-                        false,
-                        role @ (OriginalModelResolveRole::Generate
-                        | OriginalModelResolveRole::Stream),
-                    ) => AiGatewayDataOperation::ToolIntents(role),
-                    (false, false, false, AiPipelineStart::Prepare, false, role) => {
-                        AiGatewayDataOperation::RequestPrepare(role)
-                    }
-                    (
-                        false,
-                        false,
-                        false,
-                        AiPipelineStart::Failover,
-                        false,
-                        OriginalModelResolveRole::Generate,
-                    ) => AiGatewayDataOperation::Failover,
-                    (
-                        false,
-                        false,
-                        false,
-                        AiPipelineStart::Off,
-                        true,
-                        role @ (OriginalModelResolveRole::Generate
-                        | OriginalModelResolveRole::Stream),
-                    ) => AiGatewayDataOperation::GatewayResult(role),
-                    _ => bail!("AI Gateway DATA operation does not match its role"),
-                };
+                let operation = routing.operation()?;
                 return Ok(RequestStart::AiGatewayData {
                     operation,
                     input_bytes: routing.input_bytes,
@@ -463,6 +405,53 @@ struct AiRoutingStart {
     pipeline: AiPipelineStart,
     #[serde(default)]
     gateway_result: bool,
+    #[serde(default)]
+    gateway_policy: bool,
+}
+
+impl AiRoutingStart {
+    fn operation(&self) -> Result<AiGatewayDataOperation> {
+        use AiGatewayDataOperation as Operation;
+        use OriginalModelResolveRole::{Generate, Stream};
+
+        let role = self.role;
+        let mut operations = [
+            self.stream_result.then_some(Operation::StreamResult),
+            self.usage_cost.then_some(Operation::UsageCost(role)),
+            self.tool_intents.then_some(Operation::ToolIntents(role)),
+            self.gateway_result
+                .then_some(Operation::GatewayResult(role)),
+            self.gateway_policy
+                .then_some(Operation::GatewayPolicy(role)),
+            match self.pipeline {
+                AiPipelineStart::Off => None,
+                AiPipelineStart::Prepare => Some(Operation::RequestPrepare(role)),
+                AiPipelineStart::Failover => Some(Operation::Failover),
+            },
+        ]
+        .into_iter()
+        .flatten();
+        let operation = operations.next().unwrap_or(Operation::Route(role));
+        ensure!(
+            operations.next().is_none(),
+            "AI Gateway DATA request must name one operation"
+        );
+        let role_matches = match operation {
+            Operation::StreamResult => role == Stream,
+            Operation::Failover => role == Generate,
+            Operation::ToolIntents(_) | Operation::UsageCost(_) | Operation::GatewayResult(_) => {
+                matches!(role, Generate | Stream)
+            }
+            Operation::Route(_) | Operation::RequestPrepare(_) | Operation::GatewayPolicy(_) => {
+                true
+            }
+        };
+        ensure!(
+            role_matches,
+            "AI Gateway DATA operation does not match its role"
+        );
+        Ok(operation)
+    }
 }
 
 #[derive(Clone, Copy, Default, Deserialize)]
@@ -2873,6 +2862,45 @@ mod tests {
             ("generate", r#","gateway_result":null"#),
         ] {
             let frame = start(role, flags);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|start| start.request_start())
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn ai_gateway_policy_selects_each_original_role_and_excludes_other_operations() {
+        let start = |role, flags| {
+            start_frame(&format!(
+                r#", "ai_route":{{"role":"{role}","input_bytes":12{flags}}}"#
+            ))
+        };
+        for (role, expected) in [
+            ("generate", OriginalModelResolveRole::Generate),
+            ("stream", OriginalModelResolveRole::Stream),
+            ("quote-generate", OriginalModelResolveRole::QuoteGenerate),
+            ("quote-stream", OriginalModelResolveRole::QuoteStream),
+        ] {
+            let frame = start(role, r#","gateway_policy":true"#);
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::AiGatewayData {
+                    operation: AiGatewayDataOperation::GatewayPolicy(role),
+                    input_bytes: 12,
+                }) if role == expected
+            ));
+        }
+        for flags in [
+            r#","gateway_policy":true,"gateway_result":true"#,
+            r#","gateway_policy":true,"tool_intents":true"#,
+            r#","gateway_policy":true,"usage_cost":true"#,
+            r#","gateway_policy":true,"stream_result":true"#,
+            r#","gateway_policy":true,"pipeline":"prepare""#,
+            r#","gateway_policy":true,"pipeline":"failover""#,
+            r#","gateway_policy":1"#,
+            r#","gateway_policy":null"#,
+        ] {
+            let frame = start("stream", flags);
             assert!(parse_start(START, frame.as_bytes())
                 .and_then(|start| start.request_start())
                 .is_err());

@@ -261,5 +261,46 @@ async fn ai_routing_uses_verified_wasm_port() -> Result<()> {
     ensure!(reply["delivery_mode"] == "incremental");
     ensure!(reply["tool_intents"] == stream["tool_intents"]);
     ensure!(reply["events"] == stream["events"]);
+
+    let shape = ShapeRef::parse("local.ai-routing.gateway-policy@1.0")?;
+    let operation = OpName::parse("project")?;
+    let model = json!({
+        "phase":"model-profile", "identifier":"saved-alias",
+        "resolved_profile_id":"saved-model", "model_id":"org/local",
+        "profile_requirements":{"capabilities":["text"],"minimum_context":4096,
+                               "tool_calling":true,"maximum_cost":"0.5"},
+        "request_requirements":{"capabilities":["structured","text"],"minimum_context":2048,
+                               "tool_calling":false,"maximum_cost":2.0},
+        "profile_parameters":{"temperature":0.25,"max_tokens":12,"n":1},
+        "request_parameters":{"max_completion_tokens":100,"max_output_tokens":6,"best_of":1},
+    });
+    let reply: Value =
+        serde_json::from_str(&invoke(&shape, &operation, &model.to_string()).await?)?;
+    ensure!(
+        reply
+            == json!({
+                "model_profile_id":"saved-model",
+                "requirements":{
+                    "capabilities":["structured","text"], "minimum_context":4096,
+                    "tool_calling":true, "maximum_cost":0.5, "thinking":false,
+                    "preferred_model_id":"org/local",
+                },
+                "parameters":{"temperature":0.25,"n":1,"best_of":1,"max_tokens":6},
+            })
+    );
+    let route = json!({"phase":"route-requirement","requirements":reply["requirements"]});
+    let reply: Value =
+        serde_json::from_str(&invoke(&shape, &operation, &route.to_string()).await?)?;
+    ensure!(reply["modalities"] == json!(["text"]));
+    ensure!(reply["minimum_context"] == 4096);
+    ensure!(reply["health_max_age"] == 60.0);
+    ensure!(reply["maximum_cost"] == 0.5);
+    let mut unsupported = model;
+    unsupported["request_parameters"]["n"] = json!(2);
+    ensure!(
+        invoke(&shape, &operation, &unsupported.to_string())
+            .await?
+            .is_empty()
+    );
     Ok(())
 }

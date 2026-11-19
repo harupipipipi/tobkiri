@@ -2515,6 +2515,146 @@ def test_ai_gateway_result_preserves_the_terminal_frame(
             assert error.value.code == terminal
 
 
+def _ai_gateway_policy_fixture(
+    role: ipc.ModelResolveRole, phase: str,
+) -> tuple[ipc.NativeAiRoutingRequest, dict[str, Any]]:
+    if phase == "model-profile":
+        parameters = {"ordered": ["例", 2**100, -0.0, 1.25, True, None]}
+        payload = {
+            "phase": phase, "identifier": "alias", "resolved_profile_id": "saved",
+            "model_id": "模型", "profile_requirements": {"minimum_context": 256},
+            "request_requirements": {}, "profile_parameters": parameters,
+            "request_parameters": {},
+        }
+        result = {
+            "model_profile_id": "saved",
+            "requirements": {"minimum_context": 256, "preferred_model_id": "模型"},
+            "parameters": parameters,
+        }
+    else:
+        payload = {"phase": phase, "requirements": {"maximum_cost": -0.0}}
+        result = {
+            "modalities": ["image", "text"], "capabilities": [], "tool_calling": True,
+            "thinking": False, "minimum_context": 2**80, "request_surface": "chat",
+            "data_residency": None, "maximum_cost": -0.0, "preferred_model_id": "模型",
+            "preferred_provider_id": None, "preferred_provider_instance_id": None,
+            "health_max_age": 60.0,
+        }
+    return replace(
+        _ai_routing_request(_Borrow(), role, payload), gateway_policy=True,
+    ), result
+
+
+@pytest.mark.parametrize("role", ["generate", "stream", "quote-generate", "quote-stream"])
+@pytest.mark.parametrize("phase", ["model-profile", "route-requirement"])
+def test_ai_gateway_policy_preserves_phase_role_and_lossless_json(
+    monkeypatch: pytest.MonkeyPatch, role: ipc.ModelResolveRole, phase: str,
+) -> None:
+    borrow, result = _ai_gateway_policy_fixture(role, phase)
+
+    def encode(value: Mapping[str, Any]) -> bytes:
+        return json.dumps(
+            dict(value), ensure_ascii=False, separators=(",", ":"),
+        ).encode("utf-8")
+
+    expected_input = encode(borrow.input)
+
+    def serve(peer: socket.socket) -> None:
+        tag, body = _receive(peer)
+        assert tag == ipc._START
+        assert json.loads(body)["ai_route"] == {
+            "role": role, "input_bytes": len(expected_input), "gateway_policy": True,
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, expected_input)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        _send(peer, ipc._PLAN, encode(result))
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._AI_ROUTING_ENV, "1")
+    monkeypatch.setenv(ipc._AI_GATEWAY_RESULT_ENV, "1")
+    monkeypatch.delenv(ipc._AI_GATEWAY_POLICY_ENV, raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_ai_gateway_policy_projector() is None
+        for capture in (
+            ipc.capture_launcher_ai_routing_evaluator,
+            ipc.capture_launcher_ai_gateway_result_projector,
+        ):
+            unrelated_probe = capture()
+            assert unrelated_probe is not None
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                unrelated_probe(borrow)
+        monkeypatch.setenv(ipc._AI_GATEWAY_POLICY_ENV, "1")
+        project = ipc.capture_launcher_ai_gateway_policy_projector()
+        assert project is not None
+        for invalid in (
+            replace(borrow, role="route-quote"),
+            replace(borrow, stream_result=True),
+            replace(borrow, usage_cost=True),
+            replace(borrow, tool_intents=True),
+            replace(borrow, pipeline="prepare"),
+            replace(borrow, gateway_result=True),
+            replace(borrow, input={**borrow.input, "role": role}),
+            replace(borrow, input={**borrow.input, "phase": "custom"}),
+        ):
+            with pytest.raises(ipc.NativeAiRoutingFailure, match="invalid"):
+                project(invalid)
+        field = "profile_parameters" if phase == "model-profile" else "requirements"
+        for unsupported in (
+            {1: "json key"}, ("tuple",), float("nan"), "\ud800",
+            "x" * ipc._AI_ROUTING_LIMIT,
+        ):
+            with pytest.raises(ipc.NativeProviderRegistryRequiresLegacyRead):
+                project(replace(borrow, input={**borrow.input, field: unsupported}))
+        projected = project(borrow)
+        assert encode(projected) == encode(result)
+        number = (
+            projected["parameters"]["ordered"][2]
+            if phase == "model-profile"
+            else projected["maximum_cost"]
+        )
+        assert number.hex() == "-0x0.0p+0"
+
+
+@pytest.mark.parametrize(("terminal", "failure_type"), [
+    ("inapplicable", ipc.NativeProviderPrepareUnavailable),
+    ("legacy-read-required", ipc.NativeProviderRegistryRequiresLegacyRead),
+    ("invalid", ipc.NativeAiRoutingFailure),
+    ("denied", ipc.NativeAiRoutingFailure),
+    ("unavailable", ipc.NativeAiRoutingFailure),
+    ("malformed", ipc._ProtocolError),
+])
+def test_ai_gateway_policy_preserves_terminal_or_declines(
+    monkeypatch: pytest.MonkeyPatch, terminal: str, failure_type: type[Exception],
+) -> None:
+    borrow, result = _ai_gateway_policy_fixture("quote-stream", "route-requirement")
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == ipc._START
+        if terminal == "inapplicable":
+            _send(peer, ipc._INAPPLICABLE)
+        else:
+            _send(peer, ipc._BODY_READY)
+            assert _receive(peer)[0] == ipc._ORCHESTRATION_INPUT
+            _send(peer, ipc._CHECK)
+            assert _receive(peer) == (ipc._LIVE, b"")
+            if terminal == "malformed":
+                _send(peer, ipc._PLAN, json.dumps({**result, "thinking": 1}).encode())
+            else:
+                _send(peer, ipc._FAILURE, terminal.encode())
+        assert peer.recv(1) == b""
+
+    monkeypatch.setenv(ipc._AI_GATEWAY_POLICY_ENV, "1")
+    with _served(monkeypatch, serve):
+        project = ipc.capture_launcher_ai_gateway_policy_projector()
+        assert project is not None
+        with pytest.raises(failure_type) as error:
+            project(borrow)
+        if isinstance(error.value, ipc.NativeAiRoutingFailure):
+            assert error.value.code == terminal
+
+
 def test_ai_stream_result_uses_its_own_opt_in_and_preserves_signed_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -241,6 +241,9 @@ class GlobalContractClient:
     host_gateway_result: (
         Callable[[Mapping[str, Any]], Mapping[str, Any] | None] | None
     ) = None
+    host_gateway_policy: (
+        Callable[[Mapping[str, Any]], Mapping[str, Any] | None] | None
+    ) = None
 
     def providers(self, contract_id: str) -> tuple[dict[str, Any], ...]:
         """List selected metadata only for a manifest-declared requirement."""

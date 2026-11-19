@@ -46,6 +46,7 @@ _AI_USAGE_COST_ENV = "TOBKIRI_NATIVE_AI_USAGE_COST"
 _AI_TOOL_INTENTS_ENV = "TOBKIRI_NATIVE_AI_TOOL_INTENTS"
 _AI_PIPELINE_ENV = "TOBKIRI_NATIVE_AI_PIPELINE"
 _AI_GATEWAY_RESULT_ENV = "TOBKIRI_NATIVE_AI_GATEWAY_RESULT"
+_AI_GATEWAY_POLICY_ENV = "TOBKIRI_NATIVE_AI_GATEWAY_POLICY"
 _OWNER = re.compile(r"([0-9]{1,10}):([0-9]{1,20}):([0-9]{1,6})")
 _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
@@ -94,6 +95,25 @@ _AI_GATEWAY_RESULT_INPUT_FIELDS = frozenset({
     "role", "value", "request_id", "candidate",
 })
 _AI_GATEWAY_STREAM_RESULT_FIELDS = frozenset({"tool_intents", "events", "attempts"})
+_AI_GATEWAY_POLICY_INPUT_FIELDS = {
+    "model-profile": frozenset({
+        "phase", "identifier", "resolved_profile_id", "model_id",
+        "profile_requirements", "request_requirements",
+        "profile_parameters", "request_parameters",
+    }),
+    "route-requirement": frozenset({"phase", "requirements"}),
+}
+_AI_GATEWAY_REQUIREMENT_LIST_FIELDS = frozenset({"modalities", "capabilities"})
+_AI_GATEWAY_REQUIREMENT_BOOL_FIELDS = frozenset({"tool_calling", "thinking"})
+_AI_GATEWAY_REQUIREMENT_OPTIONAL_STR_FIELDS = frozenset({
+    "data_residency", "preferred_model_id", "preferred_provider_id",
+    "preferred_provider_instance_id",
+})
+_AI_GATEWAY_REQUIREMENT_RESULT_FIELDS = (
+    _AI_GATEWAY_REQUIREMENT_LIST_FIELDS | _AI_GATEWAY_REQUIREMENT_BOOL_FIELDS
+    | _AI_GATEWAY_REQUIREMENT_OPTIONAL_STR_FIELDS
+    | {"minimum_context", "request_surface", "maximum_cost", "health_max_age"}
+)
 _AI_GATEWAY_CANDIDATE_FIELDS = frozenset({
     "model_id", "provider_instance_id", "catalog_provider_instance_id",
     "catalog_revision",
@@ -455,6 +475,7 @@ class NativeAiRoutingRequest:
     tool_intents: bool = False
     pipeline: AiPipelineStep | None = None
     gateway_result: bool = False
+    gateway_policy: bool = False
 
 
 _NativeBorrow = (
@@ -719,6 +740,18 @@ def capture_launcher_ai_gateway_result_projector() -> (
     return partial(_invoke_ai_route, launcher, stream_result=False, gateway_result=True)
 
 
+def capture_launcher_ai_gateway_policy_projector() -> (
+    Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
+):
+    """Capture the Launcher's opted-in endpoint for Gateway model and route policy."""
+    if os.environ.get(_AI_GATEWAY_POLICY_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke_ai_route, launcher, stream_result=False, gateway_policy=True)
+
+
 def capture_launcher_saved_local_chat_executor() -> NativeSavedLocalChatExecutor | None:
     """Capture the managed Launcher's opted-in endpoint for local chat."""
     version = os.environ.get(_SAVED_LOCAL_CHAT_ENV)
@@ -906,6 +939,8 @@ def _start_payload(
             frame["ai_route"]["pipeline"] = borrow.pipeline
         elif borrow.gateway_result:
             frame["ai_route"]["gateway_result"] = True
+        elif borrow.gateway_policy:
+            frame["ai_route"]["gateway_policy"] = True
     elif isinstance(borrow, NativeSavedLocalChatRequest):
         frame["saved_local_chat"] = _saved_local_chat_start(borrow)
         if project_local_chat_response:
@@ -1047,6 +1082,13 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
                 or borrow.pipeline is not None
             )
         )
+        or (
+            borrow.gateway_policy
+            and (
+                borrow.stream_result or borrow.usage_cost or borrow.tool_intents
+                or borrow.pipeline is not None or borrow.gateway_result
+            )
+        )
         or not isinstance(borrow.input, Mapping)
         or (borrow.usage_cost and borrow.input.keys() != AI_USAGE_COST_INPUT_FIELDS)
         or (borrow.tool_intents and borrow.input.keys() != AI_TOOL_INTENTS_INPUT_FIELDS)
@@ -1060,6 +1102,13 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
         )
     ):
         raise NativeAiRoutingFailure("invalid")
+    if borrow.gateway_policy:
+        phase = borrow.input.get("phase")
+        if (
+            type(phase) is not str
+            or borrow.input.keys() != _AI_GATEWAY_POLICY_INPUT_FIELDS.get(phase)
+        ):
+            raise NativeAiRoutingFailure("invalid")
     if borrow.gateway_result:
         fields = _AI_GATEWAY_RESULT_INPUT_FIELDS
         if borrow.role == "stream":
@@ -1085,7 +1134,7 @@ def _ai_routing_input(borrow: NativeAiRoutingRequest) -> bytes:
             )
     try:
         step_input = dict(borrow.input)
-        if borrow.pipeline is not None or borrow.gateway_result:
+        if borrow.pipeline is not None or borrow.gateway_result or borrow.gateway_policy:
             _check_lossless_json(step_input)
         payload = json.dumps(
             step_input, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
@@ -1450,6 +1499,53 @@ def _decode_ai_gateway_result(
         or type(result["usage_provenance"]) is not str
         or type(result["finish_reason"]) is not str
         or ("task_state" in result and type(result["task_state"]) is not str)
+    ):
+        raise _ProtocolError(invalid)
+    return result
+
+
+def _decode_ai_gateway_policy(
+    payload: bytes, borrow: NativeAiRoutingRequest,
+) -> dict[str, Any]:
+    invalid = "native AI Gateway policy result is invalid"
+    result = _decode_owner_result(payload, invalid)
+    if type(result) is not dict:
+        raise _ProtocolError(invalid)
+    if borrow.input["phase"] == "model-profile":
+        if (
+            result.keys() != {"model_profile_id", "requirements", "parameters"}
+            or type(result["model_profile_id"]) is not str
+            or type(result["requirements"]) is not dict
+            or type(result["parameters"]) is not dict
+        ):
+            raise _ProtocolError(invalid)
+        return result
+
+    if (
+        result.keys() != _AI_GATEWAY_REQUIREMENT_RESULT_FIELDS
+        or any(
+            type(result[field]) is not list
+            or any(type(item) is not str for item in result[field])
+            or result[field] != sorted(set(result[field]))
+            for field in _AI_GATEWAY_REQUIREMENT_LIST_FIELDS
+        )
+        or any(
+            type(result[field]) is not bool
+            for field in _AI_GATEWAY_REQUIREMENT_BOOL_FIELDS
+        )
+        or any(
+            result[field] is not None and type(result[field]) is not str
+            for field in _AI_GATEWAY_REQUIREMENT_OPTIONAL_STR_FIELDS
+        )
+        or type(result["minimum_context"]) is not int
+        or result["minimum_context"] < 0
+        or type(result["request_surface"]) is not str
+        or (
+            result["maximum_cost"] is not None
+            and type(result["maximum_cost"]) is not float
+        )
+        or type(result["health_max_age"]) is not float
+        or result["health_max_age"] < 0
     ):
         raise _ProtocolError(invalid)
     return result
@@ -2124,6 +2220,8 @@ class _Exchange:
                         plan = _decode_ai_pipeline_failover(payload)
                     elif borrow.gateway_result:
                         plan = _decode_ai_gateway_result(payload, borrow)
+                    elif borrow.gateway_policy:
+                        plan = _decode_ai_gateway_policy(payload, borrow)
                     else:
                         plan = _decode_ai_routing(payload)
                 else:
@@ -2245,6 +2343,7 @@ def _invoke_ai_route(
     tool_intents: bool = False,
     pipeline: bool = False,
     gateway_result: bool = False,
+    gateway_policy: bool = False,
 ) -> dict[str, Any]:
     if (
         borrow.stream_result is not stream_result
@@ -2252,6 +2351,7 @@ def _invoke_ai_route(
         or borrow.tool_intents is not tool_intents
         or (borrow.pipeline is not None) is not pipeline
         or borrow.gateway_result is not gateway_result
+        or borrow.gateway_policy is not gateway_policy
     ):
         raise NativeAiRoutingFailure("invalid")
     return _invoke(launcher, borrow, operation="ai_route")

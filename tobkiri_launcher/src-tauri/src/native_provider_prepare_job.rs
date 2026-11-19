@@ -41,15 +41,16 @@ use super::{
     launch_metadata::{
         reacquire_ai_routing_pack, reacquire_conversation_append_pack,
         reacquire_conversation_confirmation_pack, reacquire_conversation_read_pack,
-        reacquire_failover_pack, reacquire_gateway_result_pack, reacquire_model_resolve_pack,
-        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
-        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
-        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack, reacquire_usage_cost_pack,
-        saved_local_chat_dispatch_bundle, ConversationReadCaller, SettlementCaller,
-        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
-        FAILOVER_SHAPE, GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
+        reacquire_failover_pack, reacquire_gateway_policy_pack, reacquire_gateway_result_pack,
+        reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
+        reacquire_provider_prepare_pack, reacquire_request_prepare_pack,
+        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
+        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack,
+        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ConversationReadCaller,
+        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
+        FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
+        GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
         PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
@@ -84,7 +85,7 @@ pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
 /// Maximum original Gateway DATA input and result JSON.
 pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
 
-/// Fixed effect-free replacements for the original signed Gateway children.
+/// Fixed effect-free work for the original signed Gateway and its children.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AiGatewayDataOperation {
     Route(OriginalModelResolveRole),
@@ -94,6 +95,7 @@ pub(crate) enum AiGatewayDataOperation {
     RequestPrepare(OriginalModelResolveRole),
     Failover,
     GatewayResult(OriginalModelResolveRole),
+    GatewayPolicy(OriginalModelResolveRole),
 }
 
 impl AiGatewayDataOperation {
@@ -106,6 +108,7 @@ impl AiGatewayDataOperation {
             Self::RequestPrepare(role) => proof.permits_request_prepare(role),
             Self::Failover => proof.permits_failover(),
             Self::GatewayResult(role) => proof.permits_gateway_result(role),
+            Self::GatewayPolicy(role) => proof.permits_gateway_policy(role),
         }
     }
 }
@@ -1198,6 +1201,11 @@ async fn run(
                             reacquire_gateway_result_pack(&inspection, source, role, checkpoint)?,
                             GATEWAY_RESULT_SHAPE,
                             GATEWAY_RESULT_OPERATION,
+                        ),
+                        AiGatewayDataOperation::GatewayPolicy(role) => (
+                            reacquire_gateway_policy_pack(&inspection, source, role, checkpoint)?,
+                            GATEWAY_POLICY_SHAPE,
+                            GATEWAY_POLICY_OPERATION,
                         ),
                     };
                     revalidate()?;

@@ -34,6 +34,7 @@ pub(crate) const AI_USAGE_COST_ENV: &str = "TOBKIRI_NATIVE_AI_USAGE_COST";
 pub(crate) const AI_TOOL_INTENTS_ENV: &str = "TOBKIRI_NATIVE_AI_TOOL_INTENTS";
 pub(crate) const AI_PIPELINE_ENV: &str = "TOBKIRI_NATIVE_AI_PIPELINE";
 pub(crate) const AI_GATEWAY_RESULT_ENV: &str = "TOBKIRI_NATIVE_AI_GATEWAY_RESULT";
+pub(crate) const AI_GATEWAY_POLICY_ENV: &str = "TOBKIRI_NATIVE_AI_GATEWAY_POLICY";
 
 // The original production Broker can execute at most sixteen requests.
 // Keep their socket handlers bounded while the native Jobs own actual admission.

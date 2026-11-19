@@ -8338,6 +8338,233 @@ def test_signed_saved_ai_pipeline_uses_original_gateway_lineage(
         assert len(requests) == calls_after_turn and len(original_calls) == len(contracts)
 
 
+def test_signed_saved_gateway_policy_uses_current_model_and_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Borrow each Gateway edge and keep model resolution and execution signed."""
+    import io
+
+    from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
+    from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
+    from ecosystem.rumi_ai_gateway_pack.runtime import gateway
+    from ecosystem.rumi_ai_gateway_pack.runtime.model_parameters import (
+        bounded_model_parameters,
+    )
+    from ecosystem.rumi_ai_gateway_pack.runtime.route_quote import FUNCTION_ID as QUOTE
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    turn_operation = "rumi_turn_runtime_pack.turn-saved"
+    gateway_operations = {
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.stream", QUOTE,
+    }
+    ancestry: list[RequestEnvelope] = []
+    borrows: list[ipc.NativeAiRoutingRequest] = []
+    requirements_by_invocation: dict[str, Mapping[str, object]] = {}
+    router_dispatches: list[RequestEnvelope] = []
+    model_dispatches: list[RequestEnvelope] = []
+    provider_calls: list[dict[str, object]] = []
+    delivery_role = "generate"
+    scenario = "native"
+    expected_model = ""
+    max_tokens = 0
+    health_max_age = 0
+
+    def project(request: ipc.NativeAiRoutingRequest) -> Mapping[str, object]:
+        request.assert_current()
+        borrows.append(request)
+        turn, saved, *gateway_invocations = ancestry
+        envelope = gateway_invocations[-1]
+        assert (turn.operation_id, saved.operation_id) == (turn_operation, "saved_complete")
+        assert request.context is envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert len({turn.lease.token, saved.lease.token, envelope.lease.token}) == 3
+        assert envelope.resource_reservation_id and all(
+            envelope.resource_reservation_id != parent.resource_reservation_id
+            for parent in (turn, saved)
+        )
+        assert turn.target_principal == saved.context.caller_principal
+        assert saved.target_principal == envelope.context.caller_principal
+        assert envelope.deadline_monotonic <= saved.deadline_monotonic <= turn.deadline_monotonic
+        expected_role = (
+            "quote-stream" if envelope.payload.get("delivery_mode") == "incremental"
+            else "quote-generate"
+        ) if envelope.operation_id == QUOTE else delivery_role
+        assert request.role == expected_role
+        assert request.gateway_policy
+        assert not (
+            request.gateway_result or request.stream_result
+            or request.usage_cost or request.tool_intents or request.pipeline
+        )
+        assert "role" not in request.input and not provider_calls
+        value = request.input
+        if value["phase"] == "model-profile":
+            assert model_dispatches[-1].payload["identifier"] == "daily-alias"
+            assert value["identifier"] == "daily-alias"
+            assert value["resolved_profile_id"] == "daily"
+            assert value["model_id"] == expected_model
+            assert value["profile_parameters"]["max_tokens"] == max_tokens
+            assert value["profile_requirements"]["health_max_age"] == health_max_age
+            result = {
+                "model_profile_id": str(value["resolved_profile_id"] or value["identifier"]),
+                "requirements": gateway._merge_requirements(
+                    value["profile_requirements"], value["request_requirements"],
+                    model_id=str(value["model_id"] or ""),
+                ),
+                "parameters": bounded_model_parameters(
+                    value["profile_parameters"] or {}, value["request_parameters"] or {},
+                ),
+            }
+        else:
+            assert value["phase"] == "route-requirement"
+            assert value["requirements"]["preferred_model_id"] == expected_model
+            result = gateway._requirement_payload(gateway._requirement(value))
+            requirements_by_invocation[request.context.request_id] = result
+        if scenario == "old-peer":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if scenario == "guest-decline":
+            raise ipc.NativeProviderRegistryRequiresLegacyRead()
+        if not request.role.startswith("quote-"):
+            if scenario == "stale":
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = "0" * 32
+                raise ipc.NativeProviderRegistryRequiresLegacyRead()
+            if scenario == "denied":
+                raise ipc.NativeAiRoutingFailure("denied")
+        return result
+
+    def open_provider(request, *, timeout, **lifetime):
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        body = json.loads(request.data)
+        provider_calls.append(body)
+        assert body["model"] == expected_model
+        assert body["max_tokens"] == max_tokens
+        streaming = body.get("stream") is True
+        assert streaming is (delivery_role == "stream")
+        message_key = "delta" if streaming else "message"
+        reply = {
+            "choices": [{message_key: {"content": "Reply"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+        }
+        if streaming:
+            return io.BytesIO(f"data: {json.dumps(reply)}\n\ndata: [DONE]\n\n".encode())
+        return io.BytesIO(json.dumps(reply).encode())
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_ai_gateway_policy_projector", lambda: project,
+    )
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    stream_ready = SavedBridgeCallbacks._stream_ready
+    monkeypatch.setattr(
+        SavedBridgeCallbacks, "_stream_ready",
+        lambda *args, **kwargs: delivery_role == "stream" and stream_ready(*args, **kwargs),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as fixture:
+        server, session, _authority = fixture
+        _exercise_provider_configuration_http(fixture, tmp_path, monkeypatch)
+        root = tmp_path / "user-data"
+        store = ConversationStore("defaults", user_data_root=root)
+        models = ModelRegistry("defaults", user_data_root=root)
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            if envelope.operation_id in {turn_operation, "saved_complete", *gateway_operations}:
+                ancestry.append(envelope)
+            if envelope.contract_id == gateway.ROUTING_CONTRACT:
+                router_dispatches.append(envelope)
+                expected = requirements_by_invocation[ancestry[-1].context.request_id]
+                assert envelope.context.caller_principal == ancestry[-1].target_principal
+                assert envelope.payload["requirements"] == expected
+                assert expected["health_max_age"] == float(health_max_age)
+                assert expected["minimum_context"] == 0
+                assert expected["preferred_model_id"] == expected_model
+                assert expected["preferred_provider_instance_id"]
+            if envelope.contract_id == gateway.MODEL_PROFILE_CONTRACT:
+                model_dispatches.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        cookie, csrf, origin = _authenticate(server)
+        instance = server._native_provider_prepare_instance
+        revision = 0
+        for index, (delivery_role, scenario) in enumerate((
+            ("generate", "native"), ("stream", "native"),
+            ("generate", "old-peer"), ("stream", "guest-decline"),
+            ("generate", "stale"), ("stream", "denied"),
+        )):
+            ancestry.clear()
+            borrows.clear()
+            requirements_by_invocation.clear()
+            router_dispatches.clear()
+            model_dispatches.clear()
+            provider_calls.clear()
+            expected_model = f"organization/current-model-{index}"
+            max_tokens = 16 + index
+            health_max_age = 75 + index
+            saved = models.save({
+                "model_profile_id": "daily", "model_id": expected_model,
+                "parameters": {"max_tokens": max_tokens},
+                "requirements": {"health_max_age": health_max_age},
+                "metadata": {"provider_connection_id": "provider.fixture"},
+            }, expected_revision=revision)
+            revision = saved["store_revision"]
+            if index == 0:
+                alias = models.set_alias("daily-alias", "daily", expected_revision=revision)
+                revision = alias["store_revision"]
+            turn_id = f"{delivery_role}-{scenario}"
+            store.create(
+                {"id": turn_id, "model_reference": "daily-alias"},
+                expected_revision=store.snapshot()["revision"],
+            )
+            try:
+                status, response, _ = _request(
+                    server, "POST", _contract("POST", "/api/chat/turn"),
+                    body={"request": {
+                        "turn_id": turn_id, "conversation_id": turn_id,
+                        "conversation_revision": 1, "content": "Hello",
+                    }},
+                    headers={
+                        "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                    }, timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+                )
+            finally:
+                with server._lifecycle_lock:
+                    server._native_provider_prepare_instance = instance
+            roles = ["quote-generate"]
+            if delivery_role == "stream":
+                roles.append("quote-stream")
+            roles.append(delivery_role)
+            phases = [
+                (role, phase) for role in roles
+                for phase in ("model-profile", "route-requirement")
+            ]
+            blocked = scenario in {"stale", "denied"}
+            assert [(item.role, item.input["phase"]) for item in borrows] == (
+                phases[:-1] if blocked else phases
+            ), response
+            assert len(model_dispatches) == len(roles), response
+            assert len(router_dispatches) == len(roles) - int(blocked), response
+            assert len(provider_calls) == int(not blocked), response
+            completed = status == 200 and response["data"]["status"] == "completed"
+            assert completed is (not blocked), response
+            for borrow in borrows:
+                with pytest.raises(PermissionError):
+                    borrow.assert_current()
+            if completed:
+                assert [message["content"] for message in store.get(turn_id)["messages"]] == [
+                    "Hello", "Reply",
+                ]
+
+
 def test_signed_saved_gateway_response_borrows_own_role(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

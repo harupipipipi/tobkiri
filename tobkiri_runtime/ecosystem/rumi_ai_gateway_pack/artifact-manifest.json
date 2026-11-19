@@ -6,7 +6,7 @@
     },
     {
       "path": "runtime/gateway.py",
-      "sha256": "sha256:1958b5aa0d29adf4653ea5f09d12513c25340e9f9a60248f1a2bdf3dc60dde37"
+      "sha256": "sha256:b27f9be09ba37eb881aa2c96dd024a4b0dde90d950317069cbe031599c9516ba"
     },
     {
       "path": "runtime/model_parameters.py",
@@ -14,7 +14,7 @@
     },
     {
       "path": "runtime/route_quote.py",
-      "sha256": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2"
+      "sha256": "sha256:3613dc481d2b4c37c494179bb52339402b971f7679eb1510acabcc08bcf22fa7"
     },
     {
       "path": "runtime/text_generate.py",

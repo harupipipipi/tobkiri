@@ -996,13 +996,13 @@ impl<'a> OriginalStreamResultSelection<'a> {
 }
 
 /// The signed ordinary saved chain ending at the original Gateway itself.
-pub struct OriginalGatewayResultChoice<'a> {
+pub struct OriginalSavedGatewayChoice<'a> {
     _active: &'a OriginalActiveProfile,
     pins: [OriginalRoutePin; 3],
 }
 
-impl<'a> OriginalGatewayResultChoice<'a> {
-    /// Select the original Generate or Stream edge and both of its signed parents.
+impl<'a> OriginalSavedGatewayChoice<'a> {
+    /// Select the original Gateway role and both of its signed parents.
     /// Verify all three pins against the packaged catalog before use.
     pub fn select(
         active: &'a OriginalActiveProfile,
@@ -1010,7 +1010,7 @@ impl<'a> OriginalGatewayResultChoice<'a> {
         role: OriginalModelResolveRole,
     ) -> Result<Option<Self>> {
         Ok(
-            select_gateway_result_records(active.records(), budget, role)?.map(|pins| Self {
+            select_saved_gateway_records(active.records(), budget, role)?.map(|pins| Self {
                 _active: active,
                 pins,
             }),
@@ -1412,25 +1412,18 @@ fn select_stream_result_records(
     select_saved_gateway_child(&records, saved, &GATEWAY_STREAM, &AI_STREAM_NORMALIZE)
 }
 
-fn select_gateway_result_records(
+fn select_saved_gateway_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
     role: OriginalModelResolveRole,
 ) -> Result<Option<[OriginalRoutePin; 3]>> {
-    let gateway = match role {
-        OriginalModelResolveRole::Generate => &GATEWAY_GENERATE,
-        OriginalModelResolveRole::Stream => &GATEWAY_STREAM,
-        OriginalModelResolveRole::QuoteGenerate | OriginalModelResolveRole::QuoteStream => {
-            return Ok(None);
-        }
-    };
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
     let Some(saved) = select_ordinary_saved_chain(&records, &SAVED_ORCHESTRATION)? else {
         return Ok(None);
     };
-    select_saved_gateway(&records, saved, gateway)
+    select_saved_gateway(&records, saved, role.gateway_route())
 }
 
 fn select_usage_cost_records(
@@ -2414,54 +2407,68 @@ mod tests {
     }
 
     #[test]
-    fn gateway_result_selects_only_the_three_signed_edges_for_its_role() {
+    fn saved_gateway_selects_only_the_three_signed_edges_for_its_role() {
         use OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream};
 
         let select = |fixture: &Value, role| {
             let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
             let [profile, lock, plan] = parse_records(fixture, &budget);
-            select_gateway_result_records((&profile, &lock, &plan), &budget, role)
+            select_saved_gateway_records((&profile, &lock, &plan), &budget, role)
         };
         let fixture = records();
-        for role in [QuoteGenerate, QuoteStream] {
-            assert!(select(&fixture, role).unwrap().is_none());
-        }
-        for role in [Generate, Stream] {
-            let mut candidate = fixture.clone();
-            let [turn, orchestration, gateway] = select(&candidate, role).unwrap().unwrap();
+        for role in OriginalModelResolveRole::ALL {
+            let [turn, orchestration, gateway] = select(&fixture, role).unwrap().unwrap();
             assert_eq!(turn.caller_function_id(), TURN_SHELL_CALLER);
             assert_eq!(turn.function_id(), SAVED_TURN.function);
             assert_eq!(orchestration.caller_function_id(), turn.function_id());
             assert_eq!(orchestration.function_id(), SAVED_ORCHESTRATION.function);
             assert_eq!(gateway.caller_function_id(), orchestration.function_id());
+            assert_eq!(gateway.function_id(), role.gateway_route().function);
             assert_eq!(gateway.operation_id(), role.gateway_route().operation);
-
-            let [row, _, _] = if role == Generate {
-                LOCAL_CHAT_GENERATE_ROWS
-            } else {
-                LOCAL_CHAT_STREAM_ROWS
-            };
-            candidate["profile"]["requested_edges"][row]["authority_mode"] =
-                json!("interactive_only");
-            assert!(matches!(select(&candidate, role), Err(Inconsistent(_))));
-            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
-            assert!(select(&candidate, role).unwrap().is_none());
-            let other = if role == Generate { Stream } else { Generate };
-            assert!(select(&candidate, other).unwrap().is_some());
         }
 
-        let mut absent = fixture;
-        let row = SAVED_ORCHESTRATION_ROW;
-        absent["profile"]["requested_edges"]
-            .as_array_mut()
-            .unwrap()
-            .remove(row);
-        absent["plan"]["bindings"]
-            .as_array_mut()
-            .unwrap()
-            .remove(row);
-        assert!(select(&absent, Generate).unwrap().is_none());
-        assert!(select(&absent, Stream).unwrap().is_none());
+        for (row, unavailable) in [
+            (LOCAL_CHAT_GENERATE_ROWS[0], &[Generate][..]),
+            (LOCAL_CHAT_STREAM_ROWS[0], &[Stream][..]),
+            (GATEWAY_QUOTE_ROW, &[QuoteGenerate, QuoteStream][..]),
+            (
+                SAVED_TURN_SETTLEMENT_ROW,
+                &OriginalModelResolveRole::ALL[..],
+            ),
+            (SAVED_ORCHESTRATION_ROW, &OriginalModelResolveRole::ALL[..]),
+        ] {
+            let mut candidate = fixture.clone();
+            candidate["profile"]["requested_edges"][row]["authority_mode"] =
+                json!("interactive_only");
+            for role in unavailable {
+                assert!(matches!(select(&candidate, *role), Err(Inconsistent(_))));
+            }
+            candidate["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
+            for role in OriginalModelResolveRole::ALL {
+                assert_eq!(
+                    select(&candidate, role).unwrap().is_none(),
+                    unavailable.contains(&role)
+                );
+            }
+        }
+
+        let mut only_gateway_grants = fixture;
+        let needed = [
+            SAVED_TURN_SETTLEMENT_ROW,
+            SAVED_ORCHESTRATION_ROW,
+            LOCAL_CHAT_GENERATE_ROWS[0],
+            LOCAL_CHAT_STREAM_ROWS[0],
+            GATEWAY_QUOTE_ROW,
+        ];
+        for (field, edges) in [("profile", "requested_edges"), ("plan", "bindings")] {
+            let edges = only_gateway_grants[field][edges].as_array_mut().unwrap();
+            for row in (0..edges.len()).rev().filter(|row| !needed.contains(row)) {
+                edges.remove(row);
+            }
+        }
+        for role in OriginalModelResolveRole::ALL {
+            assert!(select(&only_gateway_grants, role).unwrap().is_some());
+        }
     }
 
     #[test]

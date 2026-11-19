@@ -287,6 +287,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | crate::native_provider_prepare_service::AI_TOOL_INTENTS_ENV
             | crate::native_provider_prepare_service::AI_PIPELINE_ENV
             | crate::native_provider_prepare_service::AI_GATEWAY_RESULT_ENV
+            | crate::native_provider_prepare_service::AI_GATEWAY_POLICY_ENV
     ) {
         return role == PythonRole::Defaultspack;
     }
@@ -4383,8 +4384,9 @@ mod tests {
     #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
-            AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV, AI_STREAM_RESULT_ENV,
-            AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV, SAVED_LOCAL_CHAT_ENV, TURN_START_ENV,
+            AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
+            AI_STREAM_RESULT_ENV, AI_TOOL_INTENTS_ENV, AI_USAGE_COST_ENV, SAVED_LOCAL_CHAT_ENV,
+            TURN_START_ENV,
         };
 
         for key in [
@@ -4396,6 +4398,7 @@ mod tests {
             AI_TOOL_INTENTS_ENV,
             AI_PIPELINE_ENV,
             AI_GATEWAY_RESULT_ENV,
+            AI_GATEWAY_POLICY_ENV,
         ]
         .map(OsStr::new)
         {

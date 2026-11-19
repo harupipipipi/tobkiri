@@ -456,7 +456,7 @@ def test_registry_receipt_pin_is_forwarded_by_shell_wrapper(tmp_path: Path) -> N
 
 def _write_registry_packs(
     app: Path, *, version: int = 1, adapter_version: str = "0.3.0",
-    ai_routing_version: str = "0.6.0",
+    ai_routing_version: str = "0.7.0",
 ) -> str:
     directory = app / "Contents/Resources/app/native-registry-packs"
     directory.mkdir(parents=True)
@@ -507,7 +507,8 @@ def _write_registry_packs(
         pytest.param((5, {"ai_routing_version": "0.3.0"}), id="with-ai-routing-0.3.0"),
         pytest.param((5, {"ai_routing_version": "0.4.0"}), id="with-ai-routing-0.4.0"),
         pytest.param((5, {"ai_routing_version": "0.5.0"}), id="with-ai-routing-0.5.0"),
-        pytest.param((5, {}), id="with-ai-routing-0.6.0"),
+        pytest.param((5, {"ai_routing_version": "0.6.0"}), id="with-ai-routing-0.6.0"),
+        pytest.param((5, {}), id="with-ai-routing-0.7.0"),
     ],
 )
 def registry_mount(
@@ -699,7 +700,7 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
     [
         (3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1"), (4, "0.3.1"),
         (5, "0.1.1"), (5, "0.2.1"), (5, "0.3.1"), (5, "0.4.1"), (5, "0.5.1"),
-        (5, "0.6.1"),
+        (5, "0.6.1"), (5, "0.7.1"),
     ],
 )
 def test_registry_receipt_rejects_unapproved_pack_releases(

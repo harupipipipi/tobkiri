@@ -1,7 +1,7 @@
 {
   "format": "tobkiri.pack/1",
   "id": "local.ai-routing",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher_key": null,
   "runtime": {
     "kind": "wasm",
@@ -51,6 +51,12 @@
       "version": "1.0",
       "kind": "port",
       "wit": "wit/pack.wit"
+    },
+    {
+      "name": "local.ai-routing.gateway-policy",
+      "version": "1.0",
+      "kind": "port",
+      "wit": "wit/pack.wit"
     }
   ],
   "ports": {
@@ -89,6 +95,11 @@
         "shape": "local.ai-routing.gateway-result",
         "version": "1.0",
         "optional": false
+      },
+      {
+        "shape": "local.ai-routing.gateway-policy",
+        "version": "1.0",
+        "optional": false
       }
     ],
     "consumes": [],
@@ -123,6 +134,7 @@
     "wit/tool-intents.shape.json",
     "wit/request-prepare.shape.json",
     "wit/failover.shape.json",
-    "wit/gateway-result.shape.json"
+    "wit/gateway-result.shape.json",
+    "wit/gateway-policy.shape.json"
   ]
 }
