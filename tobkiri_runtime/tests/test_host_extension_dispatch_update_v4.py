@@ -28,6 +28,10 @@ from core_runtime.bootstrap.profile_capture import (
     runtime_user_data_root,
 )
 from core_runtime.host_provider_backend_v4 import HostProviderContributionV4
+from core_runtime.native_generation_budget import (
+    NativeGenerationBudgetTemplate,
+    owner_isolated_generation_budget_template,
+)
 from core_runtime.profile_runtime_port import require_profile_runtime
 from tobkiri_protocol.bundle_catalog import BundledCatalog
 from tobkiri_protocol.errors import SchemaValidationError
@@ -621,6 +625,7 @@ def _retained_gateway_host_state(
     user_data: Path,
     active: Any,
     authority: AuthorityStore,
+    template: NativeGenerationBudgetTemplate,
 ) -> SimpleNamespace:
     """Seed real temporary Host state and reserve a slot without any HTTP call.
 
@@ -647,13 +652,10 @@ def _retained_gateway_host_state(
         HostGenerationBudgetAdmission,
         PRICE_POLICY_FIELDS,
     )
-    from core_runtime.native_generation_budget import owner_startup_generation_budget_template
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
     from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSION
 
-    template = owner_startup_generation_budget_template()
-    assert template is not None
     profile_id = str(active.resolved.profile["profile_id"])
     assert template.profile_id == profile_id
     witness = AuthorityStore(user_data / "credentials/generation-budget-witness.sqlite3")
@@ -1006,7 +1008,11 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
     retained_state = None
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
 
-        def capture(active: Any) -> Any:
+        def capture(
+            active: Any,
+            *,
+            template: NativeGenerationBudgetTemplate | None = None,
+        ) -> Any:
             session = production_v4.capture_production_dispatch(
                 active,
                 bundle_root=bundle_root,
@@ -1016,14 +1022,18 @@ def test_native_signed_gateway_update_reaches_same_host_production_capture(
                 runtime_surface_factory=create_runtime_surface_services,
                 panel_auth_manager=manager,
                 credential_store_factory=host_credential_store_factory,
+                generation_budget_template=template,
             )
             sessions.append(session)
             return session
 
         try:
-            old_session = capture(initial)
+            template = owner_isolated_generation_budget_template()
+            old_session = capture(initial, template=template)
             assert observed[-1][1:] == (baseline_digest, None)
-            retained_state = _retained_gateway_host_state(user_data, initial, authority)
+            retained_state = _retained_gateway_host_state(
+                user_data, initial, authority, template
+            )
             assert (
                 observed_budget_bindings[-1].generation_admission.credential_budget_binding
                 == retained_state.guard.credential_budget_binding

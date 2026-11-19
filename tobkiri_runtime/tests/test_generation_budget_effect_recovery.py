@@ -17,6 +17,9 @@ from core_runtime.authority.v4_models import authority_digest
 from core_runtime.bootstrap.production_v4 import _recover_interactive_effect_controller
 from core_runtime.authority.v4 import AuthorityDenied
 from core_runtime.generation_transport_budget import GenerationBudgetPolicy
+from core_runtime.native_generation_budget import (
+    owner_isolated_generation_budget_template,
+)
 from tests.test_interactive_effects import _Approvals, _controller, _prepare
 from tests import test_native_generation_budget as native
 from tests.test_tobkiri_host_execution_integration import (
@@ -39,7 +42,7 @@ def native_setup(
     """Reuse the real approved Native fixture without importing a fixture symbol."""
     template = (
         replace(
-            native.owner_startup_generation_budget_template(),
+            owner_isolated_generation_budget_template(),
             profile_id="profile-1",
             connection_id="provider.main",
         )

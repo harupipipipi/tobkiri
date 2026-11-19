@@ -22,7 +22,7 @@ from core_runtime.bootstrap.profile_capture import (
 )
 from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
 from core_runtime.native_generation_budget import (
-    owner_startup_generation_budget_template,
+    owner_isolated_generation_budget_template,
 )
 from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_activation_snapshot_loader,
@@ -194,6 +194,7 @@ def test_root_stop_waits_for_real_gateway_adapter_future_and_broker_release(
             "enabled": True,
         }, expected_revision=0)
         authority = AuthorityStore(user_data / "authority" / "v4.sqlite3")
+        budget_template = owner_isolated_generation_budget_template()
         session = capture_production_dispatch(
             active,
             bundle_root=_bundle_root(),
@@ -202,12 +203,11 @@ def test_root_stop_waits_for_real_gateway_adapter_future_and_broker_release(
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
             credential_store_factory=_credential_store_factory,
+            generation_budget_template=budget_template,
             backends=BackendRegistry((backend,)),
             target_backend_digests={target.principal_id: backend.status.backend_digest},
         )
         # Local credential-free HTTP must retain the real Host budget owner.
-        budget_template = owner_startup_generation_budget_template()
-        assert budget_template is not None
         budget_effect = authority.get_host_pending_effect(budget_template.effect_id)
         assert budget_effect is not None
         assert budget_effect[1] == {

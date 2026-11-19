@@ -32,7 +32,7 @@ from core_runtime.native_generation_budget import (
     NativeGenerationBudgetOwner,
     NativeGenerationBudgetTemplate,
     capture_native_generation_budget,
-    owner_startup_generation_budget_template,
+    owner_isolated_generation_budget_template,
 )
 from ecosystem.rumi_credential_broker_pack.runtime.process import (
     CredentialManagementHostFactoryV4,
@@ -65,7 +65,7 @@ def test_fixed_owner_accepts_only_normal_openrouter_main_public_plan(
     with AuthorityStore(tmp_path / "authority" / "v4.sqlite3") as authority:
         user_data = tmp_path / "owner"
         material = HostCredentialMaterialStore(user_data_root=user_data)
-        template = owner_startup_generation_budget_template()
+        template = owner_isolated_generation_budget_template()
         binding = capture_native_generation_budget(
             binding=CredentialMaterialStoreBinding(material, KEY_VERSION),
             authority_store=authority,
@@ -139,8 +139,7 @@ def test_fixed_owner_rejects_immutable_previous_connection_template(
         )
         owner = binding.generation_admission
         assert isinstance(owner, NativeGenerationBudgetOwner)
-        corrected = owner_startup_generation_budget_template()
-        assert corrected is not None
+        corrected = owner_isolated_generation_budget_template()
         assert previous.effect_id == corrected.effect_id
         primary_before = authority.get_host_pending_effect(previous.effect_id)
         witness_before = owner._witness.get_host_pending_effect(previous.effect_id)
@@ -150,13 +149,12 @@ def test_fixed_owner_rejects_immutable_previous_connection_template(
         assert not material.requires_generation_budget(profile_id="defaults")
         try:
             with pytest.raises(CredentialTransportDenied) as denied:
-                NativeGenerationBudgetOwner(
-                    template=corrected,
+                capture_native_generation_budget(
+                    binding=CredentialMaterialStoreBinding(material, KEY_VERSION),
                     authority_store=authority,
-                    witness_store=owner._witness,
-                    material_store=material,
-                    key_version=KEY_VERSION,
-                    install=True,
+                    user_data_root=user_data,
+                    profile_id="defaults",
+                    template=corrected,
                 )
             assert denied.value.code == "generation_budget_invalid"
             assert authority.get_host_pending_effect(previous.effect_id) == primary_before
@@ -164,6 +162,92 @@ def test_fixed_owner_rejects_immutable_previous_connection_template(
             assert material.list(profile_id="defaults")["count"] == 0
         finally:
             owner.close()
+
+
+def test_ordinary_budget_capture_keeps_clean_and_other_profiles_unrestricted(
+    tmp_path: Path,
+) -> None:
+    user_data = tmp_path / "owner"
+    witness_path = user_data / "credentials" / "generation-budget-witness.sqlite3"
+    binding = CredentialMaterialStoreBinding(
+        HostCredentialMaterialStore(user_data_root=user_data), KEY_VERSION,
+    )
+    with AuthorityStore(tmp_path / "authority" / "v4.sqlite3") as authority:
+        def capture(
+            profile_id: str, template: NativeGenerationBudgetTemplate | None = None,
+        ) -> CredentialMaterialStoreBinding:
+            return capture_native_generation_budget(
+                binding=binding, authority_store=authority, user_data_root=user_data,
+                profile_id=profile_id, template=template,
+            )
+
+        assert capture("defaults") is binding
+        assert authority.list_host_pending_effects() == []
+        assert not witness_path.exists()
+
+        # Preserve a prior required record byte-for-byte even before enrollment.
+        legacy = NativeGenerationBudgetTemplate("defaults", "provider.main")
+        installed = capture("defaults", legacy).generation_admission
+        assert isinstance(installed, NativeGenerationBudgetOwner)
+        installed.close()
+        before = authority.list_host_pending_effects()
+
+        assert capture("ordinary-second-profile") is binding
+        restored = capture("defaults").generation_admission
+        assert isinstance(restored, NativeGenerationBudgetOwner)
+        try:
+            assert restored.template == legacy
+            assert authority.list_host_pending_effects() == before
+            assert restored._witness.list_host_pending_effects() == before
+        finally:
+            restored.close()
+
+
+@pytest.mark.parametrize("row", ["required", "active"])
+@pytest.mark.parametrize("side", ["authority", "witness"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_incomplete_budget_capture_cannot_replace_an_existing_record(
+    tmp_path: Path, row: str, side: str, explicit: bool,
+) -> None:
+    template = owner_isolated_generation_budget_template()
+    user_data = tmp_path / "owner"
+    witness_path = user_data / "credentials" / "generation-budget-witness.sqlite3"
+    binding = CredentialMaterialStoreBinding(
+        HostCredentialMaterialStore(user_data_root=user_data), KEY_VERSION,
+    )
+    effect_id = template.effect_id
+    if row == "active":
+        effect_id += ":active"
+        record = {"effect_id": effect_id, "state": "enrolled"}
+    else:
+        record = {
+            "effect_id": effect_id,
+            "state": "required",
+            "kind": "native_generation_budget_template_v1",
+            "template": template.to_dict(),
+        }
+
+    with AuthorityStore(tmp_path / "authority" / "v4.sqlite3") as authority:
+        if side == "authority":
+            authority.create_host_pending_effect(effect_id, record)
+        else:
+            with AuthorityStore(witness_path) as witness:
+                witness.create_host_pending_effect(effect_id, record)
+        with pytest.raises(CredentialTransportDenied) as denied:
+            capture_native_generation_budget(
+                binding=binding, authority_store=authority, user_data_root=user_data,
+                profile_id="defaults", template=template if explicit else None,
+            )
+        assert denied.value.code == "generation_budget_invalid"
+        expected = [(1, record)]
+        assert authority.list_host_pending_effects() == (
+            expected if side == "authority" else []
+        )
+        if side == "authority":
+            assert not witness_path.exists()
+        else:
+            with AuthorityStore(witness_path) as witness:
+                assert witness.list_host_pending_effects() == expected
 
 
 def envelope(harness, issued, context, payload, *, contract, operation):
@@ -448,7 +532,7 @@ def test_priced_native_approval_enrolls_exact_review_and_restores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     template = replace(
-        owner_startup_generation_budget_template(),
+        owner_isolated_generation_budget_template(),
         profile_id="profile-1",
         connection_id="provider.main",
     )
@@ -498,7 +582,7 @@ def test_priced_startup_cannot_amend_an_enrolled_legacy_credential(setup) -> Non
     witness = setup.owner._witness.list_host_pending_effects()
     marker = setup.owner.credential_budget_binding
     priced = replace(
-        owner_startup_generation_budget_template(),
+        owner_isolated_generation_budget_template(),
         profile_id="profile-1",
         connection_id="provider.main",
     )

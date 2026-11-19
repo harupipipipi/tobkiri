@@ -30,6 +30,7 @@ from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding as FrontendContractBinding,
     HTTPContractTarget as FrontendContractTarget,
 )
+from core_runtime.native_generation_budget import NativeGenerationBudgetTemplate
 from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
     load_frontend_contract_bindings,
 )
@@ -88,6 +89,7 @@ pytestmark = pytest.mark.contract
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_MUTATION_TIMEOUT_SECONDS = 10
 EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS = 30
+SAVED_TURN_HTTP_TIMEOUT_SECONDS = 60
 BUNDLE_ROOT = RUNTIME_ROOT / "ecosystem" / "defaultspack" / "v4"
 MAP_PATH = (
     RUNTIME_ROOT / "ecosystem" / "defaultspack" / "defaultspack" / "frontend_contract_map.v4.json"
@@ -430,6 +432,7 @@ def _captured_production_server(
     packvm_backends: BackendRegistry | None = None,
     credential_store_factory=None,
     native_provider_prepare_planner=None,
+    generation_budget_template: NativeGenerationBudgetTemplate | None = None,
     authority_approval_window_open: (
         Callable[[str], Mapping[str, object]] | None
     ) = None,
@@ -493,6 +496,7 @@ def _captured_production_server(
         backends=packvm_backends,
         credential_store_factory=credential_store_factory,
         native_provider_prepare_planner=native_provider_prepare_planner,
+        generation_budget_template=generation_budget_template,
         http_contract_bindings=bindings,
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
@@ -1885,6 +1889,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         )
         monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
         monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
+        monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
         monkeypatch.setattr(
             ipc, "capture_launcher_conversation_get_reader", lambda: native_read,
         )
@@ -3864,6 +3869,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_settings_reader", lambda: native_read,
     )
@@ -4041,6 +4047,7 @@ def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
     monkeypatch.setattr(ipc, "capture_launcher_conversation_get_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_resolve_reader", lambda: None)
     monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: native_save)
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
@@ -5267,9 +5274,12 @@ def _exercise_provider_configuration_http(
     status, approval = post("/api/interactive-approval/v1/get", {"request_id": approval_id})
     assert status == 200, approval
     data = approval["data"]
+    rendered_approval = json.dumps(data)
+    assert "Endpoint: https://provider.example/v1" in rendered_approval
+    assert "Generation requests over credential lifetime" not in rendered_approval
     if audio:
-        assert "ai.audio.transcribe" in json.dumps(data)
-        assert "ai.audio.speech" in json.dumps(data)
+        assert "ai.audio.transcribe" in rendered_approval
+        assert "ai.audio.speech" in rendered_approval
     status, approved = post(
         "/api/interactive-approval/v1/approve",
         {
@@ -5293,14 +5303,21 @@ def _exercise_provider_configuration_http(
         assert secret not in json.dumps(result)
         snapshot = registry.snapshot()
         assert snapshot["revision"] == 1
-        assert snapshot["providers"][0]["credential_handle"].startswith("credential:")
+        (provider,) = snapshot["providers"]
+        assert provider["provider_instance_id"] == "provider.fixture"
+        assert provider["endpoint"] == "https://provider.example/v1"
+        assert provider["credential_handle"].startswith("credential:")
     assert secret not in registry.path.read_text()
     stored = root / "credentials/material-store/credentials.store.json"
     assert secret not in stored.read_text()
     credentials = json.loads(stored.read_text())["credentials"]
-    assert len(credentials) == 1
-    scopes = next(iter(credentials.values()))["scopes"]
-    assert set(scopes) == ({"ai.generate", "ai.stream", "ai.audio.transcribe", "ai.audio.speech"} if audio else {"ai.generate", "ai.stream"})
+    (credential,) = credentials.values()
+    expected_scopes = {"ai.generate", "ai.stream"}
+    if audio:
+        expected_scopes.update({"ai.audio.transcribe", "ai.audio.speech"})
+    assert set(credential["scopes"]) == expected_scopes
+    assert "required_generation_budget" not in credential
+    assert not (root / "credentials/generation-budget-witness.sqlite3").exists()
     assert secret not in json.dumps(authority.audit_events(), default=str)
     assert len(provider_owners) == 3
     assert len({item[1:3] for item in provider_owners}) == 1
@@ -5308,33 +5325,19 @@ def _exercise_provider_configuration_http(
     assert provider_owners[-1][1] != provider_owners[-1][3]
 
 
-@pytest.fixture
-def provider_configuration_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Exercise arbitrary test Providers outside the isolated enrollment policy."""
-    from core_runtime.bootstrap import production_v4
-    from tobkiri_host.credential_store import host_credential_store_factory
-
-    monkeypatch.setattr(
-        production_v4, "owner_startup_generation_budget_template", lambda _template: None,
-    )
-    yield from _captured_production_server(
-        tmp_path, monkeypatch, credential_store_factory=host_credential_store_factory,
-    )
-
-
 def test_provider_configuration_http_requires_approval_and_saves_once(
-    provider_configuration_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _exercise_provider_configuration_http(
-        provider_configuration_server, tmp_path, monkeypatch,
+        production_server, tmp_path, monkeypatch,
     )
 
 
 def test_audio_provider_configuration_http_preserves_explicit_approval_and_exact_scopes(
-    provider_configuration_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _exercise_provider_configuration_http(
-        provider_configuration_server, tmp_path, monkeypatch, audio=True,
+        production_server, tmp_path, monkeypatch, audio=True,
     )
 
 
@@ -5356,8 +5359,10 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
 ) -> None:
     """The signed prepare and approved save borrow only their own live leases."""
     from core_runtime.authority.ui_operator import sign_ui_operator
-    from core_runtime.bootstrap import production_v4
     from core_runtime import native_provider_prepare_ipc
+    from core_runtime.native_generation_budget import (
+        owner_isolated_generation_budget_template,
+    )
     from core_runtime.provider_prepare_native_v4 import (
         MINIMUM_PREPARE_MEMORY,
         NativeProviderPrepareBorrow,
@@ -5370,11 +5375,7 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     from tobkiri_host.errors import ResourceExhaustedError
     from tobkiri_protocol.canonical import canonical_digest
 
-    if not openrouter_only:
-        # Exercise the ordinary signed route without the isolated cloud-run policy.
-        monkeypatch.setattr(
-            production_v4, "owner_startup_generation_budget_template", lambda _template: None,
-        )
+    template = owner_isolated_generation_budget_template() if openrouter_only else None
     root = tmp_path / "user-data"
     connection = {
         "connection_name": "fixture-local",
@@ -5481,12 +5482,18 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
             lambda: None,
         )
         monkeypatch.setattr(
+            native_provider_prepare_ipc,
+            "capture_launcher_model_resolve_reader",
+            lambda: None,
+        )
+        monkeypatch.setattr(
             native_provider_prepare_ipc, "capture_launcher_provider_prepare_planner", lambda: planner,
         )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch,
         credential_store_factory=host_credential_store_factory,
         native_provider_prepare_planner=planner if launcher_mode is None else None,
+        generation_budget_template=template,
     ) as (server, _session, authority):
         registry = ProviderRegistry("defaults", user_data_root=root)
         registry.save({
@@ -5529,6 +5536,8 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
         if openrouter_only:
             assert status == 503, response
             assert response["data"]["state"] == "error"
+            assert template is not None
+            assert authority.get_host_pending_effect(template.effect_id) is not None
             return
         assert status == 200, response
         effect = response["data"]
@@ -5602,19 +5611,20 @@ def test_saved_settings_reach_host_credential_transport(
     monkeypatch: pytest.MonkeyPatch,
     text_blocks: bool,
 ) -> None:
-    """Two real saved turns; only guest execution and HTTPS are doubles."""
+    """Exercise two saved turns through the configured Provider transport."""
     import io
     from core_runtime import credential_transport
+    from core_runtime.bootstrap.saved_bridge import SavedBridgeCallbacks
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.credential_store import host_credential_store_factory
     from tobkiri_host.runtime import V4DispatchSession
 
     requests = []
-    reply = (
-        [{"type": "text", "text": "Host transport reply"}]
-        if text_blocks
-        else "Host transport reply"
-    )
+    reply_text = "Host transport reply"
+    reply = [{"type": "text", "text": reply_text}] if text_blocks else reply_text
+    if text_blocks:
+        # The fixture provider offers structured text blocks through completion.
+        monkeypatch.setattr(SavedBridgeCallbacks, "_stream_ready", lambda *_args: False)
 
     def open_provider(request, *, timeout, **lifetime):
         assert timeout > 0
@@ -5624,6 +5634,8 @@ def test_saved_settings_reach_host_credential_transport(
         )
         body = json.loads(request.data)
         assert body["model"] == "organization/raw-model"
+        streaming = body.get("stream", False)
+        assert streaming is (not text_blocks)
         expected = [{"role": "user", "content": "Hello"}]
         if requests:
             expected.extend(
@@ -5634,10 +5646,18 @@ def test_saved_settings_reach_host_credential_transport(
             )
         assert body["messages"] == expected
         requests.append(body)
+        if streaming:
+            chunk = {
+                "choices": [{"delta": {"content": reply_text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+            return io.BytesIO(f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode())
         return io.BytesIO(
             json.dumps(
                 {
-                    "choices": [{"message": {"content": reply}, "finish_reason": "stop"}],
+                    "choices": [
+                        {"message": {"content": reply}, "finish_reason": "stop"}
+                    ],
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1},
                 }
             ).encode()
@@ -5653,7 +5673,7 @@ def test_saved_settings_reach_host_credential_transport(
     fixture = next(servers)
     server, _session, _authority = fixture
     try:
-        test_provider_configuration_http_requires_approval_and_saves_once(
+        _exercise_provider_configuration_http(
             fixture,
             tmp_path,
             monkeypatch,
@@ -5676,7 +5696,12 @@ def test_saved_settings_reach_host_credential_transport(
         monkeypatch.setattr(V4DispatchSession, "invoke", observe)
         cookie, csrf, origin = _authenticate(server)
 
-        def post(path, body):
+        def post(
+            path: str,
+            body: Mapping[str, object],
+            *,
+            timeout_seconds: float = EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS,
+        ) -> tuple[int, dict[str, object], list[tuple[str, str]]]:
             return _request(
                 server,
                 "POST",
@@ -5688,6 +5713,7 @@ def test_saved_settings_reach_host_credential_transport(
                     "X-Rumi-CSRF": csrf,
                     "X-Tobkiri-Request-ID": str(uuid.uuid4()),
                 },
+                timeout_seconds=timeout_seconds,
             )
 
         status, result, _ = post(
@@ -5714,6 +5740,7 @@ def test_saved_settings_reach_host_credential_transport(
                     "content": "Hello",
                 }
             },
+            timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
         )
         assert status == 200, result
         assert result["data"]["status"] == "completed", (result, failures)
@@ -5732,6 +5759,7 @@ def test_saved_settings_reach_host_credential_transport(
                     "content": "Continue",
                 }
             },
+            timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
         )
         assert status == 200, result
         assert result["data"]["status"] == "completed", (result, failures)
@@ -5755,7 +5783,6 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     import io
 
     from core_runtime import credential_transport, native_provider_prepare_ipc as ipc
-    from core_runtime.bootstrap import production_v4
     from core_runtime.provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
     )
@@ -5828,6 +5855,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
 
     def open_provider(request, *, timeout, **lifetime):
         assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
         assert request.get_header("Authorization") == (
             "Bearer fixture-secret-provider-configuration"
         )
@@ -5847,10 +5875,6 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
     monkeypatch.setattr(Path, "read_text", observe_legacy_read)
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_read)
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
-    monkeypatch.setattr(
-        production_v4, "owner_startup_generation_budget_template",
-        lambda _template: None,
-    )
     monkeypatch.setenv(
         "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/resolve.sock",
     )
@@ -5894,6 +5918,7 @@ def test_saved_model_resolve_borrows_each_signed_gateway_read(
                     "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
                     "X-Tobkiri-Request-ID": str(uuid.uuid4()),
                 },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
             )
             assert "private-resolve-value" not in json.dumps(response)
             return status, response

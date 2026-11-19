@@ -1,23 +1,24 @@
-"""Pure verification of the signed variant's actual Native Kernel capture path."""
+"""Verify the Native Kernel forwards only an explicit isolated budget."""
 
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from core_runtime.authority.v4 import AuthorityStore, AuthorityDenied
+from core_runtime.authority.v4 import AuthorityDenied, AuthorityStore
 from core_runtime.bootstrap import production_v4
 from core_runtime.credential_transport import CredentialMaterialStoreBinding
 from core_runtime.native_generation_budget import (
     NativeGenerationBudgetTemplate,
     capture_native_generation_budget,
+    owner_isolated_generation_budget_template,
     owner_startup_generation_budget_template,
 )
 from tobkiri_host.credential_store import HostCredentialMaterialStore, KEY_VERSION
 
 
-def test_signed_owner_source_always_selects_exact_test_policy():
-    policy = owner_startup_generation_budget_template()
+def test_signed_owner_source_supplies_exact_isolated_policy() -> None:
+    policy = owner_isolated_generation_budget_template()
     assert policy == NativeGenerationBudgetTemplate(
         "defaults",
         "provider.openrouter.main",
@@ -28,6 +29,7 @@ def test_signed_owner_source_always_selects_exact_test_policy():
     )
     assert policy.max_requests == 3 and policy.max_output_tokens == 2048
     assert policy.model == "stepfun/step-5-preview"
+    assert owner_startup_generation_budget_template(policy) == policy
 
 
 @pytest.mark.parametrize(
@@ -42,18 +44,21 @@ def test_signed_owner_source_always_selects_exact_test_policy():
         NativeGenerationBudgetTemplate("defaults", "provider.other"),
     ],
 )
-def test_signed_owner_source_rejects_client_policy_overrides(requested):
+def test_signed_owner_source_rejects_client_policy_overrides(requested: object) -> None:
     with pytest.raises(PermissionError):
         owner_startup_generation_budget_template(requested)
 
 
 @pytest.mark.parametrize("profile", ["other", "defaults"])
-def test_common_production_capture_selects_policy_before_catalog_or_credential(
+@pytest.mark.parametrize("isolated", [False, True], ids=["ordinary", "isolated"])
+def test_production_capture_checks_policy_before_catalog_or_credential(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    profile,
-):
-    """No-argument capture gates the exact Native snapshot before other work."""
+    profile: str,
+    isolated: bool,
+) -> None:
+    """An explicit policy is Profile-bound before catalog or credential work."""
+    template = owner_isolated_generation_budget_template() if isolated else None
     observed = []
     selected = []
 
@@ -85,26 +90,27 @@ def test_common_production_capture_selects_policy_before_catalog_or_credential(
             bundle_root=tmp_path / "unused",
             ecosystem_root=tmp_path / "unused",
             credential_store_factory=credential,
+            generation_budget_template=template,
         )
-    assert selected == [owner_startup_generation_budget_template()]
-    assert observed == ([] if profile == "other" else ["catalog"])
-    if profile == "defaults":
+    assert selected == [template]
+    assert observed == ([] if isolated and profile == "other" else ["catalog"])
+    if template is not None and profile == template.profile_id:
         material = HostCredentialMaterialStore(user_data_root=tmp_path / "owner")
         binding = capture_native_generation_budget(
             binding=CredentialMaterialStoreBinding(material, KEY_VERSION),
             authority_store=authority,
             user_data_root=tmp_path / "owner",
             profile_id="defaults",
-            template=selected[0],
+            template=template,
         )
-        assert binding.generation_admission.template == selected[0]
-        assert authority.get_host_pending_effect(selected[0].effect_id) is not None
+        assert binding.generation_admission.template == template
+        assert authority.get_host_pending_effect(template.effect_id) is not None
 
 
-def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
+def test_native_app_kernel_entry_reaches_common_capture_without_isolated_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """Execute real app.py and real composition; stop at the pure capture gate.
 
     Kernel/platform objects are local probes, so no Native, VM, listener, or
@@ -127,8 +133,10 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
 
     class KernelProbe:
         def __init__(self, **kwargs):
-            self.inputs = kwargs
-            assert kwargs["runtime_capture_factory"].keywords["generation_budget_template"] is None
+            self.template = kwargs["runtime_capture_factory"].keywords[
+                "generation_budget_template"
+            ]
+            assert self.template is None
 
         def run_startup(self):
             observed.append("kernel-startup")
@@ -137,7 +145,7 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
                 authority_store=AuthorityStore(tmp_path / "authority" / "v4.sqlite3"),
                 bundle_root=tmp_path / "unused",
                 ecosystem_root=tmp_path / "unused",
-                generation_budget_template=None,
+                generation_budget_template=self.template,
             )
 
         def shutdown(self):
@@ -172,15 +180,17 @@ def test_native_app_kernel_entry_reaches_fixed_common_capture_with_none_input(
     )
     with pytest.raises(AuthorityDenied):
         app.main(["--headless"])
-    assert selected == [owner_startup_generation_budget_template()]
+    assert selected == [None]
     assert observed == ["kernel-startup", "catalog", "shutdown"]
 
 
-def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
+@pytest.mark.parametrize("isolated", [False, True], ids=["ordinary", "isolated"])
+def test_fresh_kernel_setup_boot_forwards_policy_when_defaults_activates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
-    """Real empty-state Kernel/activation branches retain Setup and select cap3.
+    isolated: bool,
+) -> None:
+    """The real empty-state Kernel keeps Setup available until activation.
 
     Presentation/listener and platform fixtures are inert. The real Kernel,
     AppLifecycleManager, common policy gate and private policy persistence run.
@@ -192,6 +202,7 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
 
     user_data = tmp_path / "owner"
     observed = []
+    template = owner_isolated_generation_budget_template() if isolated else None
 
     class Control:
         session_kind = "host_profile_control"
@@ -212,7 +223,12 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
             pass
 
     def inputs(active=None):
-        return RuntimeCaptureInputs(tmp_path / "unused", tmp_path / "unused", ())
+        return RuntimeCaptureInputs(
+            tmp_path / "unused",
+            tmp_path / "unused",
+            (),
+            generation_budget_template=template,
+        )
 
     monkeypatch.setattr(runtime, "active_profile_exists", lambda: False)
     monkeypatch.setattr(runtime, "runtime_user_data_root", lambda: user_data)
@@ -260,7 +276,7 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
         monkeypatch.setattr(production_v4, "_host_profile_catalog", stop_at_catalog)
         with pytest.raises(ActivationCommittedError):
             kernel._lifecycle.activate_bootstrap_profile({})
-        assert selected == [owner_startup_generation_budget_template()]
+        assert selected == [template]
         authority = AuthorityStore(user_data / "authority" / "v4.sqlite3")
         material = HostCredentialMaterialStore(user_data_root=user_data)
         binding = capture_native_generation_budget(
@@ -268,9 +284,15 @@ def test_fresh_kernel_setup_boot_remains_available_then_defaults_binds_policy(
             authority_store=authority,
             user_data_root=user_data,
             profile_id="defaults",
-            template=selected[0],
+            template=template,
         )
-        assert binding.generation_admission.template == selected[0]
-        assert authority.get_host_pending_effect(selected[0].effect_id) is not None
+        if template is None:
+            assert binding.generation_admission is None
+            assert authority.list_host_pending_effects() == []
+            witness_path = user_data / "credentials/generation-budget-witness.sqlite3"
+            assert not witness_path.exists()
+        else:
+            assert binding.generation_admission.template == template
+            assert authority.get_host_pending_effect(template.effect_id) is not None
     finally:
         kernel.shutdown()

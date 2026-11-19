@@ -81,11 +81,9 @@ class NativeGenerationBudgetTemplate:
         return "generation-budget-operator:" + authority_digest(self.profile_id)[7:]
 
 
-def owner_startup_generation_budget_template(
-    requested: NativeGenerationBudgetTemplate | None = None,
-) -> NativeGenerationBudgetTemplate | None:
-    """Select the owner-approved isolated test policy from signed Source."""
-    approved = NativeGenerationBudgetTemplate(
+def owner_isolated_generation_budget_template() -> NativeGenerationBudgetTemplate:
+    """Return the reviewed policy for explicit isolated Host enrollment."""
+    return NativeGenerationBudgetTemplate(
         "defaults",
         "provider.openrouter.main",
         model="stepfun/step-5-preview",
@@ -93,11 +91,20 @@ def owner_startup_generation_budget_template(
         max_completion_price_microusd_per_million=2_700_000,
         external_key_limit_microusd=2_000_000,
     )
-    if requested is not None and (
-        type(requested) is not NativeGenerationBudgetTemplate or requested != approved
+
+
+def owner_startup_generation_budget_template(
+    requested: NativeGenerationBudgetTemplate | None = None,
+) -> NativeGenerationBudgetTemplate | None:
+    """Validate an explicit Host selection. Ordinary startup enrolls no policy."""
+    if requested is None:
+        return None
+    if (
+        type(requested) is not NativeGenerationBudgetTemplate
+        or requested != owner_isolated_generation_budget_template()
     ):
         raise PermissionError("isolated generation budget policy is fixed")
-    return approved
+    return requested
 
 
 class NativeGenerationBudgetOwner:
@@ -342,33 +349,55 @@ def capture_native_generation_budget(
     template: NativeGenerationBudgetTemplate | None = None,
 ) -> CredentialMaterialStoreBinding:
     """Install an explicit Host restriction or restore its persisted policy."""
+    if template is not None and (
+        type(template) is not NativeGenerationBudgetTemplate
+        or template.profile_id != profile_id
+    ):
+        raise CredentialTransportDenied("generation_budget_invalid")
     effect_id = "generation-budget-operator:" + authority_digest(profile_id)[7:]
     retained = authority_store.get_host_pending_effect(effect_id)
     witness_path = user_data_root / "credentials" / "generation-budget-witness.sqlite3"
     witness = AuthorityStore(witness_path) if witness_path.exists() else None
-    secondary = witness.get_host_pending_effect(effect_id) if witness is not None else None
-    marker_required = getattr(binding.store, "requires_generation_budget", None)
-    if template is None:
+    try:
+        secondary = (
+            witness.get_host_pending_effect(effect_id) if witness is not None else None
+        )
+        if retained != secondary:
+            raise CredentialTransportDenied("generation_budget_invalid")
         if retained is None:
-            if secondary is not None or (
-                callable(marker_required) and marker_required(profile_id=profile_id)
+            active_id = effect_id + ":active"
+            marker_required = getattr(binding.store, "requires_generation_budget", None)
+            if (
+                authority_store.get_host_pending_effect(active_id) is not None
+                or (
+                    witness is not None
+                    and witness.get_host_pending_effect(active_id) is not None
+                )
+                or (
+                    callable(marker_required) and marker_required(profile_id=profile_id)
+                )
             ):
                 raise CredentialTransportDenied("generation_budget_invalid")
-            if witness is not None:
-                witness.close()
-            return binding
-        template = NativeGenerationBudgetTemplate(**retained[1]["template"])
-    if type(template) is not NativeGenerationBudgetTemplate or template.profile_id != profile_id:
-        raise CredentialTransportDenied("generation_budget_invalid")
-    if retained is None and (callable(marker_required) and marker_required(profile_id=profile_id)):
-        raise CredentialTransportDenied("generation_budget_invalid")
-    witness = witness or AuthorityStore(witness_path)
-    owner = NativeGenerationBudgetOwner(
-        template=template,
-        authority_store=authority_store,
-        witness_store=witness,
-        material_store=binding.store,
-        key_version=binding.key_version,
-        install=retained is None,
-    )
-    return CredentialMaterialStoreBinding(binding.store, binding.key_version, owner)
+            if template is None:
+                return binding
+        elif template is None:
+            try:
+                template = NativeGenerationBudgetTemplate(**retained[1]["template"])
+            except (KeyError, TypeError, ValueError):
+                raise CredentialTransportDenied("generation_budget_invalid") from None
+            if template.profile_id != profile_id:
+                raise CredentialTransportDenied("generation_budget_invalid")
+        witness = witness or AuthorityStore(witness_path)
+        owner = NativeGenerationBudgetOwner(
+            template=template,
+            authority_store=authority_store,
+            witness_store=witness,
+            material_store=binding.store,
+            key_version=binding.key_version,
+            install=retained is None,
+        )
+        witness = None  # The captured owner now closes its witness.
+        return CredentialMaterialStoreBinding(binding.store, binding.key_version, owner)
+    finally:
+        if witness is not None:
+            witness.close()
