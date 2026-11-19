@@ -1050,12 +1050,16 @@ def _health(
     streaming: bool,
 ) -> dict[str, dict[str, Any]]:
     values: dict[str, dict[str, Any]] = {}
+    operation = HEALTH_STREAM_OPERATION if streaming else HEALTH_GENERATE_OPERATION
     for provider in client.providers(HEALTH_CONTRACT):
+        # The same owner can expose health under more than one operation.
+        if provider.get("operation_id") != operation:
+            continue
         provider_id = str(provider.get("provider_instance_id") or "")
         try:
             result = client.invoke(
                 HEALTH_CONTRACT,
-                HEALTH_STREAM_OPERATION if streaming else HEALTH_GENERATE_OPERATION,
+                operation,
                 {},
                 provider_instance_id=provider_id,
             )

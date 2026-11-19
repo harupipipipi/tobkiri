@@ -10,6 +10,8 @@ from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
     CATALOG_CONTRACT,
     GENERATE_PROVIDER_CONTRACT,
     HEALTH_CONTRACT,
+    HEALTH_GENERATE_OPERATION,
+    HEALTH_STREAM_OPERATION,
     MODEL_PROFILE_CONTRACT,
     FAILOVER_CONTRACT,
     ROUTING_CONTRACT,
@@ -20,6 +22,7 @@ from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
     USAGE_CONTRACT,
     RouteRequirement,
     _append_explicit_live_model,
+    _health,
     create_generate_operation,
     create_stream_operation,
 )
@@ -54,8 +57,9 @@ class FakeContractClient:
             STREAM_PROVIDER_CONTRACT: (
                 {"provider_instance_id": "adapter-a", "routing_keys": ["*"]},
             ),
-            HEALTH_CONTRACT: (
-                {"provider_instance_id": "health-main"},
+            HEALTH_CONTRACT: tuple(
+                {"provider_instance_id": "health-main", "operation_id": operation}
+                for operation in (HEALTH_GENERATE_OPERATION, HEALTH_STREAM_OPERATION)
             ),
         }
         return values.get(contract_id, ())
@@ -186,6 +190,42 @@ def test_router_selects_by_capability_without_provider_pack_branch() -> None:
     assert result["model_id"] == "model-a"
     assert result["provider_instance_id"] == "adapter-a"
     assert result["output"] == "hello"
+
+
+@pytest.mark.parametrize(
+    ("streaming", "operation", "other_operation"),
+    [
+        (False, HEALTH_GENERATE_OPERATION, HEALTH_STREAM_OPERATION),
+        (True, HEALTH_STREAM_OPERATION, HEALTH_GENERATE_OPERATION),
+    ],
+)
+def test_health_calls_each_owner_of_the_requested_operation_once(
+    streaming: bool,
+    operation: str,
+    other_operation: str,
+) -> None:
+    class Client(FakeContractClient):
+        def providers(self, contract_id: str) -> tuple[dict[str, Any], ...]:
+            assert contract_id == HEALTH_CONTRACT
+            return (
+                {
+                    "provider_instance_id": "health-main",
+                    "operation_id": other_operation,
+                },
+                {"provider_instance_id": "health-main", "operation_id": operation},
+                {"provider_instance_id": "health-other", "operation_id": operation},
+                {
+                    "provider_instance_id": "health-unselected",
+                    "operation_id": other_operation,
+                },
+            )
+
+    client = Client()
+    assert set(_health(client, streaming=streaming)) == {"adapter-a", "adapter-b"}
+    assert client.calls == [
+        (HEALTH_CONTRACT, operation, "health-main", {}),
+        (HEALTH_CONTRACT, operation, "health-other", {}),
+    ]
 
 
 def test_gateway_forwards_startup_profile_to_provider_adapter() -> None:
