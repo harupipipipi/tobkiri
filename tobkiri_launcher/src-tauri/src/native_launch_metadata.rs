@@ -144,6 +144,26 @@ impl VerifiedRegistryLaunch {
             model_save: None,
         }
     }
+
+    pub(crate) fn test_model_save_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        Self {
+            identity,
+            security_epoch: 7,
+            catalog_revision: catalog_revision.to_owned(),
+            provider_prepare: None,
+            model_settings: None,
+            model_save: Some(VerifiedModelSaveSource {
+                model_manage: VerifiedLegacyRoutePin::fixture(),
+                provider_read: VerifiedLegacyRoutePin::fixture(),
+                archive_sha256: "sha256:archive".into(),
+                archive_bytes: 512,
+                manifest_sha256: "sha256:manifest".into(),
+            }),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -571,6 +591,36 @@ pub(super) fn reacquire_model_settings_pack(
     .context("bundled Model settings archive verification failed")
 }
 
+/// Reacquire the Model Save Pack using its own launch evidence and fixed declaration.
+pub(super) fn reacquire_model_save_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .model_save
+        .as_ref()
+        .context("admitted launch has no verified Model Save source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    registry_pack_receipt::verify_installed_with_model(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            verify_legacy_model_save_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )
+    .context("bundled Model Save archive verification failed")
+}
+
 fn registry_pack_root(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
@@ -730,15 +780,22 @@ mod tests {
             activation_id: "activation:fixture".into(),
             plan_digest: "sha256:fixture".into(),
         };
-        let mut proof = VerifiedRegistryLaunch::test_model_proof(identity, "catalog:fixture");
-        let list = proof.model_settings.take().unwrap();
-        proof.model_save = Some(VerifiedModelSaveSource {
-            model_manage: VerifiedLegacyRoutePin::fixture(),
-            provider_read: VerifiedLegacyRoutePin::fixture(),
-            archive_sha256: list.archive_sha256,
-            archive_bytes: list.archive_bytes,
-            manifest_sha256: list.manifest_sha256,
-        });
+        let save = NativeRegistryRequest::ModelSave {
+            request: b"{}".to_vec(),
+            provider: b"{}".to_vec(),
+        };
+        assert!(!save.has_launch_proof(&VerifiedRegistryLaunch::test_proof(
+            identity.clone(),
+            "catalog:fixture"
+        )));
+        assert!(
+            !save.has_launch_proof(&VerifiedRegistryLaunch::test_model_proof(
+                identity.clone(),
+                "catalog:fixture"
+            ))
+        );
+        let proof = VerifiedRegistryLaunch::test_model_save_proof(identity, "catalog:fixture");
+        assert!(save.has_launch_proof(&proof));
         assert!(!NativeRegistryRequest::ModelList.has_launch_proof(&proof));
         assert!(!NativeRegistryRequest::Provider {
             request: Vec::new(),

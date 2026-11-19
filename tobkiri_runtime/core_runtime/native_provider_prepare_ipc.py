@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import ctypes
 import json
+import math
 import os
 import re
 import socket
 import struct
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from functools import lru_cache, partial
-from typing import Any
+from typing import Any, Literal
 
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import (
@@ -24,7 +25,6 @@ from core_runtime.provider_prepare_native_v4 import (
 )
 from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import strict_loads
-
 
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
@@ -37,8 +37,11 @@ _FRAME = struct.Struct("!BI")
 _START, _CHECK, _LIVE = 1, 2, 3
 _PLAN, _FAILURE, _CANCEL = 7, 8, 9
 _INAPPLICABLE = 10
+_PUBLISH_CHECK, _PUBLISH_PERMIT = 11, 12
 _JSON_LIMIT = 16 * 1024
 _MODEL_SETTINGS_RESULT_LIMIT = 1024 * 1024
+_MODEL_SAVE_MAX_NODES = 100_000
+_MODEL_SAVE_MAX_INTEGER_DIGITS = 4300
 _FAILURES = frozenset({
     b"denied", b"approval-required", b"cancelled", b"not-found", b"invalid",
     b"limit-exceeded", b"conflict", b"unavailable", b"internal", b"legacy-read-required",
@@ -58,6 +61,18 @@ class NativeProviderPrepareUnavailable(RuntimeError):
     """The authenticated Launcher declined this request before any native work."""
 
 
+class NativeModelSaveFailure(RuntimeError):
+    """The Launcher reported a model save failure before publication permission."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Model Settings save failed ({code})")
+        self.code = code
+
+
+class NativeModelSavePublicationUnconfirmed(RuntimeError):
+    """A permitted Model Registry publication has no confirmed owner result."""
+
+
 class _ProtocolError(RuntimeError):
     """A fixed transport or protocol failure without peer-supplied details."""
 
@@ -70,6 +85,24 @@ class NativeModelSettingsRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
+
+
+@dataclass(frozen=True)
+class NativeModelSaveRequest:
+    """Borrow the signed Settings request, Provider projection, and live guard."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    request: Mapping[str, Any]
+    provider: Mapping[str, Any]
+    mark_publication_possible: Callable[[], None]
+
+
+_RegistryBorrow = (
+    NativeProviderPrepareBorrow | NativeModelSettingsRequest | NativeModelSaveRequest
+)
 
 
 @dataclass(frozen=True)
@@ -144,7 +177,7 @@ def capture_launcher_provider_prepare_planner() -> NativeProviderPreparePlanner 
     if launcher is None:
         return None
     return NativeProviderPreparePlanner(
-        MINIMUM_PREPARE_MEMORY, partial(_invoke, launcher, model_settings=False),
+        MINIMUM_PREPARE_MEMORY, partial(_invoke, launcher, operation="provider_prepare"),
     )
 
 
@@ -155,12 +188,23 @@ def capture_launcher_model_settings_reader() -> (
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, model_settings=True)
+    return partial(_invoke, launcher, operation="model_list")
 
 
-def _start_payload(
-    borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest, deadline_ns: int,
-) -> bytes:
+def model_save_from_environment() -> (
+    Callable[[NativeModelSaveRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's fixed endpoint for model settings saves."""
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="model_save")
+
+
+capture_launcher_model_save_writer = model_save_from_environment
+
+
+def _start_payload(borrow: _RegistryBorrow, deadline_ns: int) -> bytes:
     context = borrow.context
     runtime_instance = borrow.runtime_instance
     if (
@@ -183,6 +227,15 @@ def _start_payload(
     }
     if isinstance(borrow, NativeModelSettingsRequest):
         frame["model_list"] = {}
+    elif isinstance(borrow, NativeModelSaveRequest):
+        if not isinstance(borrow.request, Mapping) or not isinstance(
+            borrow.provider, Mapping,
+        ):
+            raise _ProtocolError("native Model Settings save inputs must be objects")
+        frame["model_save"] = {
+            "request": dict(borrow.request),
+            "provider": dict(borrow.provider),
+        }
     else:
         request = borrow.request
         frame["request"] = {
@@ -195,11 +248,15 @@ def _start_payload(
         frozen_plan = borrow.frozen_plan
         if frozen_plan is not None:
             frame["apply"] = dict(frozen_plan)
-    payload = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
     try:
+        payload = json.dumps(
+            frame, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+        )
         encoded = payload.encode("utf-8")
     except UnicodeEncodeError:
         raise _ProtocolError("native Provider request contains invalid UTF-8") from None
+    except (TypeError, ValueError, RecursionError):
+        raise _ProtocolError("native Registry request JSON is invalid") from None
     if len(encoded) > _JSON_LIMIT:
         raise _ProtocolError("native Provider preparation request exceeds its bound")
     return encoded
@@ -215,14 +272,80 @@ def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
     return plan
 
 
+def _decode_model_save(payload: bytes) -> dict[str, Any]:
+    # The guest's opaque owner result uses Python JSON, including integers
+    # outside the strict-canonical range. The frame already bounds its bytes.
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = dict(pairs)
+        if len(result) != len(pairs):
+            raise ValueError
+        return result
+
+    def integer(token: str) -> int:
+        if len(token.removeprefix("-")) > _MODEL_SAVE_MAX_INTEGER_DIGITS:
+            raise ValueError
+        return int(token)
+
+    def finite_float(token: str) -> float:
+        number = float(token)
+        if not math.isfinite(number):
+            raise ValueError
+        return number
+
+    invalid = "native Model Settings owner result is invalid"
+    try:
+        result = json.loads(
+            payload.decode("utf-8"), object_pairs_hook=unique_object,
+            parse_int=integer, parse_float=finite_float, parse_constant=finite_float,
+        )
+    except (ValueError, RecursionError):
+        raise _ProtocolError(invalid) from None
+    if (
+        type(result) is not dict
+        or set(result) != {"action", "store_revision", "profile"}
+        or result["action"] != "saved"
+        or type(result["store_revision"]) is not int
+        or type(result["profile"]) is not dict
+    ):
+        raise _ProtocolError(invalid)
+    profile = result["profile"]
+    if type(profile.get("enabled")) is not bool or any(
+        not isinstance(profile.get(key), str) or not profile[key].strip()
+        for key in ("model_profile_id", "model_id", "display_name")
+    ):
+        raise _ProtocolError(invalid)
+    pending: list[Any] = [result]
+    nodes = 0
+    while pending:
+        value = pending.pop()
+        nodes += 1
+        children: Collection[Any]
+        if isinstance(value, dict):
+            nodes += len(value)  # Include the object keys in the node budget.
+            children = value.values()
+        elif isinstance(value, list):
+            children = value
+        else:
+            continue
+        if nodes + len(pending) + len(children) > _MODEL_SAVE_MAX_NODES:
+            raise _ProtocolError(invalid)
+        pending.extend(children)
+    return result
+
+
 class _Exchange:
-    def __init__(self, connection: socket.socket, plan_limit: int) -> None:
+    def __init__(
+        self, connection: socket.socket, plan_limit: int, *, model_save: bool,
+    ) -> None:
         self.connection = connection
         self.plan_limit = plan_limit
+        self.model_save = model_save
         self.received = bytearray()
         self.partial_write = False
         self.started = False
         self.terminal = False
+        self.publication_possible = False
 
     def send(
         self, tag: int, payload: bytes, wait_seconds: Callable[[], float],
@@ -254,6 +377,8 @@ class _Exchange:
         self._receive_until(_FRAME.size, wait_seconds)
         tag, size = _FRAME.unpack_from(self.received)
         limit = self.plan_limit if tag == _PLAN else _INBOUND_LIMITS.get(tag)
+        if tag == _PUBLISH_CHECK and self.model_save:
+            limit = 0
         if limit is None or size > limit:
             raise _ProtocolError("native Provider preparation frame is invalid")
         self._receive_until(_FRAME.size + size, wait_seconds)
@@ -285,7 +410,7 @@ class _Exchange:
                 tag, payload = self.receive(wait_seconds)
                 if tag == _FAILURE and payload in _FAILURES:
                     return
-                if tag != _CHECK:
+                if tag != _CHECK and not (tag == _PUBLISH_CHECK and self.model_save):
                     break
         except (OSError, _ProtocolError):
             pass
@@ -293,7 +418,7 @@ class _Exchange:
 
     def run(
         self,
-        borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest,
+        borrow: _RegistryBorrow,
         deadline_ns: int,
         wait_seconds: Callable[[], float],
     ) -> dict[str, Any]:
@@ -304,11 +429,18 @@ class _Exchange:
             tag, payload = self.receive(wait_seconds)
             if tag == _FAILURE and payload in _FAILURES:
                 self.terminal = True
-                if payload == b"legacy-read-required" and entered_live_phase:
+                if (
+                    payload == b"legacy-read-required"
+                    and entered_live_phase
+                    and not self.publication_possible
+                ):
                     wait_seconds()
                     raise NativeProviderRegistryRequiresLegacyRead(
                         "Provider Registry exceeds the native envelope before writes",
                     )
+                if self.model_save and payload != b"legacy-read-required":
+                    wait_seconds()
+                    raise NativeModelSaveFailure(payload.decode("ascii"))
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
@@ -316,8 +448,22 @@ class _Exchange:
             if tag == _CHECK:
                 self.send(_LIVE, b"", wait_seconds)
                 entered_live_phase = True
+            elif (
+                tag == _PUBLISH_CHECK
+                and entered_live_phase
+                and isinstance(borrow, NativeModelSaveRequest)
+                and not self.publication_possible
+            ):
+                # The marker can record uncertainty even if its callback raises.
+                self.publication_possible = True
+                borrow.mark_publication_possible()
+                # send() checks the current guard again before offering any byte.
+                self.send(_PUBLISH_PERMIT, b"", wait_seconds)
             elif tag == _PLAN and entered_live_phase:
-                plan = _decode_plan(payload, self.plan_limit)
+                plan = (
+                    _decode_model_save(payload) if self.model_save
+                    else _decode_plan(payload, self.plan_limit)
+                )
                 wait_seconds()
                 self.terminal = True
                 return plan
@@ -330,11 +476,15 @@ class _Exchange:
 
 def _invoke(
     launcher: _Launcher,
-    borrow: NativeProviderPrepareBorrow | NativeModelSettingsRequest,
+    borrow: _RegistryBorrow,
     *,
-    model_settings: bool,
+    operation: Literal["provider_prepare", "model_list", "model_save"],
 ) -> Mapping[str, Any]:
-    if model_settings != isinstance(borrow, NativeModelSettingsRequest):
+    model_settings = isinstance(borrow, NativeModelSettingsRequest)
+    model_save = isinstance(borrow, NativeModelSaveRequest)
+    if model_settings != (operation == "model_list") or model_save != (
+        operation == "model_save"
+    ):
         raise _ProtocolError("native Registry request role is invalid")
 
     numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
@@ -359,8 +509,10 @@ def _invoke(
         except OSError:
             raise _ProtocolError(connection_error) from None
         _authenticate(connection, launcher)
-        plan_limit = _MODEL_SETTINGS_RESULT_LIMIT if model_settings else _JSON_LIMIT
-        exchange = _Exchange(connection, plan_limit)
+        plan_limit = (
+            _MODEL_SETTINGS_RESULT_LIMIT if model_settings or model_save else _JSON_LIMIT
+        )
+        exchange = _Exchange(connection, plan_limit, model_save=model_save)
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds)
         except Exception as error:
@@ -368,7 +520,12 @@ def _invoke(
                 try:
                     exchange.cancel_and_confirm()
                 except _ProtocolError as cleanup_error:
-                    raise cleanup_error from None
+                    if not exchange.publication_possible:
+                        raise cleanup_error from None
+            if exchange.publication_possible:
+                raise NativeModelSavePublicationUnconfirmed(
+                    "native Model Registry publication could not be confirmed",
+                ) from None
             if isinstance(error, OSError) and not isinstance(
                 error, (PermissionError, TimeoutError),
             ):

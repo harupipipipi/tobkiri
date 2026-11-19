@@ -19,6 +19,12 @@ from unittest.mock import Mock
 
 import pytest
 
+from core_runtime.host_provider_backend_v4 import (
+    ExactHostProviderBackendV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+    HostPublicationUnconfirmed,
+)
 from tobkiri_host.admission import (
     AdmissionEstimate,
     ResourceReservation,
@@ -538,6 +544,105 @@ def test_host_control_write_timeout_cannot_be_reported_as_failed() -> None:
     finally:
         release.set()
         fixture.broker.close()
+
+
+@pytest.mark.parametrize("marked", [False, True])
+@pytest.mark.parametrize("failure", ["publication_reply", "capture_fence"])
+def test_exact_host_model_save_requires_its_own_publication_marker(
+    marked: bool, failure: str,
+) -> None:
+    """An exact final permit distinguishes an uncertain Model Manage save."""
+    request = RequestEnvelope(
+        context=context(),
+        target_principal=OpaqueAuthorityRef("model-manage-principal"),
+        target_domain=OpaqueAuthorityRef("model-manage-domain"),
+        contract_id="tobkiri.action.ai.model.profile.manage.v1",
+        contract_version="1.0.0",
+        operation_id="rumi_model_registry_pack.model-profile-manage",
+        payload={"operation": "save"},
+        request_digest=digest("save"),
+        deadline_monotonic=100.0,
+        lease=OpaqueInvocationLease(b"lease"),
+        idempotency_key=None,
+    )
+    invocation = Mock(spec=HostProviderInvocationContextV4)
+    if failure == "capture_fence":
+        error = AuthorizationError("capture was replaced")
+        invocation.assert_current.side_effect = [None, error]
+        invoke = Mock(return_value={"saved": True})
+    else:
+        error = HostPublicationUnconfirmed("final reply was lost")
+        invoke = Mock(side_effect=error)
+    contribution = HostProviderContributionV4(
+        contract_id=request.contract_id,
+        contract_version=request.contract_version,
+        operation_id=request.operation_id,
+        principal_id=request.target_principal.value,
+        artifact_digest=digest("artifact"),
+        implementation_digest=digest("implementation"),
+        domain_id=request.target_domain.value,
+        invoke=invoke,
+    )
+    backend = ExactHostProviderBackendV4(
+        (contribution,),
+        backend_id="model-manage",
+        profile_id=request.context.profile_id,
+        plan_digest=request.context.plan_digest,
+        security_epoch=request.context.security_epoch,
+        invocation_context=lambda envelope: invocation,
+        native_model_save_publication_possible=lambda envelope: (
+            marked and envelope is request
+        ),
+    )
+    assert not backend.cancellation_may_leave_effect(replace(request))
+    assert backend.cancellation_may_leave_effect(request) is marked
+    if marked:
+        assert backend.invoke(request).disposition is EffectDisposition.UNKNOWN
+    else:
+        with pytest.raises(type(error)) as raised:
+            backend.invoke(request)
+        assert raised.value is error
+
+
+@pytest.mark.parametrize("marked", [False, True])
+@pytest.mark.parametrize("failure", ["invalid_output", "audit_commit", "audit_write"])
+def test_host_publication_marker_survives_broker_settlement_failure(
+    monkeypatch: pytest.MonkeyPatch, marked: bool, failure: str,
+) -> None:
+    """Output and audit errors after final publication preserve uncertainty."""
+    fixture = make_broker(effect=EffectClass.PRIVILEGED, timeout_ms=1000)
+    marker = Mock(return_value=marked)
+    monkeypatch.setattr(
+        fixture.backend, "publication_may_have_occurred", marker, raising=False
+    )
+    audit_error = OSError("audit storage unavailable")
+    if failure == "invalid_output":
+        fixture.backend.outcome = ProviderOutcome({"unexpected": True})
+    else:
+        monkeypatch.setattr(fixture.audit, "commit_effect", Mock(side_effect=audit_error))
+    if failure == "audit_write":
+        monkeypatch.setattr(fixture.audit, "fail_effect", Mock(side_effect=audit_error))
+
+    if marked:
+        expected_error = AmbiguousEffectError
+    elif failure == "audit_write":
+        expected_error = OSError
+    else:
+        expected_error = ProviderExecutionError
+    try:
+        with pytest.raises(expected_error) as raised:
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert marker.call_args.args[0].context.request_id == "request-1"
+    if isinstance(raised.value, AmbiguousEffectError):
+        record = fixture.reconciliation.get(raised.value.reconciliation_id)
+        assert record.status == "needs_reconciliation"
+    if failure != "audit_write":
+        stable_code = "ambiguous_effect" if marked else "provider_failed"
+        assert fixture.audit.failures == [(stable_code, marked)]
+    elif marked:
+        assert raised.value.__cause__ is audit_error
 
 
 def test_http_stop_read_fence_preserves_admitted_host_control_write() -> None:
@@ -1381,11 +1486,21 @@ def test_capture_close_keeps_authority_until_uncertain_provider_exits() -> None:
     owner.close.assert_called_once_with()
 
 
-@pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
+@pytest.mark.parametrize(
+    ("effect", "publication_possible"),
+    [
+        (EffectClass.READ, None),
+        (EffectClass.EXTERNAL_EFFECT, None),
+        (EffectClass.PRIVILEGED, False),
+        (EffectClass.PRIVILEGED, True),
+    ],
+)
 def test_completed_future_cannot_publish_a_late_result(
-    monkeypatch: pytest.MonkeyPatch, effect: EffectClass,
+    monkeypatch: pytest.MonkeyPatch,
+    effect: EffectClass,
+    publication_possible: bool | None,
 ) -> None:
-    """A result ready before observation still cannot outlive its deadline."""
+    """The deadline fences late output and uses the exact publication marker."""
     import tobkiri_host.broker as broker_module
 
     clock = [100.0]
@@ -1393,6 +1508,25 @@ def test_completed_future_cannot_publish_a_late_result(
         broker_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
     )
     fixture = make_broker(effect=effect)
+
+    if publication_possible is not None:
+        invoke = fixture.backend.invoke
+        observed: list[RequestEnvelope] = []
+
+        def observe_invoke(request: RequestEnvelope) -> ProviderOutcome:
+            observed.append(request)
+            return invoke(request)
+
+        def may_leave_effect(request: RequestEnvelope) -> bool:
+            assert request is observed[0]
+            assert request.cancellation_requested.is_set()
+            return publication_possible
+
+        monkeypatch.setattr(fixture.backend, "invoke", observe_invoke)
+        monkeypatch.setattr(
+            fixture.backend, "cancellation_may_leave_effect", may_leave_effect,
+            raising=False,
+        )
 
     def submit(function, *arguments):
         future = Future()
@@ -1403,9 +1537,10 @@ def test_completed_future_cannot_publish_a_late_result(
         return future
 
     monkeypatch.setattr(fixture.broker._executor, "submit", submit)
-    error_type = AmbiguousEffectError if effect is EffectClass.EXTERNAL_EFFECT else RequestTimedOutError
+    ambiguous = effect is EffectClass.EXTERNAL_EFFECT or publication_possible is True
+    error_type = AmbiguousEffectError if ambiguous else RequestTimedOutError
     try:
-        with pytest.raises(error_type):
+        with pytest.raises(error_type) as raised:
             fixture.broker.invoke(frame(), context(), effect_scope={})
     finally:
         fixture.broker.close()
@@ -1413,6 +1548,12 @@ def test_completed_future_cannot_publish_a_late_result(
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert "audit_committed" not in fixture.events
+    if isinstance(raised.value, AmbiguousEffectError):
+        record = fixture.reconciliation.get(raised.value.reconciliation_id)
+        assert record.status == "needs_reconciliation"
+        assert fixture.audit.failures == [("ambiguous_effect", True)]
+    elif effect is EffectClass.PRIVILEGED:
+        assert fixture.audit.failures == [("provider_failed", False)]
 
 
 def test_local_timeout_kills_process_group_before_side_effect(tmp_path: Path) -> None:

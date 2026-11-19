@@ -32,8 +32,10 @@ const PLAN: u8 = 7;
 const FAILURE: u8 = 8;
 const CANCEL: u8 = 9;
 const INAPPLICABLE: u8 = 10;
+const PUBLISH_CHECK: u8 = 11;
+const PUBLISH_PERMIT: u8 = 12;
 const JSON_LIMIT: usize = 16 * 1024;
-const MODEL_LIST_LIMIT: usize = 1024 * 1024;
+const MODEL_RESULT_LIMIT: usize = 1024 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CLEANUP_WAIT: Duration = Duration::from_secs(10);
@@ -48,16 +50,23 @@ struct Start<'a> {
     deadline_ns: u64,
     #[serde(default, deserialize_with = "deserialize_present")]
     request: Option<Request>,
-    #[serde(borrow, default, deserialize_with = "deserialize_plan")]
+    #[serde(borrow, default, deserialize_with = "deserialize_optional_object")]
     apply: Option<&'a RawValue>,
     #[serde(default, deserialize_with = "deserialize_present")]
     model_list: Option<ModelList>,
+    #[serde(borrow, default, deserialize_with = "deserialize_present")]
+    model_save: Option<ModelSave<'a>>,
 }
 
 impl Start<'_> {
     fn operation(&self) -> Result<NativeRegistryRequest> {
-        match (&self.request, &self.model_list, self.apply) {
-            (Some(request), None, apply) => {
+        match (
+            &self.request,
+            &self.model_list,
+            &self.model_save,
+            self.apply,
+        ) {
+            (Some(request), None, None, apply) => {
                 let request = serde_json::to_vec(request)?;
                 ensure!(
                     request.len() <= JSON_LIMIT,
@@ -67,7 +76,11 @@ impl Start<'_> {
                 let apply = apply.map(|plan| plan.get().as_bytes().to_vec());
                 Ok(NativeRegistryRequest::Provider { request, apply })
             }
-            (None, Some(_), None) => Ok(NativeRegistryRequest::ModelList),
+            (None, Some(_), None, None) => Ok(NativeRegistryRequest::ModelList),
+            (None, None, Some(save), None) => Ok(NativeRegistryRequest::ModelSave {
+                request: save.request.get().as_bytes().to_vec(),
+                provider: save.provider.get().as_bytes().to_vec(),
+            }),
             _ => bail!("native Registry start must name exactly one operation"),
         }
     }
@@ -77,6 +90,15 @@ impl Start<'_> {
 #[serde(deny_unknown_fields)]
 struct ModelList {}
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelSave<'a> {
+    #[serde(borrow, deserialize_with = "deserialize_object")]
+    request: &'a RawValue,
+    #[serde(borrow, deserialize_with = "deserialize_object")]
+    provider: &'a RawValue,
+}
+
 fn deserialize_present<'de, T, D>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
 where
     T: Deserialize<'de>,
@@ -85,15 +107,24 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-fn deserialize_plan<'de, D>(deserializer: D) -> std::result::Result<Option<&'de RawValue>, D::Error>
+fn deserialize_object<'de, D>(deserializer: D) -> std::result::Result<&'de RawValue, D::Error>
 where
     D: Deserializer<'de>,
 {
     let plan = <&RawValue>::deserialize(deserializer)?;
     if !plan.get().starts_with('{') {
-        return Err(de::Error::custom("Provider commit plan must be an object"));
+        return Err(de::Error::custom("Registry input must be an object"));
     }
-    Ok(Some(plan))
+    Ok(plan)
+}
+
+fn deserialize_optional_object<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<&'de RawValue>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_object(deserializer).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -213,23 +244,33 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
         );
     }
 
-    let model_list = matches!(operation, NativeRegistryRequest::ModelList);
+    let reply = match &operation {
+        NativeRegistryRequest::Provider { .. } => ReplyRole::Provider,
+        NativeRegistryRequest::ModelList => ReplyRole::ModelList,
+        NativeRegistryRequest::ModelSave { .. } => ReplyRole::ModelSave,
+    };
     drop(bytes);
     let deadline = Arc::new(ProviderPrepareDeadline::new(deadline));
     let connection = Arc::new(Connection {
         manager,
         candidate: Arc::clone(&candidate),
-        wire: Mutex::new(Wire { stream, stop: None }),
+        wire: Mutex::new(Wire::new(stream)),
         deadline: Arc::clone(&deadline),
-        model_list,
+        reply,
     });
     let check_connection = Arc::clone(&connection);
+    let publish_permit = (reply == ReplyRole::ModelSave).then(|| {
+        let connection = Arc::clone(&connection);
+        Arc::new(move || connection.authorize_publication())
+            as Arc<dyn Fn() -> Result<()> + Send + Sync>
+    });
     let pending = match start_provider_prepare(
         app,
         candidate,
         operation,
         deadline,
         Arc::new(move || check_connection.check_current()),
+        publish_permit,
     ) {
         Ok(pending) => pending,
         Err(error) => {
@@ -239,18 +280,33 @@ pub(crate) fn handle_connection(app: &AppHandle, mut stream: UnixStream) -> Resu
     connection.finish(pending)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReplyRole {
+    Provider,
+    ModelList,
+    ModelSave,
+}
+
 struct Connection {
     manager: Arc<ApplicationProcessManager>,
     candidate: Arc<ProviderPrepareListener>,
     // The worker's authorization checks and the idle actor share one reader.
     wire: Mutex<Wire>,
     deadline: Arc<ProviderPrepareDeadline>,
-    model_list: bool,
+    reply: ReplyRole,
 }
 
 struct Wire {
     stream: UnixStream,
     stop: Option<Stop>,
+    authority: WireAuthority,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WireAuthority {
+    AwaitingLive,
+    Live,
+    PublicationPermitted,
 }
 
 impl Connection {
@@ -274,20 +330,22 @@ impl Connection {
     }
 
     fn check_current(&self) -> Result<()> {
+        self.authorize(false)
+    }
+
+    fn authorize_publication(&self) -> Result<()> {
+        ensure!(
+            self.reply == ReplyRole::ModelSave,
+            "Registry exchange does not admit Model publication"
+        );
+        self.authorize(true)
+    }
+
+    fn authorize(&self, publish: bool) -> Result<()> {
         let mut wire = self.lock_wire()?;
         self.checkpoint(&mut wire)?;
         let deadline = self.deadline.current().min(Instant::now() + FRAME_TIMEOUT);
-        let result = (|| {
-            wire.check_idle(deadline)?;
-            send_frame(&mut wire.stream, CHECK, &[], deadline)?;
-            let header = read_header(&mut wire.stream, deadline)?;
-            if header == (CANCEL, 0) {
-                wire.stop = Some(Stop::Cancelled);
-                return Err(Stop::Cancelled.as_error());
-            }
-            ensure!(header == (LIVE, 0), "invalid Provider prepare LIVE frame");
-            Ok(())
-        })();
+        let result = wire.exchange_authority(publish, deadline);
         if result.is_err() && wire.stop.is_none() {
             wire.stop = Some(if Instant::now() >= self.deadline.current() {
                 Stop::Deadline
@@ -357,16 +415,15 @@ impl Connection {
             drop(wire);
             return self.send_stopped(stop);
         }
-        let limit = if self.model_list {
-            MODEL_LIST_LIMIT
-        } else {
-            JSON_LIMIT
+        let limit = match self.reply {
+            ReplyRole::Provider => JSON_LIMIT,
+            ReplyRole::ModelList | ReplyRole::ModelSave => MODEL_RESULT_LIMIT,
         };
         match result {
             Ok(output) if output.len() <= limit => {
                 send_frame(&mut wire.stream, PLAN, output.as_bytes(), deadline)
             }
-            Ok(_) if self.model_list => {
+            Ok(_) if self.reply == ReplyRole::ModelList => {
                 send_frame(&mut wire.stream, FAILURE, b"legacy-read-required", deadline)
             }
             Ok(_) => send_frame(&mut wire.stream, FAILURE, b"limit-exceeded", deadline),
@@ -398,6 +455,43 @@ impl Connection {
 }
 
 impl Wire {
+    fn new(stream: UnixStream) -> Self {
+        Self {
+            stream,
+            stop: None,
+            authority: WireAuthority::AwaitingLive,
+        }
+    }
+
+    fn exchange_authority(&mut self, publish: bool, deadline: Instant) -> Result<()> {
+        self.check_idle(deadline)?;
+        let (challenge, expected) = if publish {
+            ensure!(
+                self.authority == WireAuthority::Live,
+                "Model Registry publication is outside its live phase"
+            );
+            (PUBLISH_CHECK, PUBLISH_PERMIT)
+        } else {
+            (CHECK, LIVE)
+        };
+        send_frame(&mut self.stream, challenge, &[], deadline)?;
+        let header = read_header(&mut self.stream, deadline)?;
+        if header == (CANCEL, 0) {
+            self.stop = Some(Stop::Cancelled);
+            return Err(Stop::Cancelled.as_error());
+        }
+        ensure!(
+            header == (expected, 0),
+            "invalid Registry authorization frame"
+        );
+        if publish {
+            self.authority = WireAuthority::PublicationPermitted;
+        } else if self.authority == WireAuthority::AwaitingLive {
+            self.authority = WireAuthority::Live;
+        }
+        Ok(())
+    }
+
     fn check_idle(&mut self, deadline: Instant) -> Result<()> {
         if let Some(stop) = self.stop {
             return Err(stop.as_error());
@@ -428,7 +522,11 @@ fn failure_code(error: &anyhow::Error) -> &'static str {
         return "legacy-read-required";
     }
     match error.downcast_ref::<NativeArtifactError>() {
-        Some(NativeArtifactError::ProviderRegistryLimitBeforePublish) => "legacy-read-required",
+        Some(
+            NativeArtifactError::ProviderRegistryLimitBeforePublish
+            | NativeArtifactError::ModelRegistryLimitBeforePublish,
+        ) => "legacy-read-required",
+        Some(NativeArtifactError::ModelRegistryPublicationUnconfirmed(_)) => "unavailable",
         Some(NativeArtifactError::ProviderRejected(error)) => error.code(),
         Some(NativeArtifactError::ModelRegistryRejected(error)) => error.code(),
         Some(NativeArtifactError::Execution(
@@ -694,22 +792,84 @@ mod tests {
     }
 
     #[test]
+    fn save_start_borrows_only_two_object_inputs() {
+        let request = r#"{"model_id": "gemma-3-1b"}"#;
+        let provider = r#"{"revision":1,"providers":[]}"#;
+        let save = format!(r#", "model_save":{{"request":{request},"provider":{provider}}}"#);
+        let frame = start_frame(&save);
+        let start: Start<'_> = serde_json::from_str(&frame).unwrap();
+        let NativeRegistryRequest::ModelSave {
+            request: raw,
+            provider: snapshot,
+        } = start.operation().unwrap()
+        else {
+            panic!("expected Model Save");
+        };
+        assert_eq!(raw, request.as_bytes());
+        assert_eq!(snapshot, provider.as_bytes());
+        for extra in [
+            PROVIDER_REQUEST,
+            r#", "model_list": {}"#,
+            r#", "apply": {}"#,
+        ] {
+            let frame = start_frame(&format!("{save}{extra}"));
+            assert!(serde_json::from_str::<Start<'_>>(&frame)
+                .unwrap()
+                .operation()
+                .is_err());
+        }
+        for body in [
+            r#"null"#,
+            r#"{}"#,
+            r#"{"request":[],"provider":{}}"#,
+            r#"{"request":{},"provider":{},"permit":true}"#,
+        ] {
+            let frame = start_frame(&format!(r#", "model_save":{body}"#));
+            assert!(serde_json::from_str::<Start<'_>>(&frame).is_err());
+        }
+    }
+
+    #[test]
+    fn publication_requires_live_and_uses_one_permit() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        client.set_nonblocking(true).unwrap();
+        server.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        let mut wire = Wire::new(server);
+        assert!(wire.exchange_authority(true, deadline).is_err());
+        let peer = thread::spawn(move || {
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
+            send_frame(&mut client, LIVE, &[], deadline).unwrap();
+            assert_eq!(
+                read_header(&mut client, deadline).unwrap(),
+                (PUBLISH_CHECK, 0)
+            );
+            send_frame(&mut client, PUBLISH_PERMIT, &[], deadline).unwrap();
+            assert_eq!(read_header(&mut client, deadline).unwrap(), (CHECK, 0));
+            send_frame(&mut client, LIVE, &[], deadline).unwrap();
+            client
+        });
+        wire.exchange_authority(false, deadline).unwrap();
+        wire.exchange_authority(true, deadline).unwrap();
+        wire.exchange_authority(false, deadline).unwrap();
+        let _peer = peer.join().unwrap();
+        assert!(wire.exchange_authority(true, deadline).is_err());
+    }
+
+    #[test]
     fn idle_connection_distinguishes_explicit_cancel_and_disconnect() {
         let (mut sender, receiver) = UnixStream::pair().unwrap();
         sender.set_nonblocking(true).unwrap();
         receiver.set_nonblocking(true).unwrap();
         let deadline = Instant::now() + FRAME_TIMEOUT;
-        let mut wire = Wire {
-            stream: receiver,
-            stop: None,
-        };
+        let mut wire = Wire::new(receiver);
         wire.check_idle(deadline).unwrap();
         send_frame(&mut sender, CANCEL, &[], deadline).unwrap();
         assert!(wire.check_idle(deadline).is_err());
         assert!(matches!(wire.stop, Some(Stop::Cancelled)));
         let (sender, stream) = UnixStream::pair().unwrap();
         stream.set_nonblocking(true).unwrap();
-        let mut wire = Wire { stream, stop: None };
+        let mut wire = Wire::new(stream);
         drop(sender);
         assert!(wire.check_idle(deadline).is_err());
         assert!(matches!(wire.stop, Some(Stop::Broken)));

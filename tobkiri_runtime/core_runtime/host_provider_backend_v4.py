@@ -256,6 +256,10 @@ class HostProviderFactoryV4(Protocol):
         """Capture contributions from verified resolved bindings."""
 
 
+class HostPublicationUnconfirmed(RuntimeError):
+    """The native Host call lost confirmation of its final publication."""
+
+
 class ExactHostProviderBackendV4:
     """Route a shared Host substrate by exact resolved Function principal."""
 
@@ -278,6 +282,9 @@ class ExactHostProviderBackendV4:
             [RequestEnvelope], HostProviderInvocationContextV4
         ],
         admission_bound_operations: frozenset[tuple[str, str, str]] = frozenset(),
+        native_model_save_publication_possible: (
+            Callable[[RequestEnvelope], bool] | None
+        ) = None,
     ) -> None:
         if not contributions:
             raise ValueError("Host Provider backend requires contributions")
@@ -286,6 +293,9 @@ class ExactHostProviderBackendV4:
             raise ValueError("duplicate Host Provider contribution")
         self._invocation_context = invocation_context
         self._admission_bound_operations = admission_bound_operations
+        self._native_model_save_publication_possible = (
+            native_model_save_publication_possible
+        )
         if not admission_bound_operations.issubset(self._contributions):
             raise ValueError("Host Provider admission binding is unavailable")
         backend_digest = canonical_digest(
@@ -380,18 +390,33 @@ class ExactHostProviderBackendV4:
             ) not in self.cancellation_may_leave_effect_operations:
                 raise
             return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
+        except HostPublicationUnconfirmed:
+            if not self.publication_may_have_occurred(request):
+                raise
+            return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
         try:
             invocation.assert_current()
         except Exception:
-            if (
-                request.contract_id,
-                request.operation_id,
-            ) not in self.cancellation_may_leave_effect_operations:
+            if not self.cancellation_may_leave_effect(request):
                 raise
             # Report uncertainty through the existing Broker audit/reconciliation
             # path rather than claiming a completed write safely failed.
             return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
         return outcome
+
+    def cancellation_may_leave_effect(self, request: RequestEnvelope) -> bool:
+        """Check for a workspace write or this request's native save marker."""
+        if (
+            request.contract_id,
+            request.operation_id,
+        ) in self.cancellation_may_leave_effect_operations:
+            return True
+        return self.publication_may_have_occurred(request)
+
+    def publication_may_have_occurred(self, request: RequestEnvelope) -> bool:
+        """Return the capture-owned final permit marker for this exact request."""
+        publication_possible = self._native_model_save_publication_possible
+        return publication_possible is not None and publication_possible(request)
 
     def cancel(self, request_id: str) -> None:
         """Accept cancellation; individual providers observe durable fences."""
@@ -433,4 +458,5 @@ __all__ = [
     "HostProviderContributionV4",
     "HostProviderFactoryV4",
     "HostProviderInvocationContextV4",
+    "HostPublicationUnconfirmed",
 ]

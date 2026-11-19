@@ -96,7 +96,7 @@ from tobkiri_host.workspace_mutation import (
     WorkspaceMutationBinding,
     WorkspaceMutationCoordinator,
 )
-from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.canonical import MAX_SAFE_INTEGER, canonical_digest, canonical_json
 from tobkiri_protocol.data_codec import digest_payload
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
@@ -154,6 +154,7 @@ from ..host_provider_backend_v4 import (
     HostProviderCaptureContextV4,
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
+    HostPublicationUnconfirmed,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..invocation_scope_v4 import (
@@ -189,8 +190,13 @@ from ..model_settings_native_v4 import (
     MINIMUM_MEMORY as NATIVE_MODEL_SETTINGS_MEMORY,
     OPERATION as NATIVE_MODEL_SETTINGS_OPERATION,
     PACK as NATIVE_MODEL_SETTINGS_PACK,
+    SAVE_CONTRACT as _MODEL_SAVE_CONTRACT,
+    SAVE_FUNCTION as _MODEL_SAVE_FUNCTION,
+    SAVE_OPERATION as _MODEL_SAVE_OPERATION,
+    current_model_save_http_scope,
     current_model_settings_http_scope,
     model_settings_presenter_input,
+    publication_possible as model_save_publication_possible,
 )
 from ..provider_prepare_native_v4 import (
     CONTRACT as NATIVE_PROVIDER_PREPARE_CONTRACT,
@@ -213,6 +219,11 @@ from ..workflow_v4.attempt_port import (
 )
 from ..workflow_v4.production_capture import capture_workflow_port_assembly_v4
 from ..workflow_v4.evidence import EVIDENCE_KIND as WORKFLOW_EVIDENCE_KIND
+
+
+_MODEL_PROVIDER_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
+_MODEL_PROVIDER_OPERATION = "rumi_provider_registry_pack.provider-registry-resource"
+_MODEL_PROVIDER_FUNCTION = "rumi_provider_registry_pack.provider-registry.resource"
 
 
 def _allow_unsigned_development_shell(catalog: Any) -> bool:
@@ -1814,8 +1825,12 @@ def capture_production_dispatch(
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
     from ..native_provider_prepare_ipc import (
+        NativeModelSaveFailure,
+        NativeModelSavePublicationUnconfirmed,
+        NativeModelSaveRequest,
         NativeModelSettingsRequest,
         NativeProviderPrepareUnavailable,
+        capture_launcher_model_save_writer,
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
     )
@@ -1829,6 +1844,7 @@ def capture_production_dispatch(
     if launcher_provider_prepare:
         native_provider_prepare_planner = capture_launcher_provider_prepare_planner()
     native_model_settings_reader = capture_launcher_model_settings_reader()
+    native_model_save_writer = capture_launcher_model_save_writer()
 
     authority_path = authority_store.path.resolve()
     if authority_path.name != "v4.sqlite3" or authority_path.parent.name != "authority":
@@ -3964,6 +3980,162 @@ def capture_production_dispatch(
         if len(model_settings_edges) == 1:
             native_model_settings_edge = model_settings_edges[0]
 
+    native_model_save_edge: _CapturedPlanEdge | None = None
+    if native_model_save_writer is not None:
+        save_edges = tuple(
+            edge for edge in captured_edges
+            if edge.caller.principal_id in shell_principal_ids
+            and edge.caller.function_id == "shell.tauri.default"
+            and edge.resolved_binding.artifact.pack_id == NATIVE_MODEL_SETTINGS_PACK
+            and edge.resolved_binding.operation.contract_id == _MODEL_SAVE_CONTRACT
+            and edge.resolved_binding.operation.operation_id == _MODEL_SAVE_OPERATION
+            and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
+            and is_exact_legacy_host_edge(edge, _MODEL_SAVE_FUNCTION)
+        )
+        if len(save_edges) == 1:
+            manage = save_edges[0]
+            provider_reads = tuple(
+                edge for edge in captured_edges
+                if edge.caller == manage.target
+                and edge.resolved_binding.artifact.pack_id == "rumi_provider_registry_pack"
+                and edge.resolved_binding.operation.contract_id == _MODEL_PROVIDER_CONTRACT
+                and edge.resolved_binding.operation.operation_id == _MODEL_PROVIDER_OPERATION
+                # The original catalog classifies this Registry resource as privileged.
+                and edge.resolved_binding.operation.effect_class is EffectClass.PRIVILEGED
+                and is_exact_legacy_host_edge(edge, _MODEL_PROVIDER_FUNCTION)
+            )
+            if len(provider_reads) == 1:
+                native_model_save_edge = manage
+
+    def is_native_model_save_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        scope = current_model_save_http_scope()
+        return (
+            native_model_save_edge is not None
+            and scope is not None
+            and bool(dispatch_holder)
+            and scope.session is dispatch_holder[0]
+            and payload == scope.normalized_payload
+            and context.caller_principal.value == native_model_save_edge.caller.principal_id
+            and context.caller_session_id == authority_session_id(
+                scope.panel_session_id, context.caller_principal.value,
+            )
+            and parent_invocation_scopes.lookup(context.caller_session_id) is None
+        )
+
+    def model_save_provider(
+        invocation: _HostInvocation, request: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        snapshot = invocation.contract_client(
+            allowed_contract_ids=frozenset({_MODEL_PROVIDER_CONTRACT}),
+            consumer_pack_id=NATIVE_MODEL_SETTINGS_PACK,
+            include_credentials=False,
+        ).invoke(_MODEL_PROVIDER_CONTRACT, _MODEL_PROVIDER_OPERATION, {})
+        expected = request["provider_registry_revision"]
+        if not isinstance(snapshot, Mapping) or snapshot.get("revision") != expected:
+            raise PermissionError("model route provider connection changed")
+        rows = snapshot.get("providers")
+        if not isinstance(rows, list):
+            raise PermissionError("model route provider registry is invalid")
+        selected = request["provider_instance_id"]
+        matches = []
+        for row in rows:
+            if (
+                isinstance(row, Mapping)
+                and row.get("provider_instance_id") == selected
+                and row.get("enabled") is True
+            ):
+                matches.append({"provider_instance_id": selected, "enabled": True})
+                if len(matches) == 2:
+                    break
+        return {"revision": expected, "providers": matches}
+
+    def wrap_native_model_save(
+        contribution: HostProviderContributionV4,
+        edge: _CapturedPlanEdge,
+        writer: Callable[[NativeModelSaveRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        """Borrow the signed direct save after its ordinary Broker admission."""
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Model Save context is unavailable")
+            scope = current_model_save_http_scope()
+            if scope is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            envelope = invocation.envelope
+            if (
+                not is_native_model_save_route(envelope.context, payload)
+                or invocation.parent_invocation is not None
+                or operation_id != _MODEL_SAVE_OPERATION
+                or envelope.contract_id != _MODEL_SAVE_CONTRACT
+                or payload is not envelope.payload
+                or envelope.target_principal != edge.resolved_binding.principal_ref
+            ):
+                raise AuthorityDenied("native Model Save lineage changed")
+            reservation_id = envelope.resource_reservation_id
+
+            def guard() -> None:
+                invocation.assert_current()
+                scope.assert_current()
+                production_admission.native_resources(reservation_id)
+
+            def legacy_save() -> Mapping[str, Any]:
+                if scope.publication_possible(envelope):
+                    raise HostPublicationUnconfirmed(
+                        "native Model Save publication is unconfirmed",
+                    )
+                guard()
+                result = contribution.invoke(operation_id, payload, invocation)
+                guard()
+                return result
+
+            guard()
+            resources = production_admission.native_resources(reservation_id)
+            revisions = (
+                scope.request["expected_revision"],
+                scope.request["provider_registry_revision"],
+            )
+            if resources.memory_bytes < NATIVE_MODEL_SETTINGS_MEMORY or any(
+                type(revision) is int and revision > MAX_SAFE_INTEGER
+                for revision in revisions
+            ):
+                return legacy_save()
+            provider = model_save_provider(invocation, scope.request)
+            guard()
+            try:
+                return writer(NativeModelSaveRequest(
+                    context=envelope.context,
+                    runtime_instance=scope.runtime_instance,
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    request=scope.request,
+                    provider=provider,
+                    mark_publication_possible=lambda: scope.mark_publication_possible(envelope),
+                ))
+            except (
+                NativeProviderPrepareUnavailable,
+                NativeProviderRegistryRequiresLegacyRead,
+            ):
+                return legacy_save()
+            except NativeModelSavePublicationUnconfirmed as error:
+                raise HostPublicationUnconfirmed(
+                    "native Model Save publication is unconfirmed",
+                ) from error
+            except NativeModelSaveFailure as error:
+                if error.code == "invalid":
+                    raise ValueError("model Registry rejected the save") from None
+                if error.code == "denied":
+                    raise PermissionError("model Registry rejected the save") from None
+                raise RuntimeError("model Registry rejected the save") from None
+
+        return replace(contribution, invoke=invoke)
+
     def is_native_model_settings_route(
         context: RequestContext, payload: Mapping[str, Any],
     ) -> bool:
@@ -4300,6 +4472,7 @@ def capture_production_dispatch(
     native_prepare_key: tuple[str, str, str] | None = None
     native_execute_key: tuple[str, str, str] | None = None
     native_model_settings_key: tuple[str, str, str] | None = None
+    native_model_save_key: tuple[str, str, str] | None = None
     captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
                                    ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
@@ -4378,6 +4551,21 @@ def capture_production_dispatch(
             raise
         contributions = captured_provider.contributions
         if (
+            native_model_save_edge is not None
+            and native_model_save_writer is not None
+            and native_model_save_edge.resolved_binding in captured_bindings
+        ):
+            native_model_save_key = (
+                _MODEL_SAVE_CONTRACT, _MODEL_SAVE_OPERATION,
+                native_model_save_edge.target.principal_id,
+            )
+            contributions = tuple(
+                wrap_native_model_save(
+                    item, native_model_save_edge, native_model_save_writer,
+                ) if item.key == native_model_save_key else item
+                for item in contributions
+            )
+        if (
             native_model_settings_edge is not None
             and native_model_settings_reader is not None
             and native_model_settings_edge.resolved_binding in captured_bindings
@@ -4434,12 +4622,18 @@ def capture_production_dispatch(
                 plan_digest=str(plan["plan_digest"]),
                 security_epoch=int(active.activation["security_epoch"]),
                 invocation_context=invocation_context,
+                native_model_save_publication_possible=(
+                    model_save_publication_possible
+                    if any(item.key == native_model_save_key for item in contributions)
+                    else None
+                ),
                 admission_bound_operations=frozenset(
                     item.key for item in contributions
                     if item.key in {
                         native_prepare_key,
                         native_execute_key,
                         native_model_settings_key,
+                        native_model_save_key,
                     }
                 ),
             ),
@@ -4557,6 +4751,12 @@ def capture_production_dispatch(
         return tuple(sorted(released))
 
     native_admission_rules = []
+    if native_model_save_key is not None and native_model_save_edge is not None:
+        native_admission_rules.append((
+            native_model_save_edge.resolved_binding,
+            NATIVE_MODEL_SETTINGS_MEMORY,
+            is_native_model_save_route,
+        ))
     if native_model_settings_key is not None and native_model_settings_edge is not None:
         native_admission_rules.append((
             native_model_settings_edge.resolved_binding,

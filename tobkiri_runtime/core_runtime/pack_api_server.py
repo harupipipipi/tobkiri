@@ -10,10 +10,12 @@ import threading
 import time
 import uuid
 from contextlib import AbstractContextManager, ExitStack, nullcontext
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -74,9 +76,12 @@ from .host_contract import (
     validate_host_contract,
 )
 from .model_settings_native_v4 import (
+    ModelSaveHTTPScope,
     ModelSettingsHTTPScope,
+    bind_model_save_http_scope,
     bind_model_settings_http_scope,
     is_model_settings_read,
+    is_model_settings_save,
 )
 from .panel_auth import PanelAuthBinding, PanelAuthManager, get_panel_auth_manager
 from .pack_control_v4 import RuntimeSurfaceFactory
@@ -1454,6 +1459,9 @@ class PackAPIHandler(
                 403,
             )
             return True
+        model_save_request = (
+            MappingProxyType(dict(payload)) if is_model_settings_save(route_binding) else None
+        )
         try:
             presentation = self._application_presentation
             if presentation is not None:
@@ -1479,6 +1487,9 @@ class PackAPIHandler(
                 400,
             )
             return True
+        normalized_model_save_payload = (
+            MappingProxyType(deepcopy(payload)) if model_save_request is not None else None
+        )
         payload["_session_id"] = session_id
         operation_record: Mapping[str, Any] | None = None
         operation_journal = self._operation_journal
@@ -1696,10 +1707,13 @@ class PackAPIHandler(
                         200 if state == "pending" else 409,
                     )
                 return True
+        model_save_scope: ModelSaveHTTPScope | None = None
+        finishing_native_model_save = False
         try:
             session.assert_current()
             model_settings_scope: AbstractContextManager[None] = nullcontext()
-            if is_model_settings_read(route_binding):
+            model_settings_read = is_model_settings_read(route_binding)
+            if model_settings_read or model_save_request is not None:
                 instance = self._current_native_provider_prepare_instance()
 
                 def check_model_settings_capture() -> None:
@@ -1709,11 +1723,23 @@ class PackAPIHandler(
                     ):
                         raise PermissionError("Model Settings HTTP capture changed")
 
-                model_settings_scope = bind_model_settings_http_scope(
-                    ModelSettingsHTTPScope(
+                if model_settings_read:
+                    model_settings_scope = bind_model_settings_http_scope(
+                        ModelSettingsHTTPScope(
+                            session_id, session, instance, check_model_settings_capture,
+                        ),
+                    )
+                elif (
+                    instance is not None
+                    and operation_record is not None
+                    and model_save_request is not None
+                    and normalized_model_save_payload is not None
+                ):
+                    model_save_scope = ModelSaveHTTPScope(
                         session_id, session, instance, check_model_settings_capture,
-                    ),
-                )
+                        model_save_request, normalized_model_save_payload,
+                    )
+                    model_settings_scope = bind_model_save_http_scope(model_save_scope)
             with model_settings_scope:
                 result = session.invoke(
                     target.contract_id,
@@ -1726,6 +1752,9 @@ class PackAPIHandler(
                 result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
             safe_result = self._safe_contract_result(result)
             if operation_journal is not None and operation_record is not None:
+                finishing_native_model_save = (
+                    model_save_scope is not None and model_save_scope.publication_was_possible()
+                )
                 operation_journal.finish_operation(
                     request_id,
                     session_id=session_id,
@@ -1743,8 +1772,31 @@ class PackAPIHandler(
             KeyError,
             OSError,
             RuntimeError,
+            TypeError,
             ValueError,
         ) as error:
+            native_publication_possible = (
+                model_save_scope is not None and model_save_scope.publication_was_possible()
+            )
+            if isinstance(error, TypeError) and not native_publication_possible:
+                raise
+            if finishing_native_model_save and operation_journal is not None:
+                # The journal may have committed before reporting an error.
+                try:
+                    durable = operation_journal.operation_status(
+                        request_id, session_id=session_id,
+                    )
+                except ControlReconciliationError:
+                    durable = None
+                if (
+                    durable is not None
+                    and durable["state"] == "succeeded"
+                    and isinstance(durable["result"], Mapping)
+                ):
+                    self._send_contract_outcome(
+                        route_binding, durable["result"], owner_error=True,
+                    )
+                    return True
             public_result = _public_error_result(
                 _exception_error_code(error), error=error
             )
@@ -1759,7 +1811,9 @@ class PackAPIHandler(
                 else:
                     public_result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
             journal_error: BaseException | None = None
-            uncertain_effect = isinstance(error, AmbiguousEffectError)
+            uncertain_effect = (
+                isinstance(error, AmbiguousEffectError) or native_publication_possible
+            )
             if operation_journal is not None and operation_record is not None:
                 try:
                     operation_journal.finish_operation(

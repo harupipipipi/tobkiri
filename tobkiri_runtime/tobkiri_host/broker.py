@@ -992,6 +992,38 @@ class RequestBroker:
         independent_entry_bound = threading.Event()
         registered_child_bound = threading.Event()
 
+        def publication_may_have_occurred() -> bool:
+            check = getattr(backend, "publication_may_have_occurred", None)
+            return provider_entry_claimed.is_set() and callable(check) and check(envelope)
+
+        def report_ambiguity(receipt: str | None = None) -> None:
+            audit_error: Exception | None = None
+            try:
+                self._record_audit_failure(
+                    audit_reservation,
+                    ambiguous=True,
+                    pending_effect_link=pending_effect_link,
+                )
+            except Exception as error:
+                if not publication_may_have_occurred():
+                    raise
+                # A final permit makes a failed audit settlement insufficient
+                # evidence that the native write never happened.
+                audit_error = error
+            try:
+                raise_ambiguous(
+                    self._reconciliation,
+                    request_id=envelope.context.request_id,
+                    target_ref=envelope.target_principal.value,
+                    idempotency_key=envelope.idempotency_key,
+                    reconcile_operation=binding.operation.reconcile_operation,
+                    receipt=receipt,
+                )
+            except AmbiguousEffectError as error:
+                if audit_error is not None:
+                    raise error from audit_error
+                raise
+
         def inherit_parent_cancellation() -> None:
             # Parent timeout/shutdown may set its Event without registry.request.
             # Publish that cancellation on this authenticated independent branch
@@ -1257,19 +1289,7 @@ class RequestBroker:
                 EffectDisposition.ACCEPTED,
                 EffectDisposition.UNKNOWN,
             }:
-                self._record_audit_failure(
-                    audit_reservation,
-                    ambiguous=True,
-                    pending_effect_link=pending_effect_link,
-                )
-                raise_ambiguous(
-                    self._reconciliation,
-                    request_id=envelope.context.request_id,
-                    target_ref=envelope.target_principal.value,
-                    idempotency_key=envelope.idempotency_key,
-                    reconcile_operation=binding.operation.reconcile_operation,
-                    receipt=raw.receipt,
-                )
+                report_ambiguity(raw.receipt)
             payload = dict(raw.payload or {})
             self._catalog.validate_output(binding, payload)
             if audit_reservation is not None:
@@ -1326,30 +1346,29 @@ class RequestBroker:
             # and will never be entered: queued-cancelled and gate-rejected
             # requests terminate unexecuted instead of reporting a false
             # ambiguity.
+            may_leave_effect = getattr(backend, "cancellation_may_leave_effect", None)
             ambiguous = (
                 future is not None
                 and provider_entry_claimed.is_set()
                 and (
                     binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
                     or (
-                        envelope.contract_id,
-                        envelope.operation_id,
-                    ) in getattr(backend, "cancellation_may_leave_effect_operations", ())
+                        may_leave_effect(envelope)
+                        if callable(may_leave_effect)
+                        else (envelope.contract_id, envelope.operation_id)
+                        in getattr(
+                            backend, "cancellation_may_leave_effect_operations", ()
+                        )
+                    )
                 )
-            )
-            self._record_audit_failure(
-                audit_reservation,
-                ambiguous=ambiguous,
-                pending_effect_link=pending_effect_link,
             )
             if ambiguous:
-                raise_ambiguous(
-                    self._reconciliation,
-                    request_id=envelope.context.request_id,
-                    target_ref=envelope.target_principal.value,
-                    idempotency_key=envelope.idempotency_key,
-                    reconcile_operation=binding.operation.reconcile_operation,
-                )
+                report_ambiguity()
+            self._record_audit_failure(
+                audit_reservation,
+                ambiguous=False,
+                pending_effect_link=pending_effect_link,
+            )
             if cancellation_error is not None:
                 raise ProviderExecutionError(
                     "local execution stopped waiting and authenticated cancellation failed"
@@ -1360,6 +1379,8 @@ class RequestBroker:
         except AmbiguousEffectError:
             raise
         except Exception as exc:
+            if publication_may_have_occurred():
+                report_ambiguity()
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
                 if isinstance(exc, PackVMAcceptanceError):
                     if exc.termination == "abnormal_exit":

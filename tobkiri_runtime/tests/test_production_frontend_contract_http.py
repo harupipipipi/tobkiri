@@ -3746,6 +3746,7 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
     monkeypatch.setattr(DurableResourceLedger, "reserve", reserve_model_read)
     monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
     monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: None)
     monkeypatch.setattr(
         ipc, "capture_launcher_model_settings_reader", lambda: native_read,
     )
@@ -3843,6 +3844,185 @@ def test_model_settings_native_read_preserves_signed_http_and_legacy_owner(
         with server._lifecycle_lock:
             server._native_provider_prepare_instance = instance
         assert registry.path.read_bytes() == before
+
+
+def test_model_settings_native_save_preserves_signed_dispatch_and_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Borrow the exact Settings POST and reconcile a lost publication reply."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.model_settings_native_v4 import (
+        SAVE_CONTRACT,
+        SAVE_OPERATION,
+        current_model_save_http_scope,
+        publication_possible,
+    )
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    root = tmp_path / "user-data"
+    models = ModelRegistry("defaults", user_data_root=root)
+    route = _contract("POST", "/api/ai/profiles")
+    body = {
+        "model_profile_id": "daily",
+        "model_id": "provider-model",
+        "provider_instance_id": "provider.fixture",
+        "display_name": "Daily",
+        "expected_revision": 0,
+        "provider_registry_revision": 1,
+        "max_output_tokens": 2048,
+    }
+    normalized = {
+        "operation": "save",
+        "expected_revision": 0,
+        "provider_registry_revision": 1,
+        "preserve_existing": True,
+        "record": {
+            "model_profile_id": "daily",
+            "model_id": "provider-model",
+            "display_name": "Daily",
+            "metadata": {"provider_connection_id": "provider.fixture"},
+            "enabled": True,
+            "parameters": {"max_tokens": 2048},
+        },
+    }
+    observed: list[RequestEnvelope] = []
+    borrowed: list[ipc.NativeModelSaveRequest] = []
+    unconfirmed = False
+
+    def native_save(request: ipc.NativeModelSaveRequest) -> Mapping[str, object]:
+        borrowed.append(request)
+        request.assert_current()
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.request == body
+        assert request.provider == {
+            "revision": 1,
+            "providers": [{"provider_instance_id": "provider.fixture", "enabled": True}],
+        }
+        scope = current_model_save_http_scope()
+        assert scope is not None and scope.session is session
+        assert scope.normalized_payload == normalized
+        envelope = next(
+            call for call in reversed(observed) if call.operation_id == SAVE_OPERATION
+        )
+        assert envelope.payload == normalized
+        assert request.context == envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        assert not publication_possible(envelope)
+        request.mark_publication_possible()
+        assert publication_possible(envelope)
+        assert not publication_possible(replace(envelope))
+        assert not publication_possible(observed[-1])
+        with pytest.raises(PermissionError):
+            request.mark_publication_possible()
+        if unconfirmed:
+            raise ipc.NativeModelSavePublicationUnconfirmed("test reply loss")
+        return {"action": "saved", "store_revision": 1, "profile": normalized["record"]}
+
+    monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/model.sock")
+    monkeypatch.setattr(ipc, "capture_launcher_provider_prepare_planner", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_settings_reader", lambda: None)
+    monkeypatch.setattr(ipc, "capture_launcher_model_save_writer", lambda: native_save)
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
+    ) as (server, session, _authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(backend, envelope, *args, **kwargs):
+            observed.append(envelope)
+            return dispatch(backend, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        ProviderRegistry("defaults", user_data_root=root).save({
+            "provider_instance_id": "provider.fixture",
+            "adapter_id": "openai-compatible",
+            "endpoint": "https://provider.example/v1",
+            "credential_handle": "opaque:test-only",
+        }, expected_revision=0)
+        status, result, _ = _request(server, "POST", route, body=body)
+        assert status == 401 and not borrowed, result
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(request_id: str) -> tuple[int, dict[str, object]]:
+            status, result, _ = _request(
+                server, "POST", route, body=body, headers={
+                    "Cookie": cookie,
+                    "Origin": origin,
+                    "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": request_id,
+                },
+            )
+            return status, result
+
+        request_id = str(uuid.uuid4())
+        status, result = post(request_id)
+        assert status == 200, result
+        assert result["data"] == {
+            "count": 1,
+            "registry_revision": 1,
+            "profiles": [{
+                "profile_id": "daily",
+                "model_id": "provider-model",
+                "display_name": "Daily",
+                "max_output_tokens": 2048,
+                "provider_id": "provider.fixture",
+                "route_configured": True,
+            }],
+        }
+        assert post(request_id) == (status, result)
+        assert len(borrowed) == 1
+        confirmed_result = result
+
+        unconfirmed = True
+        request_id = str(uuid.uuid4())
+        status, result = post(request_id)
+        assert status == 409, result
+        assert result["data"] == {
+            "state": "indeterminate",
+            "code": "operation_reconciliation_required",
+            "request_id": request_id,
+            "retryable": False,
+            "write_set": [],
+        }
+        status, replay = post(request_id)
+        assert status == 409, replay
+        assert replay["data"]["state"] == "indeterminate"
+        assert replay["data"]["result"] is None
+        assert len(borrowed) == 2
+        assert not models.path.exists()
+
+        unconfirmed = False
+        journal = server._operation_journal
+        finish = journal.finish_operation
+
+        def lose_journal_reply(request_id: str, **details: object) -> Mapping[str, object]:
+            finish(request_id, **details)
+            raise RuntimeError("test journal acknowledgement loss")
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(journal, "finish_operation", lose_journal_reply)
+            request_id = str(uuid.uuid4())
+            assert post(request_id) == (200, confirmed_result)
+        assert post(request_id) == (200, confirmed_result)
+        assert len(borrowed) == 3
+
+        handler = server.handler_class
+        assert handler is not None
+        binding = handler._current_panel_auth_binding()
+        assert binding is not None
+        session_token = cookie.split("=", 1)[1]
+        verified = server._panel_auth_manager.verify_session(session_token, binding)
+        assert verified is not None
+        internal = session.invoke(
+            SAVE_CONTRACT, SAVE_OPERATION,
+            {**normalized, "_session_id": verified["session_id"]},
+        )
+        assert internal["action"] == "saved"
+        assert models.resolve("daily")["profile"]["parameters"]["max_tokens"] == 2048
+        assert len(borrowed) == 3
 
 
 @pytest.mark.parametrize("provider_in_requirements", [False, True])
@@ -5169,6 +5349,9 @@ def test_keyless_provider_http_borrows_live_prepare_and_retains_approved_save(
     planner = NativeProviderPreparePlanner(MINIMUM_PREPARE_MEMORY, plan)
     if launcher_mode is not None:
         monkeypatch.setenv("TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET", "/fixture/provider.sock")
+        monkeypatch.setattr(
+            native_provider_prepare_ipc, "capture_launcher_model_save_writer", lambda: None,
+        )
         monkeypatch.setattr(
             native_provider_prepare_ipc,
             "capture_launcher_model_settings_reader",

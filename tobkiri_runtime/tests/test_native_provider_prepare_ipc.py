@@ -24,7 +24,6 @@ from core_runtime import native_provider_prepare_ipc as ipc
 from core_runtime.process_identity import process_start_identity
 from core_runtime.provider_prepare_native_v4 import NativeProviderPreparePlanner
 
-
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="Darwin peer identity")
 _HEADER = struct.Struct("!BI")
 
@@ -136,6 +135,301 @@ def _model_request(borrow: _Borrow) -> ipc.NativeModelSettingsRequest:
     )
 
 
+@contextmanager
+def _served_model_save(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeModelSaveRequest], Mapping[str, Any]]]:
+    with _served(monkeypatch, serve):
+        writer = ipc.model_save_from_environment()
+        assert writer is not None
+        yield writer
+
+
+def _model_save_request(
+    borrow: _Borrow, marker: Callable[[], None],
+) -> ipc.NativeModelSaveRequest:
+    return ipc.NativeModelSaveRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        request={
+            "model_profile_id": "fixture-profile",
+            "model_id": "fixture-model",
+            "provider_instance_id": "fixture-provider",
+            "display_name": "ローカル",
+            "expected_revision": 12,
+            "provider_registry_revision": 4,
+            "max_output_tokens": 16,
+        },
+        provider={
+            "revision": 4,
+            "providers": [{"provider_instance_id": "fixture-provider", "enabled": True}],
+        },
+        mark_publication_possible=marker,
+    )
+
+
+_SAVE_RESULT = {
+    "action": "saved",
+    "store_revision": 13,
+    "profile": {
+        "model_profile_id": "fixture-profile",
+        "model_id": "fixture-model",
+        "display_name": "ローカル",
+        "enabled": True,
+        "parameters": {"temperature": 0.5, "max_tokens": 16},
+        "metadata": {"wide": 1 << 128, "provider_connection_id": "fixture-provider"},
+    },
+}
+_SAVE_RESULT_BYTES = json.dumps(_SAVE_RESULT, ensure_ascii=False).encode("utf-8")
+
+
+def test_model_save_marker_and_live_guard_run_before_exactly_one_permit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SaveBorrow(_Borrow):
+        def __init__(self) -> None:
+            super().__init__()
+            self.marked = False
+            self.checked_after_marker = threading.Event()
+
+        def mark_possible(self) -> None:
+            assert threading.get_ident() == self.thread_id
+            assert not self.marked
+            self.marked = True
+
+        def assert_current(self) -> None:
+            super().assert_current()
+            if self.marked:
+                self.checked_after_marker.set()
+
+    borrow = SaveBorrow()
+    request = _model_save_request(borrow, borrow.mark_possible)
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == 1
+        numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
+        assert json.loads(payload) == {
+            "identity": {
+                key: value for key, value in vars(borrow.context).items()
+                if key != "security_epoch"
+            },
+            "security_epoch": 3,
+            "runtime_instance": "a" * 32,
+            "deadline_ns": numerator * 1_000_000_000 // denominator,
+            "model_save": {"request": request.request, "provider": request.provider},
+        }
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        assert not borrow.marked
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        assert borrow.checked_after_marker.is_set()
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, _SAVE_RESULT_BYTES)
+        assert peer.recv(1) == b""
+
+    with _served_model_save(monkeypatch, serve) as writer:
+        monkeypatch.delenv(ipc._SOCKET_ENV)
+        monkeypatch.delenv(ipc._OWNER_ENV)
+        assert writer(request) == _SAVE_RESULT
+
+
+def test_model_save_noop_returns_owner_result_without_publication_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 7, _SAVE_RESULT_BYTES)
+        assert peer.recv(1) == b""
+
+    with _served_model_save(monkeypatch, serve) as writer:
+        assert writer(_model_save_request(_Borrow(), _unexpected_marker)) == _SAVE_RESULT
+
+
+def _unexpected_marker() -> None:
+    pytest.fail("this exchange cannot grant publication permission")
+
+
+@pytest.mark.parametrize("live", [False, True])
+def test_model_save_compatibility_fallback_requires_live_admission(
+    monkeypatch: pytest.MonkeyPatch, live: bool,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        if live:
+            _send(peer, 2)
+            assert _receive(peer) == (3, b"")
+        _send(peer, 8, b"legacy-read-required")
+        assert peer.recv(1) == b""
+
+    expected = (
+        ipc.NativeProviderRegistryRequiresLegacyRead if live else ipc._ProtocolError
+    )
+    with _served_model_save(monkeypatch, serve) as writer, pytest.raises(expected):
+        writer(_model_save_request(_Borrow(), _unexpected_marker))
+
+
+@pytest.mark.parametrize(
+    "tag, payload, expected",
+    [
+        (10, b"", ipc.NativeProviderPrepareUnavailable),
+        (8, b"conflict", ipc.NativeModelSaveFailure),
+    ],
+)
+def test_model_save_maps_pre_permit_failures(
+    monkeypatch: pytest.MonkeyPatch, tag: int, payload: bytes,
+    expected: type[RuntimeError],
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, tag, payload)
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_save(monkeypatch, serve) as writer,
+        pytest.raises(expected) as failure,
+    ):
+        writer(_model_save_request(_Borrow(), _unexpected_marker))
+    if isinstance(failure.value, ipc.NativeModelSaveFailure):
+        assert failure.value.code == "conflict"
+
+
+@pytest.mark.parametrize("tag, payload", [(11, b""), (12, b""), (7, _SAVE_RESULT_BYTES)])
+def test_model_save_rejects_out_of_order_frames_before_live(
+    monkeypatch: pytest.MonkeyPatch, tag: int, payload: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, tag, payload)
+        assert _receive(peer) == (9, b"")
+        if tag != 12:
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with _served_model_save(monkeypatch, serve) as writer:
+        with pytest.raises(RuntimeError) as failure:
+            writer(_model_save_request(_Borrow(), _unexpected_marker))
+        assert not isinstance(failure.value, ipc.NativeModelSavePublicationUnconfirmed)
+
+
+@pytest.mark.parametrize("list_role", [False, True])
+def test_legacy_registry_roles_do_not_accept_publication_checks(
+    monkeypatch: pytest.MonkeyPatch, list_role: bool,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (9, b"")
+        assert peer.recv(1) == b""
+
+    with (
+        _served(monkeypatch, serve) as planner,
+        pytest.raises(RuntimeError, match="cleanup was unconfirmed"),
+    ):
+        if list_role:
+            reader = ipc.capture_launcher_model_settings_reader()
+            assert reader is not None
+            reader(_model_request(_Borrow()))
+        else:
+            planner.plan(_Borrow())
+
+
+@pytest.mark.parametrize("after_marker", [False, True])
+def test_model_save_checks_revocation_before_and_after_marker(
+    monkeypatch: pytest.MonkeyPatch, after_marker: bool,
+) -> None:
+    borrow = _Borrow()
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        if not after_marker:
+            borrow.revoked.set()
+        _send(peer, 11)
+        assert _receive(peer) == (9, b"")
+        _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    marker = borrow.revoked.set if after_marker else _unexpected_marker
+    expected = (
+        ipc.NativeModelSavePublicationUnconfirmed if after_marker else PermissionError
+    )
+    with _served_model_save(monkeypatch, serve) as writer, pytest.raises(expected):
+        writer(_model_save_request(borrow, marker))
+
+
+@pytest.mark.parametrize("terminal", [
+    None,
+    (11, b""),
+    (8, b"legacy-read-required"),
+    (8, b"conflict"),
+    (10, b""),
+    (7, b"{}"),
+    (7, _SAVE_RESULT_BYTES.replace(b"0.5", b"1e999")),
+    (7, _SAVE_RESULT_BYTES.replace(b'"wide":', b'"wide":1,"wide":')),
+])
+def test_model_save_only_confirms_a_valid_terminal_result_after_permit(
+    monkeypatch: pytest.MonkeyPatch, terminal: tuple[int, bytes] | None,
+) -> None:
+    marks = []
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        if terminal is None:
+            return
+        _send(peer, *terminal)
+        if terminal[0] != 8:
+            assert _receive(peer) == (9, b"")
+            _send(peer, 8, b"cancelled")
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_save(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeModelSavePublicationUnconfirmed),
+    ):
+        writer(_model_save_request(_Borrow(), lambda: marks.append(True)))
+    assert marks == [True]
+
+
+@pytest.mark.parametrize("revoke", [False, True])
+def test_model_save_loses_guard_during_result_delivery(
+    monkeypatch: pytest.MonkeyPatch, revoke: bool,
+) -> None:
+    borrow = _Borrow(lifetime=3 if revoke else 0.5)
+
+    def serve(peer: socket.socket) -> None:
+        assert _receive(peer)[0] == 1
+        _send(peer, 2)
+        assert _receive(peer) == (3, b"")
+        _send(peer, 11)
+        assert _receive(peer) == (12, b"")
+        peer.sendall(_HEADER.pack(7, len(_SAVE_RESULT_BYTES)))
+        if revoke:
+            borrow.revoked.set()
+        assert _receive(peer) == (9, b"")
+        peer.sendall(_SAVE_RESULT_BYTES)
+        assert peer.recv(1) == b""
+
+    with (
+        _served_model_save(monkeypatch, serve) as writer,
+        pytest.raises(ipc.NativeModelSavePublicationUnconfirmed),
+    ):
+        writer(_model_save_request(borrow, lambda: None))
+
+
 def test_model_settings_reader_sends_only_its_role_and_accepts_one_mib_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -178,16 +472,26 @@ def test_captured_registry_callables_reject_requests_for_the_other_role(
         monkeypatch.setenv(ipc._OWNER_ENV, _owner())
         planner = ipc.capture_launcher_provider_prepare_planner()
         reader = ipc.capture_launcher_model_settings_reader()
+        writer = ipc.model_save_from_environment()
         assert planner is not None
         assert reader is not None
+        assert writer is not None
+        save_request = _model_save_request(_Borrow(), _unexpected_marker)
         with pytest.raises(RuntimeError, match="request role is invalid"):
             planner.plan(_model_request(_Borrow()))
         with pytest.raises(RuntimeError, match="request role is invalid"):
+            planner.plan(save_request)
+        with pytest.raises(RuntimeError, match="request role is invalid"):
             reader(_Borrow())
+        with pytest.raises(RuntimeError, match="request role is invalid"):
+            reader(save_request)
+        with pytest.raises(RuntimeError, match="request role is invalid"):
+            writer(_model_request(_Borrow()))
 
 
+@pytest.mark.parametrize("save", [False, True])
 def test_model_settings_start_still_uses_the_16_kib_bound(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, save: bool,
 ) -> None:
     borrow = _Borrow()
     identity = vars(borrow.context) | {"profile_id": "p" * (16 * 1024)}
@@ -196,8 +500,17 @@ def test_model_settings_start_still_uses_the_16_kib_bound(
     def serve(peer: socket.socket) -> None:
         assert peer.recv(1) == b""
 
-    with _served_model_settings(monkeypatch, serve) as reader:
-        with pytest.raises(RuntimeError, match="request exceeds its bound"):
+    with (
+        _served(monkeypatch, serve),
+        pytest.raises(RuntimeError, match="request exceeds its bound"),
+    ):
+        if save:
+            writer = ipc.model_save_from_environment()
+            assert writer is not None
+            writer(_model_save_request(borrow, _unexpected_marker))
+        else:
+            reader = ipc.capture_launcher_model_settings_reader()
+            assert reader is not None
             reader(_model_request(borrow))
 
 

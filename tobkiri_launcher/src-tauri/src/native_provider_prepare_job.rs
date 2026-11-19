@@ -1,6 +1,7 @@
 //! Tracked Provider preparation, commit staging and native publication.
 
 use std::{
+    cell::Cell,
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -12,8 +13,8 @@ use std::{
 use anyhow::{anyhow, ensure, Context, Result};
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{
-    AllocationBudget, CoreBuffer, CoreValue, LegacyProviderRegistryRead, NativeArtifactError,
-    NativeArtifactInspection, NativeProviderRegistry, MAX_BYTES,
+    AllocationBudget, CoreBuffer, CoreRef, CoreValue, LegacyRegistryRead, NativeArtifactError,
+    NativeArtifactInspection, NativeRegistry, MAX_BYTES,
 };
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 use tobkiri_wasm::NativeDataIoError;
@@ -21,8 +22,8 @@ use tobkiri_wasm::NativeDataIoError;
 use super::{
     caught,
     launch_metadata::{
-        reacquire_model_settings_pack, reacquire_provider_prepare_pack, VerifiedRegistryLaunch,
-        REGISTRY_VERIFICATION_BYTES,
+        reacquire_model_save_pack, reacquire_model_settings_pack, reacquire_provider_prepare_pack,
+        VerifiedRegistryLaunch, REGISTRY_VERIFICATION_BYTES,
     },
     NativeRuntimeState,
 };
@@ -34,6 +35,7 @@ use crate::{
 };
 
 type ContinueCurrent = Arc<dyn Fn() -> Result<()> + Send + Sync>;
+const MODEL_SAVE_REPLY_LIMIT: usize = 1024 * 1024;
 
 pub(crate) enum NativeRegistryRequest {
     Provider {
@@ -41,6 +43,10 @@ pub(crate) enum NativeRegistryRequest {
         apply: Option<Vec<u8>>,
     },
     ModelList,
+    ModelSave {
+        request: Vec<u8>,
+        provider: Vec<u8>,
+    },
 }
 
 impl NativeRegistryRequest {
@@ -48,22 +54,23 @@ impl NativeRegistryRequest {
         match self {
             Self::Provider { .. } => proof.provider_prepare.is_some(),
             Self::ModelList => proof.model_settings.is_some(),
+            Self::ModelSave { .. } => proof.model_save.is_some(),
         }
     }
 
     fn input_capacity(&self) -> Result<usize> {
-        let Self::Provider { request, apply } = self else {
-            return Ok(0);
+        let (request, extra) = match self {
+            Self::Provider { request, apply } => (request, apply.as_ref()),
+            Self::ModelList => return Ok(0),
+            Self::ModelSave { request, provider } => (request, Some(provider)),
         };
         let size = request
             .capacity()
-            .checked_add(apply.as_ref().map_or(0, Vec::capacity))
-            .context("native Provider preparation input capacity overflow")?;
+            .checked_add(extra.map_or(0, Vec::capacity))
+            .context("native Registry input capacity overflow")?;
         ensure!(
-            !request.is_empty()
-                && apply.as_ref().is_none_or(|plan| !plan.is_empty())
-                && size <= MAX_BYTES,
-            "native Provider preparation request exceeds its input envelope"
+            !request.is_empty() && extra.is_none_or(|bytes| !bytes.is_empty()) && size <= MAX_BYTES,
+            "native Registry request exceeds its input envelope"
         );
         Ok(size)
     }
@@ -162,6 +169,7 @@ struct Request {
     input_capacity: u64,
     deadline: Arc<ProviderPrepareDeadline>,
     continue_current: ContinueCurrent,
+    publish_permit: Option<ContinueCurrent>,
 }
 
 struct Prepared {
@@ -185,11 +193,16 @@ pub(crate) fn start_provider_prepare(
     operation: NativeRegistryRequest,
     deadline: Arc<ProviderPrepareDeadline>,
     continue_current: ContinueCurrent,
+    publish_permit: Option<ContinueCurrent>,
 ) -> Result<PendingProviderPrepare> {
     check_live(deadline.current(), None)?;
     ensure!(
         operation.has_launch_proof(listener.verified_source()),
         "native Registry operation has no matching Launch proof"
+    );
+    ensure!(
+        matches!(&operation, NativeRegistryRequest::ModelSave { .. }) == publish_permit.is_some(),
+        "native Registry publication permit differs from the operation"
     );
     let input_capacity = operation.input_capacity()?;
     listener.verified_source().identity.validate()?;
@@ -205,6 +218,7 @@ pub(crate) fn start_provider_prepare(
         input_capacity: u64::try_from(input_capacity)?,
         deadline: Arc::clone(&deadline),
         continue_current: Arc::clone(&continue_current),
+        publish_permit,
     };
     let app = app.clone();
     let (send, receive) = mpsc::sync_channel(1);
@@ -242,6 +256,7 @@ async fn run(
         input_capacity,
         deadline,
         continue_current,
+        publish_permit,
     } = request;
     let identity = &listener.verified_source().identity;
     let admitted = (|| {
@@ -319,26 +334,86 @@ async fn run(
         &operation,
         NativeRegistryRequest::Provider { apply: Some(_), .. }
     );
+    let model_save = matches!(&operation, NativeRegistryRequest::ModelSave { .. });
     let registry = Arc::new(Mutex::new(None));
     let registry_limit = Arc::new(AtomicBool::new(false));
     let outcome = {
         let prepare = caught(async {
             let graph = inspection.allocation_budget()?.clone();
-            let NativeRegistryRequest::Provider { request, apply } = operation else {
-                let pack = reacquire_model_settings_pack(
-                    &inspection,
-                    listener.verified_source(),
-                    checkpoint,
-                )?;
-                revalidate()?;
-                let output = inspection
-                    .list_legacy_model_settings(&pack, &config.user_data_dir, &identity.profile_id)
-                    .await
-                    .map_err(model_registry_error)?;
-                return Ok(PreparedReply {
-                    wire: output.encode_guest(&graph)?,
-                    document: None,
+            let observe_registry = |target, locked_observation| -> Result<LegacyRegistryRead> {
+                let read_manager = Arc::clone(&manager);
+                let read_listener = Arc::clone(&listener);
+                let continue_read = Arc::clone(&continue_current);
+                let continue_observing: ContinueCurrent = Arc::new(move || {
+                    read_manager.require_provider_prepare_admission(&read_listener)?;
+                    continue_read()
                 });
+                *registry
+                    .lock()
+                    .map_err(|_| anyhow!("Registry lock unavailable"))? = Some(target);
+                let read = registry_read(
+                    Arc::clone(&registry),
+                    Arc::clone(&registry_limit),
+                    Arc::clone(&continue_observing),
+                    cancellation.clone(),
+                    execution_deadline,
+                    locked_observation,
+                );
+                Ok(guarded_registry_read(
+                    read,
+                    continue_observing,
+                    cancellation.clone(),
+                    execution_deadline,
+                ))
+            };
+            let (request, apply) = match operation {
+                NativeRegistryRequest::Provider { request, apply } => (request, apply),
+                NativeRegistryRequest::ModelList => {
+                    let pack = reacquire_model_settings_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let output = inspection
+                        .list_legacy_model_settings(
+                            &pack,
+                            &config.user_data_dir,
+                            &identity.profile_id,
+                        )
+                        .await
+                        .map_err(model_registry_error)?;
+                    return Ok(PreparedReply {
+                        wire: output.encode_guest(&graph)?,
+                        document: None,
+                    });
+                }
+                NativeRegistryRequest::ModelSave { request, provider } => {
+                    let input = CoreValue::parse_guest(&request, &graph)?;
+                    drop(request);
+                    let snapshot = CoreValue::parse_guest(&provider, &graph)?;
+                    drop(provider);
+                    let pack = reacquire_model_save_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let target = inspection
+                        .legacy_model_registry(&config.user_data_dir, &identity.profile_id)?;
+                    let read = observe_registry(target, Some(1))?;
+                    let staged = inspection
+                        .stage_live_legacy_model_save(
+                            &pack,
+                            &identity.profile_id,
+                            &input,
+                            &snapshot,
+                            read,
+                        )
+                        .await
+                        .map_err(model_save_staging_error)?;
+                    return decode_model_save_reply(staged, &graph);
+                }
             };
             let input = CoreValue::parse_guest(&request, &graph)?;
             drop(request);
@@ -353,32 +428,9 @@ async fn run(
                 checkpoint,
             )?;
             revalidate()?;
-            let read_manager = Arc::clone(&manager);
-            let read_listener = Arc::clone(&listener);
-            let continue_read = Arc::clone(&continue_current);
-            let continue_observing: ContinueCurrent = Arc::new(move || {
-                read_manager.require_provider_prepare_admission(&read_listener)?;
-                continue_read()
-            });
             let target =
                 inspection.legacy_provider_registry(&config.user_data_dir, &identity.profile_id)?;
-            *registry
-                .lock()
-                .map_err(|_| anyhow!("Provider Registry lock unavailable"))? = Some(target);
-            let read = registry_read(
-                Arc::clone(&registry),
-                Arc::clone(&registry_limit),
-                Arc::clone(&continue_observing),
-                cancellation.clone(),
-                execution_deadline,
-                publishes,
-            );
-            let read = guarded_registry_read(
-                read,
-                continue_observing,
-                cancellation.clone(),
-                execution_deadline,
-            );
+            let read = observe_registry(target, publishes.then_some(4))?;
             let output = match input_plan.as_ref() {
                 Some(plan) => {
                     let staged = inspection
@@ -431,17 +483,32 @@ async fn run(
                 revalidate().and_then(|()| {
                     let outcome = outcome.map_err(|error| anyhow!(error))?;
                     if outcome.is_err() && registry_limit.load(Ordering::Acquire) {
-                        return Err(NativeArtifactError::ProviderRegistryLimitBeforePublish.into());
+                        let error = if model_save {
+                            NativeArtifactError::ModelRegistryLimitBeforePublish
+                        } else {
+                            NativeArtifactError::ProviderRegistryLimitBeforePublish
+                        };
+                        return Err(error.into());
                     }
                     let reply = outcome?;
                     if let Some(document) = reply.document {
                         let target = registry
                             .lock()
-                            .map_err(|_| anyhow!("Provider Registry lock unavailable"))?
+                            .map_err(|_| anyhow!("Registry lock unavailable"))?
                             .take()
-                            .context("native Provider staging lost its Registry lock")?;
+                            .context("native staging lost its Registry lock")?;
+                        let checkpoint_count = Cell::new(0);
                         target.publish(document.as_bytes(), || {
-                            revalidate().map_err(publication_checkpoint_error)
+                            revalidate().map_err(publication_checkpoint_error)?;
+                            if let Some(permit) = &publish_permit {
+                                // The second checkpoint is the Store's final guard before rename.
+                                match checkpoint_count.replace(checkpoint_count.get() + 1) {
+                                    0 => (),
+                                    1 => permit().map_err(publication_checkpoint_error)?,
+                                    _ => return Err(NativeArtifactError::Denied),
+                                }
+                            }
+                            Ok(())
                         })?;
                     }
                     Ok(reply.wire)
@@ -459,6 +526,7 @@ async fn run(
         Err(error) => (Err(error.into()), false),
     };
     drop(registry);
+    drop(publish_permit);
     drop(continue_current);
     drop(config);
     drop(app);
@@ -483,6 +551,51 @@ fn model_registry_error(error: NativeArtifactError) -> anyhow::Error {
         }
         _ => error.into(),
     }
+}
+
+fn model_save_staging_error(error: NativeArtifactError) -> anyhow::Error {
+    match &error {
+        // The fixed Save export reserves these codes for compatibility limits.
+        NativeArtifactError::ModelRegistryRejected(error)
+            if matches!(error.code(), "unavailable" | "limit-exceeded") =>
+        {
+            ModelRegistryRequiresLegacyRead.into()
+        }
+        _ => error.into(),
+    }
+}
+
+fn decode_model_save_reply(
+    staged: CoreValue,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<PreparedReply> {
+    let owner_result = staged
+        .get_key("owner_result")
+        .context("native Model staging omitted its owner result")?;
+    let owner_result = owner_result
+        .as_str()
+        .context("native Model staging returned a non-string owner result")?;
+    ensure!(
+        owner_result.len() <= MODEL_SAVE_REPLY_LIMIT
+            && owner_result.starts_with('{')
+            && owner_result.ends_with('}'),
+        "native Model staging returned an invalid owner result"
+    );
+    let document = staged
+        .get_key("document")
+        .context("native Model staging omitted its document")?;
+    let document = match document.inspect() {
+        CoreRef::Null => None,
+        CoreRef::Str(raw) if raw.ends_with('\n') => {
+            Some(CoreBuffer::copy_from(raw.as_bytes(), budget)?)
+        }
+        _ => return Err(anyhow!("native Model staging returned an invalid document")),
+    };
+    Ok(PreparedReply {
+        // CPython owns this JSON. Preserve its spelling and numeric literals.
+        wire: CoreBuffer::copy_from(owner_result.as_bytes(), budget)?,
+        document,
+    })
 }
 
 fn decode_staged_reply(
@@ -522,23 +635,23 @@ fn decode_staged_reply(
 }
 
 fn registry_read(
-    registry: Arc<Mutex<Option<NativeProviderRegistry>>>,
+    registry: Arc<Mutex<Option<NativeRegistry>>>,
     registry_limit: Arc<AtomicBool>,
     continue_current: ContinueCurrent,
     cancellation: CoreCancellation,
     deadline: Instant,
-    publishes: bool,
-) -> LegacyProviderRegistryRead {
+    locked_observation: Option<usize>,
+) -> LegacyRegistryRead {
     let mut observations = 0;
     Box::new(move |budget| {
         observations += 1;
         let mut registry = registry
             .lock()
-            .map_err(|_| anyhow!("Provider Registry lock unavailable"))?;
+            .map_err(|_| anyhow!("Registry lock unavailable"))?;
         let registry = registry
             .as_mut()
-            .context("native Provider Registry is unavailable")?;
-        let observed = if publishes && observations == 4 {
+            .context("native Registry is unavailable")?;
+        let observed = if locked_observation == Some(observations) {
             registry.observe_locked(budget, || {
                 check_live(deadline, Some(&cancellation))
                     .and_then(|()| continue_current())
@@ -550,7 +663,8 @@ fn registry_read(
         };
         if matches!(
             &observed,
-            Err(NativeArtifactError::ProviderRegistryLimitBeforePublish)
+            Err(NativeArtifactError::ProviderRegistryLimitBeforePublish
+                | NativeArtifactError::ModelRegistryLimitBeforePublish)
         ) {
             registry_limit.store(true, Ordering::Release);
         }
@@ -573,11 +687,11 @@ fn check_live(deadline: Instant, cancellation: Option<&CoreCancellation>) -> Res
 }
 
 fn guarded_registry_read(
-    mut read: LegacyProviderRegistryRead,
+    mut read: LegacyRegistryRead,
     continue_current: ContinueCurrent,
     cancellation: CoreCancellation,
     deadline: Instant,
-) -> LegacyProviderRegistryRead {
+) -> LegacyRegistryRead {
     Box::new(move |budget| {
         let check = || {
             check_live(deadline, Some(&cancellation))?;
@@ -605,6 +719,64 @@ mod tests {
         }
 
         fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn model_save_accounts_for_both_input_buffers() {
+        let mut request = Vec::with_capacity(32);
+        request.extend(b"{}");
+        let mut provider = Vec::with_capacity(64);
+        provider.extend(b"{}");
+        let expected = request.capacity() + provider.capacity();
+        assert_eq!(
+            NativeRegistryRequest::ModelSave { request, provider }
+                .input_capacity()
+                .unwrap(),
+            expected
+        );
+        assert!(NativeRegistryRequest::ModelSave {
+            request: b"{}".to_vec(),
+            provider: Vec::new(),
+        }
+        .input_capacity()
+        .is_err());
+    }
+
+    #[test]
+    fn model_save_sends_the_opaque_owner_result_and_keeps_the_document_local() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let owner = r#"{"z": 9007199254740993, "a": NaN}"#;
+        let document = "{\"private\":true}\n";
+        let staged = serde_json::json!({
+            "result": {"public": true},
+            "owner_result": owner,
+            "document": document,
+        });
+        let staged =
+            CoreValue::parse_guest(&serde_json::to_vec(&staged).unwrap(), &budget).unwrap();
+        let reply = decode_model_save_reply(staged, &budget).unwrap();
+        assert_eq!(reply.wire.as_bytes(), owner.as_bytes());
+        assert_eq!(reply.document.unwrap().as_bytes(), document.as_bytes());
+    }
+
+    #[test]
+    fn model_save_distinguishes_a_no_op_from_an_invalid_document() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let no_op = CoreValue::parse_guest(
+            br#"{"result":{},"owner_result":"{}","document":null}"#,
+            &budget,
+        )
+        .unwrap();
+        assert!(decode_model_save_reply(no_op, &budget)
+            .unwrap()
+            .document
+            .is_none());
+        let invalid = CoreValue::parse_guest(
+            br#"{"result":{},"owner_result":"{}","document":"{}"}"#,
+            &budget,
+        )
+        .unwrap();
+        assert!(decode_model_save_reply(invalid, &budget).is_err());
     }
 
     #[test]
