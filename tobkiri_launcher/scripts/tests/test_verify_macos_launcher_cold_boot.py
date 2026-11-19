@@ -402,6 +402,79 @@ def test_installed_shutdown_rejects_an_orphaned_kernel_listener(monkeypatch: pyt
     assert signals == [(4242, signal.SIGTERM)]
 
 
+@pytest.mark.parametrize("mode", ["adopted", "wrong-plan", "foreign-kernel", "same-kernel"])
+def test_user_setup_observes_only_matching_new_kernel(
+    tmp_path: Path, mode: str,
+) -> None:
+    config, _diagnostics = _bundle_and_config(tmp_path)
+    config = replace(config, expect_setup=True, user_setup_timeout_seconds=5.0)
+    _write_embedded_host_contract(config.app_data_dir)
+    contract = config.app_data_dir / VERIFY.HOST_CONTRACT_RELATIVE
+    clock = _Clock()
+    calls: list[tuple[str, str]] = []
+    active = "activation:confirmed-install"
+
+    def request(_port, method, path, headers, _body, _timeout):
+        calls.append((method, path))
+        if path == VERIFY.KERNEL_HEALTH_PATH:
+            return _authenticated_kernel_health_response(headers)
+        response_headers = {}
+        if path == VERIFY.PANEL_AUTH_BOOTSTRAP_PATH:
+            data = {"code": "observer"}
+        elif path == VERIFY.PANEL_AUTH_EXCHANGE_PATH:
+            response_headers = {"set-cookie": "rumi_panel_session=observe; HttpOnly; Path=/"}
+            data = {"csrf_token": "present"}
+        else:
+            assert path == VERIFY.SETUP_STATUS_PATH
+            assert headers["Cookie"] == "rumi_panel_session=observe"
+            data = {
+                "setup_state": "complete",
+                "needs_setup": False,
+                "active_profile_ready": True,
+                "host_catalog_verified": True,
+                "launch_ready": True,
+                "runtime_ready": clock.value >= 3.0,
+                "runtime_status": "runtime_ready" if clock.value >= 3.0 else "panel_ready",
+                "profile_id": "defaults",
+                "plan_digest": "sha256:" + ("c" if mode == "wrong-plan" else "b") * 64,
+                "activation_id": active,
+            }
+        return VERIFY.HttpResponse(
+            200, response_headers, json.dumps({"success": True, "data": data}).encode(),
+        )
+
+    def listener_pid(_port: int) -> int:
+        if clock.value >= 1.0:
+            current = json.loads(contract.read_text(encoding="utf-8"))
+            current["activation_id"] = active
+            contract.write_text(json.dumps(current), encoding="utf-8")
+        if mode == "same-kernel" or clock.value < 2.0:
+            return 4243
+        return 4244
+
+    probes = replace(
+        _probes(clock, request, lambda _pid: 1 if mode == "foreign-kernel" else 4242, []),
+        listener_pid=listener_pid,
+    )
+    initial = VERIFY.ColdBootResult(18770, config.kernel_port, 4242, 4243, True, True)
+    if mode == "adopted":
+        result = VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
+        assert result.kernel_pid == 4244
+        assert result.setup_activation_verified is True
+        assert calls == [
+            ("GET", VERIFY.KERNEL_HEALTH_PATH),
+            ("POST", VERIFY.PANEL_AUTH_BOOTSTRAP_PATH),
+            ("POST", VERIFY.PANEL_AUTH_EXCHANGE_PATH),
+            ("GET", VERIFY.SETUP_STATUS_PATH),
+            ("GET", VERIFY.SETUP_STATUS_PATH),
+        ]
+    else:
+        with pytest.raises(VERIFY.ColdBootError, match="did not reach an active Profile"):
+            VERIFY._wait_for_user_setup_activation(config, probes, _Process(), initial)
+        if mode in ("foreign-kernel", "same-kernel"):
+            assert calls == []
+
+
 def test_panel_auth_response_rejects_unauthenticated_static_panel() -> None:
     response = VERIFY.HttpResponse(
         200,
@@ -453,7 +526,7 @@ def test_embedded_bootstrap_contract_rejects_reused_profile_and_plan_digest(
     contract.write_text(json.dumps(document), encoding="utf-8")
     contract.chmod(0o600)
 
-    assert VERIFY._embedded_panel_bootstrap_secret(config) is None
+    assert VERIFY._read_host_contract(config) is None
 
 
 @pytest.mark.parametrize(

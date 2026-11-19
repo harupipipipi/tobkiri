@@ -832,8 +832,10 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
 
 
 @pytest.mark.parametrize("shutdown_verified", [False, True])
+@pytest.mark.parametrize("user_setup_timeout_seconds", [None, 180.0])
 def test_installed_boot_uses_the_verified_copy_after_detach(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shutdown_verified: bool,
+    user_setup_timeout_seconds: float | None,
 ) -> None:
     source = tmp_path / "mounted" / "Tobkiri Launcher CI E2E.app"
     source.mkdir(parents=True)
@@ -868,6 +870,11 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
             assert arguments[arguments.index("--diagnostics-dir") + 1] == str(diagnostics)
             assert "--expect-setup" in arguments
             assert not Path(arguments[arguments.index("--app-data-dir") + 1]).exists()
+            wait_option = "--wait-for-user-setup-seconds"
+            if user_setup_timeout_seconds is None:
+                assert wait_option not in arguments
+            else:
+                assert arguments[arguments.index(wait_option) + 1] == "180.0"
             return subprocess.CompletedProcess(arguments, 0 if shutdown_verified else 1)
         return subprocess.CompletedProcess(arguments, 0)
 
@@ -877,11 +884,12 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
     )
     monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
     monkeypatch.setattr(MODULE, "_run", run)
+    inputs = (Mount(), source, diagnostics, "python", "codesign", user_setup_timeout_seconds)
     if shutdown_verified:
-        MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
+        MODULE._cold_boot_installed_launcher(*inputs)
     else:
-        with pytest.raises(MODULE.DmgVerificationError, match="did not verify fresh Setup and shutdown"):
-            MODULE._cold_boot_installed_launcher(Mount(), source, diagnostics, "python", "codesign")
+        with pytest.raises(MODULE.DmgVerificationError, match="Setup or shutdown verification failed"):
+            MODULE._cold_boot_installed_launcher(*inputs)
     assert events == ["verify-mount", "ditto", "verify-mount", "detach", "codesign", "python"]
     assert installed_paths[0].parent.name == "Applications"
     assert installed_paths[0].exists() is not shutdown_verified

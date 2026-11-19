@@ -29,7 +29,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any, Optional
@@ -93,6 +93,7 @@ class ColdBootConfig:
     kernel_port: int
     timeout_seconds: float
     expect_setup: bool = False
+    user_setup_timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,16 @@ class ColdBootResult:
     kernel_pid: int
     panel_reachable: bool
     setup_panel_reachable: bool = False
+    setup_activation_verified: bool = False
+
+
+@dataclass(frozen=True)
+class _HostContract:
+    profile_id: str
+    profile_revision: str
+    plan_digest: str
+    activation_id: str
+    bootstrap_secret: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -294,6 +305,10 @@ def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
     kernel_port = _validate_port(config.kernel_port, "kernel port")
     if not 5.0 <= config.timeout_seconds <= 300.0:
         raise ColdBootError("timeout must be between 5 and 300 seconds")
+    if config.user_setup_timeout_seconds is not None and (
+        not config.expect_setup or not 5.0 <= config.user_setup_timeout_seconds <= 900.0
+    ):
+        raise ColdBootError("user Setup wait requires fresh Setup and a 5–900 second timeout")
     return (
         ColdBootConfig(
             app_bundle=app_bundle,
@@ -302,6 +317,7 @@ def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
             kernel_port=kernel_port,
             timeout_seconds=config.timeout_seconds,
             expect_setup=config.expect_setup,
+            user_setup_timeout_seconds=config.user_setup_timeout_seconds,
         ),
         executable,
     )
@@ -594,8 +610,8 @@ def _kernel_health_failure(
     return None if hmac.compare_digest(response_mac, expected_mac) else "challenge_mismatch"
 
 
-def _embedded_panel_bootstrap_secret(config: ColdBootConfig) -> str | None:
-    """Read the owner-only bootstrap secret without emitting credential material."""
+def _read_host_contract(config: ColdBootConfig) -> _HostContract | None:
+    """Read the owner-only contract used to authenticate the watched Kernel."""
 
     contract_path = config.app_data_dir / HOST_CONTRACT_RELATIVE
     try:
@@ -631,7 +647,7 @@ def _embedded_panel_bootstrap_secret(config: ColdBootConfig) -> str | None:
     secret = values.get("panel_bootstrap_secret") if isinstance(values, dict) else None
     if not isinstance(secret, str) or not secret or secret != secret.strip():
         return None
-    return secret
+    return _HostContract(profile_id, profile_revision, plan_digest, activation_id, secret)
 
 
 def _successful_panel_auth_response(response: Optional[HttpResponse]) -> dict[str, object] | None:
@@ -646,13 +662,13 @@ def _successful_panel_auth_response(response: Optional[HttpResponse]) -> dict[st
     return data if isinstance(data, dict) else None
 
 
-def _panel_authentication_is_reachable(
+def _panel_session(
     config: ColdBootConfig,
     probes: ColdBootProbes,
     bootstrap_secret: str,
     deadline: float,
-) -> bool:
-    """Prove the native bootstrap and browser code exchange both work locally."""
+) -> str | None:
+    """Exchange a private bootstrap code for an observer-only panel session."""
 
     bootstrap = _request_before_deadline(
         probes, deadline,
@@ -669,7 +685,7 @@ def _panel_authentication_is_reachable(
     bootstrap_data = _successful_panel_auth_response(bootstrap)
     code = bootstrap_data.get("code") if bootstrap_data is not None else None
     if not isinstance(code, str) or not code or code != code.strip():
-        return False
+        return None
 
     exchange = _request_before_deadline(
         probes, deadline,
@@ -685,37 +701,41 @@ def _panel_authentication_is_reachable(
     )
     exchange_data = _successful_panel_auth_response(exchange)
     csrf_token = exchange_data.get("csrf_token") if exchange_data is not None else None
-    set_cookie = exchange.headers.get("set-cookie", "") if exchange is not None else ""
-    authenticated = (
-        isinstance(csrf_token, str)
-        and bool(csrf_token)
-        and csrf_token == csrf_token.strip()
-        and "rumi_panel_session=" in set_cookie
-        and "httponly" in set_cookie.lower()
+    if not isinstance(csrf_token, str) or not csrf_token or csrf_token != csrf_token.strip():
+        return None
+    return exchange.headers.get("set-cookie") if exchange is not None else None
+
+
+def _panel_session_cookie(set_cookie: str) -> str | None:
+    cookies: SimpleCookie[str] = SimpleCookie()
+    try:
+        cookies.load(set_cookie)
+    except CookieError:
+        return None
+    session = cookies.get("rumi_panel_session")
+    if session is None or not session.value or not session["httponly"]:
+        return None
+    return f"rumi_panel_session={session.coded_value}"
+
+
+def _setup_status(
+    config: ColdBootConfig, probes: ColdBootProbes, cookie: str, deadline: float,
+) -> dict[str, object] | None:
+    status = _request_before_deadline(
+        probes, deadline, config.kernel_port, "GET", SETUP_STATUS_PATH,
+        {"Accept": "application/json", "Cookie": cookie}, b"",
     )
-    if not authenticated or not config.expect_setup:
-        return authenticated
-    return _fresh_setup_is_reachable(config, probes, set_cookie, deadline)
+    return _successful_panel_auth_response(status)
 
 
 def _fresh_setup_is_reachable(
     config: ColdBootConfig, probes: ColdBootProbes, set_cookie: str, deadline: float,
 ) -> bool:
     """Observe the original Setup route and its pending state without publishing."""
-    cookies: SimpleCookie[str] = SimpleCookie()
-    try:
-        cookies.load(set_cookie)
-    except CookieError:
+    cookie = _panel_session_cookie(set_cookie)
+    if cookie is None:
         return False
-    session = cookies.get("rumi_panel_session")
-    if session is None or not session.value or not session["httponly"]:
-        return False
-    cookie = f"rumi_panel_session={session.coded_value}"
-    status = _request_before_deadline(
-        probes, deadline, config.kernel_port, "GET", SETUP_STATUS_PATH,
-        {"Accept": "application/json", "Cookie": cookie}, b"",
-    )
-    state = _successful_panel_auth_response(status)
+    state = _setup_status(config, probes, cookie, deadline)
     if (
         state is None
         or state.get("setup_state") != "profile_transaction_required"
@@ -735,6 +755,17 @@ def _fresh_setup_is_reachable(
         and b'<div id="root">' in panel.body
         and b'type="module"' in panel.body
     )
+
+
+def _panel_authentication_is_reachable(
+    config: ColdBootConfig, probes: ColdBootProbes, bootstrap_secret: str, deadline: float,
+) -> bool:
+    set_cookie = _panel_session(config, probes, bootstrap_secret, deadline)
+    if set_cookie is None:
+        return False
+    if config.expect_setup:
+        return _fresh_setup_is_reachable(config, probes, set_cookie, deadline)
+    return _panel_session_cookie(set_cookie) is not None
 
 
 def _is_descendant(
@@ -887,7 +918,7 @@ def _wait_for_readiness(
     panel_reachable = False
     pending_stage = "embedded_broker"
     health_failure = "not_checked"
-    bootstrap_secret: str | None = None
+    contract: _HostContract | None = None
     connection_path = config.app_data_dir / BROKER_CONNECTION_RELATIVE
 
     while probes.monotonic() < deadline:
@@ -915,7 +946,8 @@ def _wait_for_readiness(
 
         if broker_ready:
             pending_stage = "bootstrap_contract"
-            bootstrap_secret = bootstrap_secret or _embedded_panel_bootstrap_secret(config)
+            contract = contract or _read_host_contract(config)
+            bootstrap_secret = contract.bootstrap_secret if contract is not None else None
             challenge = secrets.token_urlsafe(32)
             kernel_response = _request_before_deadline(
                 probes, deadline,
@@ -978,6 +1010,69 @@ def _wait_for_readiness(
     )
 
 
+def _wait_for_user_setup_activation(
+    config: ColdBootConfig, probes: ColdBootProbes, process: Any, initial: ColdBootResult,
+) -> ColdBootResult:
+    """Verify that the manually reviewed Setup was adopted by a new owned Kernel."""
+    assert config.user_setup_timeout_seconds is not None
+    deadline = probes.monotonic() + config.user_setup_timeout_seconds
+    watched_session: tuple[int, _HostContract, str] | None = None
+    while probes.monotonic() < deadline:
+        if process.poll() is not None:
+            raise ColdBootError("installed Launcher exited while observing Setup")
+        pid = probes.listener_pid(config.kernel_port)
+        contract = _read_host_contract(config)
+        if (
+            pid is not None
+            and pid != initial.kernel_pid
+            and _is_descendant(pid, initial.launcher_pid, probes.parent_pid)
+            and contract is not None
+            and contract.profile_id == "defaults"
+            and contract.activation_id != "activation:bootstrap-template"
+        ):
+            if watched_session is None or watched_session[:2] != (pid, contract):
+                watched_session = None
+                challenge = secrets.token_urlsafe(32)
+                health = _request_before_deadline(
+                    probes, deadline, config.kernel_port, "GET", KERNEL_HEALTH_PATH,
+                    {"Accept": "application/json", DESKTOP_HEALTH_CHALLENGE_HEADER: challenge},
+                    b"",
+                )
+                if _kernel_is_healthy(health, contract.bootstrap_secret, challenge):
+                    set_cookie = _panel_session(
+                        config, probes, contract.bootstrap_secret, deadline,
+                    )
+                    cookie = _panel_session_cookie(set_cookie) if set_cookie is not None else None
+                    if cookie is not None:
+                        watched_session = (pid, contract, cookie)
+            if watched_session is not None:
+                state = _setup_status(config, probes, watched_session[2], deadline)
+                if state is None:
+                    watched_session = None
+                elif (
+                    state.get("setup_state") == "complete"
+                    and state.get("needs_setup") is False
+                    and state.get("active_profile_ready") is True
+                    and state.get("host_catalog_verified") is True
+                    and state.get("launch_ready") is True
+                    and state.get("runtime_ready") is True
+                    and state.get("runtime_status") == "runtime_ready"
+                    and state.get("profile_id") == contract.profile_id
+                    and state.get("plan_digest") == contract.plan_digest
+                    and state.get("activation_id") == contract.activation_id
+                    and probes.listener_pid(config.kernel_port) == pid
+                    and _is_descendant(pid, initial.launcher_pid, probes.parent_pid)
+                    and _read_host_contract(config) == contract
+                    and process.poll() is None
+                    and probes.monotonic() < deadline
+                ):
+                    return replace(initial, kernel_pid=pid, setup_activation_verified=True)
+        else:
+            watched_session = None
+        probes.sleep(1.0)
+    raise ColdBootError("user Setup did not reach an active Profile on the restarted Kernel")
+
+
 def verify_cold_boot(
     config: ColdBootConfig,
     *,
@@ -1015,7 +1110,11 @@ def verify_cold_boot(
             _local_only_environment(environment, broker_port, config.app_data_dir),
         )
         collector = _OutputCollector(process)
-        return _wait_for_readiness(config, probes, process, broker_port)
+        result = _wait_for_readiness(config, probes, process, broker_port)
+        if config.user_setup_timeout_seconds is not None:
+            print("Open Setup in the isolated Launcher and review the confirmation.", flush=True)
+            return _wait_for_user_setup_activation(config, probes, process, result)
+        return result
     except BaseException as error:
         failure = error
         raise
@@ -1052,6 +1151,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kernel-port", default=DEFAULT_KERNEL_PORT, type=int)
     parser.add_argument("--timeout-seconds", default=180.0, type=float)
     parser.add_argument("--expect-setup", action="store_true")
+    parser.add_argument("--wait-for-user-setup-seconds", type=float)
     return parser.parse_args()
 
 
@@ -1066,10 +1166,13 @@ def main() -> int:
             kernel_port=args.kernel_port,
             timeout_seconds=args.timeout_seconds,
             expect_setup=args.expect_setup,
+            user_setup_timeout_seconds=args.wait_for_user_setup_seconds,
         )
     )
     if result.setup_panel_reachable:
         print("Verified authenticated fresh Setup entry from the installed app")
+    if result.setup_activation_verified:
+        print("Verified the confirmed Profile on the restarted Launcher-owned Kernel")
     print(
         "Verified local macOS CI/E2E cold boot "
         f"(broker={result.broker_port}, kernel={result.kernel_port}, "

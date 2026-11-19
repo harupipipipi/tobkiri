@@ -660,6 +660,7 @@ def _canonical_regular_file(path: Path, label: str) -> Path:
 def _cold_boot_installed_launcher(
     mount: MountedDmg, app_bundle: Path, diagnostics: Path,
     python: Executable, codesign: Executable,
+    user_setup_timeout_seconds: float | None = None,
 ) -> None:
     """Copy the verified app, detach the DMG, and boot the installed copy."""
     ditto = _resolve_executable("ditto")
@@ -682,12 +683,15 @@ def _cold_boot_installed_launcher(
         if _run(codesign, ["--verify", "--deep", "--strict", os.fspath(installed)]).returncode:
             raise DmgVerificationError("installed Launcher signature verification failed")
         launch_attempted = True
-        if _run(python, [
+        arguments = [
             "-B", os.fspath(verifier), "--app-bundle", os.fspath(installed),
             "--app-data-dir", os.fspath(root / "ci-e2e-app-data"),
             "--diagnostics-dir", os.fspath(diagnostics), "--expect-setup",
-        ]).returncode:
-            raise DmgVerificationError("installed Launcher did not verify fresh Setup and shutdown")
+        ]
+        if user_setup_timeout_seconds is not None:
+            arguments.extend(["--wait-for-user-setup-seconds", str(user_setup_timeout_seconds)])
+        if _run(python, arguments).returncode:
+            raise DmgVerificationError("installed Launcher Setup or shutdown verification failed")
         shutdown_verified = True
     finally:
         if not launch_attempted or shutdown_verified:
@@ -763,6 +767,7 @@ def verify_dmg(args: argparse.Namespace) -> None:
         if args.installed_boot_diagnostics_dir is not None:
             _cold_boot_installed_launcher(
                 mount, app_bundle, args.installed_boot_diagnostics_dir, python, codesign,
+                args.wait_for_user_setup_seconds,
             )
     except BaseException as error:
         primary_error = error
@@ -796,6 +801,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-native-setup-component-bytes")
     parser.add_argument("--expected-native-registry-packs-receipt-sha256")
     parser.add_argument("--installed-boot-diagnostics-dir", type=Path)
+    parser.add_argument("--wait-for-user-setup-seconds", type=float)
     args = parser.parse_args()
     sha256 = args.expected_native_setup_component_sha256
     size = args.expected_native_setup_component_bytes
@@ -814,6 +820,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("expected native Registry Packs receipt SHA-256 is invalid")
     if args.installed_boot_diagnostics_dir is not None and (sha256 is None or receipt_digest is None):
         parser.error("installed native cold boot requires the pinned native Setup and Registry resources")
+    if args.wait_for_user_setup_seconds is not None and (
+        args.installed_boot_diagnostics_dir is None
+        or not 5.0 <= args.wait_for_user_setup_seconds <= 900.0
+    ):
+        parser.error("user Setup wait requires installed diagnostics and a 5–900 second timeout")
     return args
 
 
