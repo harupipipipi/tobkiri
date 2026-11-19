@@ -219,7 +219,7 @@ def replay(
         permission_delta(tool.permissions), accept=True,
     )
     before = len(audit_events(profile))
-    turn(cli, profile, entry, fixture.store_pack, fixture.conversation, "y", "tool-y")
+    turn(cli, profile, fixture, "y", "tool-y")
     check_tool_call(audit_events(profile)[before:], flow, tool, "y", passed=True)
 
     active = snapshot(cli, profile, directory / "active.json")
@@ -237,7 +237,7 @@ def replay(
             terminal.finish(success=True)
     restored = snapshot(cli, profile, directory / "restored.json")
     assert restored.publication == original.publication
-    turn(cli, profile, entry, fixture.store_pack, fixture.conversation, "z")
+    turn(cli, profile, fixture, "z")
     print(f"{stock.stem}: typed tool capability denial, approval, execution, and safe removal")
 
 
