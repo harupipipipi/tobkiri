@@ -43,6 +43,10 @@ pub use native_setup_store::{
     verify_legacy_model_resolve_declaration, verify_legacy_model_save_declaration,
 };
 mod network;
+pub use network::{
+    LEGACY_LOCAL_CHAT_REQUEST_LIMIT, LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, LegacyLocalChatHttpCheck,
+    LegacyLocalChatHttpError, LegacyLocalChatHttpRequest, post_brokered_legacy_local_chat,
+};
 mod output;
 mod owned_values;
 mod storage_values;

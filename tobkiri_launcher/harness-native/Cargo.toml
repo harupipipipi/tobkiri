@@ -19,6 +19,7 @@ getrandom.workspace = true
 hmac.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
+thiserror = "=2.0.21"
 tobkiri-canon.workspace = true
 tobkiri-gate.workspace = true
 tobkiri-store.workspace = true
@@ -30,6 +31,7 @@ zeroize.workspace = true
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 quick-xml = { version = "=0.38.4" }
+tobkiri-pack-provider-registry-rust = { path = "../../packs/local.provider-registry-rust" }
 
 [dev-dependencies]
 tobkiri-core.workspace = true

@@ -13,6 +13,39 @@ use crate::{
 };
 use ordered_python_compat::{PyValue, pystr, pytruthy};
 
+pub(crate) fn validate_document<'a>(
+    state: &'a PyValue,
+    profile_id: &str,
+) -> SourceResult<&'a [(String, PyValue)]> {
+    if state.as_object().is_none() || get(state, "version").as_str() != Some(STORE_VERSION) {
+        return Err(SourceError::value(
+            "provider registry store version is invalid",
+        ));
+    }
+    if get(state, "profile_id").as_str() != Some(profile_id) {
+        return Err(SourceError::value(
+            "provider registry profile binding is invalid",
+        ));
+    }
+    let Some(providers) = get(state, "providers").as_object() else {
+        return Err(SourceError::value("provider registry store is invalid"));
+    };
+    // Validate raw stored records before revision lookup/conversion. Never
+    // re-normalize the records (notably their legacy health evidence).
+    for (_, stored) in providers {
+        if stored.as_object().is_none() {
+            return Err(SourceError::value("provider registry record is invalid"));
+        }
+        record::effective_model_access(stored)?;
+        record::provider_endpoint(
+            get(stored, "endpoint"),
+            get(stored, "credential_handle"),
+            get(stored, "adapter_id"),
+        )?;
+    }
+    Ok(providers)
+}
+
 pub struct Registry<S: DocumentStore, C: Clock> {
     profile_id: String,
     store: S,
@@ -54,32 +87,7 @@ impl<S: DocumentStore, C: Clock> Registry<S, C> {
         let Some(state) = self.store.read()? else {
             return Ok(self.empty());
         };
-        if state.as_object().is_none() || get(&state, "version").as_str() != Some(STORE_VERSION) {
-            return Err(SourceError::value(
-                "provider registry store version is invalid",
-            ));
-        }
-        if get(&state, "profile_id").as_str() != Some(self.profile_id.as_str()) {
-            return Err(SourceError::value(
-                "provider registry profile binding is invalid",
-            ));
-        }
-        let Some(providers) = get(&state, "providers").as_object() else {
-            return Err(SourceError::value("provider registry store is invalid"));
-        };
-        // Validate raw stored records before revision lookup/conversion. Never
-        // re-normalize the records (notably their legacy health evidence).
-        for (_, stored) in providers {
-            if stored.as_object().is_none() {
-                return Err(SourceError::value("provider registry record is invalid"));
-            }
-            record::effective_model_access(stored)?;
-            record::provider_endpoint(
-                get(stored, "endpoint"),
-                get(stored, "credential_handle"),
-                get(stored, "adapter_id"),
-            )?;
-        }
+        validate_document(&state, &self.profile_id)?;
         Ok(state)
     }
     fn assert_revision(state: &PyValue, expected: &PyValue) -> SourceResult<()> {

@@ -11,11 +11,16 @@ mod component_store;
 pub mod configuration;
 pub mod failure;
 pub mod host;
+mod legacy_local_chat;
 pub mod record;
 pub mod registry;
 #[cfg(any(feature = "component", test))]
 mod routing;
 pub mod state;
+
+pub use legacy_local_chat::{
+    LegacyLocalChatSelection, LegacyLocalChatSourceError, resolve_legacy_local_chat_address,
+};
 
 #[cfg(test)]
 mod oracle_tests;

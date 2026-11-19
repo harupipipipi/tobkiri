@@ -2586,9 +2586,11 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-core",
  "tobkiri-gate",
+ "tobkiri-pack-provider-registry-rust",
  "tobkiri-pack-saved-turn-runtime-rust",
  "tobkiri-store",
  "tobkiri-wasm",
@@ -2631,6 +2633,23 @@ dependencies = [
  "tobkiri-gate",
  "tobkiri-wit",
  "wit-parser",
+]
+
+[[package]]
+name = "tobkiri-pack-provider-model-access-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
+name = "tobkiri-pack-provider-registry-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "sha2",
+ "tobkiri-pack-provider-model-access-rust",
+ "zeroize",
 ]
 
 [[package]]
@@ -2697,6 +2716,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-core",
  "tobkiri-flow",

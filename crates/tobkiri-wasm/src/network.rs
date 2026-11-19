@@ -1,14 +1,14 @@
 use anyhow::{Context, Result, bail};
 use bytes::Bytes;
-use reqwest::{Client, Method, Response};
-use std::net::{IpAddr, SocketAddr};
+use reqwest::{Client, ClientBuilder, Method, Response, StatusCode};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tobkiri_canon::{
     AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreBuffer, CoreValue,
     Digest,
 };
-use tobkiri_gate::{CallCx, DispatchPermit, EffectRequest, Grant};
+use tobkiri_gate::{CallCx, CoreCancellation, DispatchPermit, EffectRequest, Grant};
 use url::Url;
 
 /// No public constructor: a consumed gate grant precedes DNS and network I/O.
@@ -61,10 +61,7 @@ impl NetClient {
         if timeout.is_zero() {
             bail!("network request timeout is zero")
         }
-        let mut builder = Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy()
-            .timeout(timeout);
+        let mut builder = direct_http_client(timeout);
         let hostname = parsed.host_str().context("network URL has no host")?;
         if hostname.trim_matches(['[', ']']).parse::<IpAddr>().is_err() {
             let port = parsed
@@ -198,6 +195,200 @@ impl NetClient {
         })
     }
 }
+
+fn direct_http_client(timeout: Duration) -> ClientBuilder {
+    Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .timeout(timeout)
+}
+
+/// Encoded request from the original Broker-authorized local chat adapter.
+pub struct LegacyLocalChatHttpRequest<'a> {
+    /// Numeric loopback address independently selected from the active Registry.
+    pub address: SocketAddr,
+    /// Exact compact JSON bytes from the original request compiler.
+    pub body: CoreBuffer,
+    /// Earliest original monotonic execution and provider deadline.
+    pub deadline: Instant,
+    /// The current native worker's inherited cancellation.
+    pub cancellation: &'a CoreCancellation,
+}
+
+/// Stages for retaining and consuming the original request's authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LegacyLocalChatHttpCheck {
+    /// Revalidate the same invocation without dispatching a POST.
+    Live,
+    /// Allow exactly one POST under the original Provider lease.
+    Dispatch,
+}
+
+/// Failures from the original finite JSON transport.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum LegacyLocalChatHttpError {
+    /// The address or encoded request exceeds the local adapter contract.
+    #[error("local provider request is invalid")]
+    InvalidRequest,
+    /// The original invocation has expired.
+    #[error("local provider deadline elapsed")]
+    Deadline,
+    /// The original authority or cancellation state no longer permits execution.
+    #[error("local provider invocation is no longer current")]
+    Revoked,
+    /// A network or non-success HTTP response prevented a result.
+    #[error("local provider is unavailable")]
+    Unavailable,
+    /// The endpoint returned more than the original four MiB response limit.
+    #[error("local provider response is too large")]
+    ResponseTooLarge,
+    /// The live invocation could not fund retained transport or response data.
+    #[error("local provider capacity is unavailable")]
+    Capacity,
+}
+
+/// Maximum compact JSON request from the original local adapter.
+pub const LEGACY_LOCAL_CHAT_REQUEST_LIMIT: usize = 1024 * 1024;
+/// Maximum raw response accepted by the original local adapter.
+pub const LEGACY_LOCAL_CHAT_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
+
+/// Issue a private original Host POST using the old Broker's authorization.
+///
+/// The caller retains the original Provider lease and supplies its one-shot
+/// dispatch permission and live guard. This bridge is Rust Host-only and does
+/// not construct a guest Grant or expose network imports on a native Store.
+/// The caller must not retry an error once it has offered dispatch permission.
+/// The raw response keeps the original adapter's JSON and projection semantics.
+pub async fn post_brokered_legacy_local_chat(
+    request: LegacyLocalChatHttpRequest<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+    mut check: impl FnMut(LegacyLocalChatHttpCheck) -> Result<()>,
+) -> std::result::Result<CoreBuffer, LegacyLocalChatHttpError> {
+    use LegacyLocalChatHttpError as Error;
+
+    let LegacyLocalChatHttpRequest {
+        address,
+        body,
+        deadline,
+        cancellation,
+    } = request;
+    if !legacy_local_address(address)
+        || body.is_empty()
+        || body.len() > LEGACY_LOCAL_CHAT_REQUEST_LIMIT
+    {
+        return Err(Error::InvalidRequest);
+    }
+    let now = Instant::now();
+    let deadline = deadline.min(now + Duration::from_secs(30));
+    let active = |check: &mut dyn FnMut(LegacyLocalChatHttpCheck) -> Result<()>| {
+        legacy_local_lifetime(cancellation, deadline)?;
+        check(LegacyLocalChatHttpCheck::Live).map_err(|_| Error::Revoked)?;
+        legacy_local_lifetime(cancellation, deadline)
+    };
+    active(&mut check)?;
+    // Fund retained HTTP parser/chunk buffers independently from the published
+    // response buffer and the already owned outgoing body.
+    let _quota = ReceiveQuota::new(
+        Arc::clone(budget),
+        LEGACY_LOCAL_CHAT_RESPONSE_LIMIT as u64 + 2 * 1024 * 1024,
+    )
+    .map_err(|_| Error::Capacity)?;
+    let client = direct_http_client(deadline.saturating_duration_since(Instant::now()))
+        .http1_only()
+        .pool_max_idle_per_host(0)
+        .retry(reqwest::retry::never())
+        .build()
+        .map_err(|_| Error::Unavailable)?;
+    let request = client
+        .post(format!("http://{address}/v1/chat/completions"))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .header("Accept-Encoding", "identity")
+        .header("User-Agent", "RumiAI/1.0")
+        .header("Content-Length", body.len())
+        .body(Bytes::from_owner(BodyOwner(body)))
+        .build()
+        .map_err(|_| Error::InvalidRequest)?;
+    active(&mut check)?;
+    check(LegacyLocalChatHttpCheck::Dispatch).map_err(|_| Error::Revoked)?;
+    legacy_local_lifetime(cancellation, deadline)?;
+    let mut response = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => return Err(Error::Revoked),
+        _ = tokio::time::sleep_until(deadline.into()) => return Err(Error::Deadline),
+        reply = client.execute(request) => reply.map_err(local_chat_request_error)?,
+    };
+    active(&mut check)?;
+    if response.status() != StatusCode::OK {
+        return Err(Error::Unavailable);
+    }
+    if response
+        .content_length()
+        .is_some_and(|size| size > LEGACY_LOCAL_CHAT_RESPONSE_LIMIT as u64)
+    {
+        return Err(Error::ResponseTooLarge);
+    }
+
+    let mut output = CoreBuffer::builder(budget, LEGACY_LOCAL_CHAT_RESPONSE_LIMIT);
+    let mut received = 0usize;
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => return Err(Error::Revoked),
+            _ = tokio::time::sleep_until(deadline.into()) => return Err(Error::Deadline),
+            next = response.chunk() => next.map_err(local_chat_request_error)?,
+        };
+        active(&mut check)?;
+        let Some(chunk) = chunk else {
+            return output.finish().map_err(|_| Error::Capacity);
+        };
+        received = received
+            .checked_add(chunk.len())
+            .ok_or(Error::ResponseTooLarge)?;
+        if received > LEGACY_LOCAL_CHAT_RESPONSE_LIMIT {
+            return Err(Error::ResponseTooLarge);
+        }
+        output.append(&chunk).map_err(|_| Error::Capacity)?;
+    }
+}
+
+fn legacy_local_address(address: SocketAddr) -> bool {
+    address.port() >= 1024
+        && match address {
+            SocketAddr::V4(address) => *address.ip() == Ipv4Addr::LOCALHOST,
+            SocketAddr::V6(address) => {
+                *address.ip() == Ipv6Addr::LOCALHOST
+                    && address.scope_id() == 0
+                    && address.flowinfo() == 0
+            }
+        }
+}
+
+fn legacy_local_lifetime(
+    cancellation: &CoreCancellation,
+    deadline: Instant,
+) -> std::result::Result<(), LegacyLocalChatHttpError> {
+    if cancellation.is_cancelled() {
+        Err(LegacyLocalChatHttpError::Revoked)
+    } else if Instant::now() >= deadline {
+        Err(LegacyLocalChatHttpError::Deadline)
+    } else {
+        Ok(())
+    }
+}
+
+fn local_chat_request_error(error: reqwest::Error) -> LegacyLocalChatHttpError {
+    if error.is_timeout() {
+        LegacyLocalChatHttpError::Deadline
+    } else {
+        LegacyLocalChatHttpError::Unavailable
+    }
+}
+
+#[cfg(test)]
+#[path = "legacy_local_chat_tests.rs"]
+mod legacy_local_chat_tests;
+
 struct BodyOwner(CoreBuffer);
 impl AsRef<[u8]> for BodyOwner {
     fn as_ref(&self) -> &[u8] {

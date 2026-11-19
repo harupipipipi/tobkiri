@@ -5633,8 +5633,10 @@ dependencies = [
  "quick-xml",
  "rusqlite",
  "sha2",
+ "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-gate",
+ "tobkiri-pack-provider-registry-rust",
  "tobkiri-pack-saved-turn-runtime-rust",
  "tobkiri-store",
  "tobkiri-wasm",
@@ -5726,6 +5728,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-provider-model-access-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+]
+
+[[package]]
+name = "tobkiri-pack-provider-registry-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "sha2",
+ "tobkiri-pack-provider-model-access-rust",
+ "zeroize",
+]
+
+[[package]]
 name = "tobkiri-pack-saved-turn-runtime-rust"
 version = "0.1.0"
 dependencies = [
@@ -5783,6 +5802,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-flow",
  "tobkiri-gate",

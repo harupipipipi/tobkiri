@@ -16,9 +16,16 @@ mod init_diagnostic;
 mod init_trace;
 mod original_authority;
 #[cfg(unix)]
+mod original_local_chat;
+#[cfg(unix)]
 mod original_provider_prepare_selection;
 #[cfg(unix)]
 mod original_saved_orchestration;
+#[cfg(unix)]
+pub use original_local_chat::{
+    LegacyLocalChatSelection, OriginalLocalChatCheck, OriginalLocalChatError,
+    OriginalLocalChatRequest, post_original_local_chat,
+};
 #[cfg(unix)]
 pub use original_saved_orchestration::{
     SavedOrchestrationStepError, invoke_original_saved_orchestration_port,
