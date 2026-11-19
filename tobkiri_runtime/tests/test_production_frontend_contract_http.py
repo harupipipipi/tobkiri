@@ -6900,7 +6900,6 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
                     "speed_tier",
                     "provider_id",
                     "provider",
-                    "connection_id",
                     "configured_only",
                     "local_only",
                     "min_knowledge_level",
