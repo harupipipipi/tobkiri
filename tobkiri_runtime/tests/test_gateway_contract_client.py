@@ -196,6 +196,10 @@ def test_provider_adapter_stream_preserves_tool_intents() -> None:
             "finish_reason": "tool_calls",
         }
     ) == {
+        "output": "",
+        "tool_intents": [intent],
+        "usage": {"input_tokens": 2},
+        "finish_reason": "tool_calls",
         "events": [
             {"type": "tool_intent_delta", "tool_intent": intent},
             {"type": "usage", "usage": {"input_tokens": 2}},

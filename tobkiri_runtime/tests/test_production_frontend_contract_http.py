@@ -8369,6 +8369,7 @@ def test_signed_saved_gateway_response_borrows_own_role(
     requests: list[ipc.NativeAiRoutingRequest] = []
     dependencies: list[str] = []
     provider_calls: list[str] = []
+    provider_request_ids: list[str] = []
     role = "generate"
     mode = "native"
 
@@ -8395,7 +8396,7 @@ def test_signed_saved_gateway_response_borrows_own_role(
         assert request.gateway_result
         assert not (request.stream_result or request.usage_cost or request.tool_intents)
         assert request.pipeline is None
-        assert request.input["request_id"] == envelope.payload["request_id"]
+        assert provider_request_ids == [request.input["request_id"]]
         candidate = request.input["candidate"]
         value = request.input["value"]
         assert set(candidate) == {
@@ -8485,6 +8486,10 @@ def test_signed_saved_gateway_response_borrows_own_role(
                 lineage.append(envelope)
             if envelope.contract_id in dependency_contracts:
                 dependencies.append(envelope.operation_id)
+            if envelope.contract_id in {
+                gateway.GENERATE_PROVIDER_CONTRACT, gateway.STREAM_PROVIDER_CONTRACT,
+            }:
+                provider_request_ids.append(envelope.payload["request_id"])
             return dispatch(backend, envelope, *args, **kwargs)
 
         monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
@@ -8499,6 +8504,7 @@ def test_signed_saved_gateway_response_borrows_own_role(
             requests.clear()
             dependencies.clear()
             provider_calls.clear()
+            provider_request_ids.clear()
             turn_id = f"{role}-{mode}"
             store.create({"id": turn_id, "model_reference": "daily"},
                          expected_revision=store.snapshot()["revision"])
