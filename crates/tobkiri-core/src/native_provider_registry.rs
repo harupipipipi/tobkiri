@@ -18,6 +18,7 @@ struct LockedRegistry {
 /// Bounded observations and optional save custody for one original Profile Registry.
 /// Only the native application can obtain this from its live inspection.
 pub struct NativeRegistry {
+    invocation: NativeSetupInvocation,
     root: DataRoot,
     profile: ProfileId,
     kind: LegacyRegistryKind,
@@ -31,6 +32,7 @@ pub use NativeRegistry as NativeProviderRegistry;
 pub(crate) enum LegacyRegistryKind {
     Provider,
     Model,
+    Conversation,
 }
 
 impl LegacyRegistryKind {
@@ -38,6 +40,7 @@ impl LegacyRegistryKind {
         match self {
             Self::Provider => NativeArtifactError::ProviderRegistryLimitBeforePublish,
             Self::Model => NativeArtifactError::ModelRegistryLimitBeforePublish,
+            Self::Conversation => NativeArtifactError::ConversationLimitBeforePublish,
         }
     }
 
@@ -52,6 +55,7 @@ impl LegacyRegistryKind {
         match self {
             Self::Provider => NativeArtifactError::ProviderRegistryPublicationUnconfirmed(error),
             Self::Model => NativeArtifactError::ModelRegistryPublicationUnconfirmed(error),
+            Self::Conversation => NativeArtifactError::ConversationPublicationUnconfirmed(error),
         }
     }
 }
@@ -68,6 +72,7 @@ impl NativeRegistry {
             .reserve(CapacityKind::VfsBuffer, DOCUMENT_LIMIT as u64)
             .map_err(CoreError::from)?;
         Ok(Self {
+            invocation: invocation.clone(),
             root: open_legacy_registry_root(root)?,
             profile,
             kind,
@@ -88,6 +93,9 @@ impl NativeRegistry {
             LegacyRegistryKind::Model => self
                 .root
                 .read_legacy_model_registry(&self.profile, DOCUMENT_LIMIT),
+            LegacyRegistryKind::Conversation => self
+                .root
+                .read_legacy_conversation_store(&self.profile, DOCUMENT_LIMIT),
         };
         copy_document(
             bytes.map_err(|error| self.kind.before_publish(error))?,
@@ -112,6 +120,9 @@ impl NativeRegistry {
                     self.root.lock_legacy_provider_registry(&self.profile)
                 }
                 LegacyRegistryKind::Model => self.root.lock_legacy_model_registry(&self.profile),
+                LegacyRegistryKind::Conversation => {
+                    self.root.lock_legacy_conversation_store(&self.profile)
+                }
             };
             match locked {
                 Ok(transaction) => break transaction,
@@ -132,6 +143,25 @@ impl NativeRegistry {
             observed: observed.clone(),
         });
         Ok(observed)
+    }
+
+    pub(crate) fn locked_conversation(
+        &self,
+        invocation: &NativeSetupInvocation,
+    ) -> Result<(&str, &str)> {
+        if !matches!(self.kind, LegacyRegistryKind::Conversation)
+            || !self.invocation.same_invocation(invocation)
+        {
+            return Err(NativeArtifactError::Denied);
+        }
+        let observed = self
+            .locked
+            .as_ref()
+            .and_then(|locked| locked.observed.as_ref())
+            .ok_or(NativeArtifactError::Denied)?;
+        let document = std::str::from_utf8(observed.as_bytes())
+            .map_err(|error| NativeArtifactError::ConversationConfirmation(error.into()))?;
+        Ok((self.profile.as_str(), document))
     }
 
     /// Publish one previously staged document, checking the current lease

@@ -17,7 +17,7 @@ pub enum LegacyRegistryPublishError<E> {
     Uncertain(#[source] StoreError),
 }
 
-/// A native-only lock on one Profile's original Registry.
+/// A native-only lock on one Profile's original JSON store.
 /// The transaction is tied to the original physical lock and store directory.
 pub struct LegacyRegistryTransaction {
     #[cfg(unix)]
@@ -78,7 +78,7 @@ impl DataRoot {
     ) -> Result<Option<Vec<u8>>, StoreError> {
         #[cfg(unix)]
         {
-            unix::read_legacy_store(self, profile, max_bytes, &unix::CONVERSATIONS)
+            unix::read_legacy_store(self, profile, max_bytes, &unix::CONVERSATIONS.data)
         }
         #[cfg(not(unix))]
         {
@@ -124,6 +124,26 @@ impl DataRoot {
         {
             let _ = profile;
             Err(unavailable("Model Registry"))
+        }
+    }
+
+    /// Acquire the original Python Conversation Store lock without waiting or
+    /// breaking stale locks. The store and its Profile directory must exist.
+    /// An existing owned regular lock file returns `Io(AlreadyExists)`.
+    pub fn lock_legacy_conversation_store(
+        &self,
+        profile: &ProfileId,
+    ) -> Result<LegacyRegistryTransaction, StoreError> {
+        #[cfg(unix)]
+        {
+            Ok(LegacyRegistryTransaction {
+                inner: unix::Transaction::lock(self, profile, &unix::CONVERSATIONS)?,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = profile;
+            Err(unavailable("Conversation Store"))
         }
     }
 }
@@ -216,6 +236,7 @@ mod unix {
         pub(super) data: StoreLayout,
         lock: &'static CStr,
         private_write_directory: bool,
+        requires_existing_store: bool,
     }
 
     pub(super) const PROVIDER: RegistryLayout = RegistryLayout {
@@ -226,6 +247,7 @@ mod unix {
         },
         lock: c"provider-registry.lock",
         private_write_directory: false,
+        requires_existing_store: false,
     };
     pub(super) const MODEL: RegistryLayout = RegistryLayout {
         data: StoreLayout {
@@ -235,11 +257,17 @@ mod unix {
         },
         lock: c"model-registry.lock",
         private_write_directory: true,
+        requires_existing_store: false,
     };
-    pub(super) const CONVERSATIONS: StoreLayout = StoreLayout {
-        directories: ["packs", "rumi_conversation_store_pack", "profiles"],
-        store: c"conversations.json",
-        label: "Conversation Store",
+    pub(super) const CONVERSATIONS: RegistryLayout = RegistryLayout {
+        data: StoreLayout {
+            directories: ["packs", "rumi_conversation_store_pack", "profiles"],
+            store: c"conversations.json",
+            label: "Conversation Store",
+        },
+        lock: c"conversations.lock",
+        private_write_directory: true,
+        requires_existing_store: true,
     };
 
     // Keeping the staged descriptor open prevents inode reuse during confirmation.
@@ -271,8 +299,23 @@ mod unix {
             profile: &ProfileId,
             layout: &'static RegistryLayout,
         ) -> Result<Self, StoreError> {
-            verify_root(root, &layout.data)?;
-            let directory = Arc::new(open_registry(root, profile, true, &layout.data)?);
+            let directory = if layout.requires_existing_store {
+                verify_read_root(root, &layout.data)?;
+                let directory =
+                    open_registry(root, profile, false, &layout.data).map_err(normalize_absence)?;
+                let entry = stat_entry(&directory, layout.data.store).map_err(normalize_absence)?;
+                if !is_owned_regular(&entry) {
+                    return Err(StoreError::Denied(format!(
+                        "unsafe {} entry",
+                        layout.data.label
+                    )));
+                }
+                directory
+            } else {
+                verify_root(root, &layout.data)?;
+                open_registry(root, profile, true, &layout.data)?
+            };
+            let directory = Arc::new(directory);
             let lock_directory =
                 Arc::new(owned_directory(&directory, "locks", true, &layout.data)?);
             let pid = std::process::id();
@@ -370,6 +413,9 @@ mod unix {
             }
             if next.len() > max_bytes || prior.is_some_and(|bytes| bytes.len() > max_bytes) {
                 return Err(BeforePublish(StoreError::Quota));
+            }
+            if layout.requires_existing_store && prior.is_none() {
+                return Err(BeforePublish(StoreError::NotFound));
             }
             self.verify_binding().map_err(BeforePublish)?;
             let name = CString::new(temporary_name().map_err(BeforePublish)?)
@@ -551,6 +597,13 @@ mod unix {
 
     fn binding_changed(layout: &StoreLayout) -> StoreError {
         StoreError::Conflict(format!("{} filesystem binding changed", layout.label))
+    }
+
+    fn normalize_absence(error: StoreError) -> StoreError {
+        match error {
+            StoreError::Io(error) if error.kind() == ErrorKind::NotFound => StoreError::NotFound,
+            error => error,
+        }
     }
 
     fn file_identity(file: &File) -> Result<(u64, u64), StoreError> {

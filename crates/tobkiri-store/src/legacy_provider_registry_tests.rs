@@ -16,6 +16,7 @@ const MODEL_STORE_NAME: &str = "model_registry.store.json";
 const MODEL_LOCK_PATH: &str = "locks/model-registry.lock";
 const CONVERSATION_PROFILE_PATH: &str = "packs/rumi_conversation_store_pack/profiles/defaults";
 const CONVERSATION_STORE_NAME: &str = "conversations.json";
+const CONVERSATION_LOCK_PATH: &str = "locks/conversations.lock";
 
 fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
@@ -210,6 +211,131 @@ fn conversation_read_rejects_linked_directories_and_files() {
     ));
     assert_eq!(fs::read(&foreign).unwrap(), b"foreign");
     assert_eq!(fs::read_dir(&conversation).unwrap().count(), 1);
+}
+
+#[test]
+fn conversation_lock_requires_an_existing_owned_store_without_creating_ancestors() {
+    let (temp, root, profile, _) = fixture();
+    let conversation = root.path().join(CONVERSATION_PROFILE_PATH);
+    let locks = conversation.join("locks");
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::NotFound)
+    ));
+    assert!(!root.path().join("packs").exists());
+
+    fs::create_dir_all(conversation.parent().unwrap()).unwrap();
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::NotFound)
+    ));
+    assert!(!conversation.exists());
+
+    fs::create_dir(&conversation).unwrap();
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::NotFound)
+    ));
+    assert!(!locks.exists());
+
+    let foreign = temp.path().join("foreign");
+    let store = conversation.join(CONVERSATION_STORE_NAME);
+    fs::write(&foreign, b"foreign").unwrap();
+    symlink(&foreign, &store).unwrap();
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::Denied(_))
+    ));
+    fs::remove_file(&store).unwrap();
+    fs::hard_link(&foreign, &store).unwrap();
+    assert!(matches!(
+        root.lock_legacy_conversation_store(&profile),
+        Err(StoreError::Denied(_))
+    ));
+    assert!(!locks.exists());
+    assert_eq!(fs::read(&foreign).unwrap(), b"foreign");
+}
+
+#[test]
+fn conversation_transaction_uses_the_original_lock_and_replaces_only_the_original_store() {
+    let (_temp, root, profile, provider) = fixture();
+    let conversation = root.path().join(CONVERSATION_PROFILE_PATH);
+    let other = conversation.with_file_name("other");
+    for (directory, bytes) in [
+        (&provider, b"provider".as_slice()),
+        (&other, b"unrelated".as_slice()),
+    ] {
+        fs::create_dir_all(directory).unwrap();
+        fs::write(directory.join(CONVERSATION_STORE_NAME), bytes).unwrap();
+    }
+    let store = conversation.join(CONVERSATION_STORE_NAME);
+    let lock = conversation.join(CONVERSATION_LOCK_PATH);
+    fs::create_dir_all(lock.parent().unwrap()).unwrap();
+    fs::set_permissions(&conversation, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(&store, b"prior").unwrap();
+    let legacy = br#"{"acquired_at":0.0,"owner":"pid:999","pid":999,"stale_after_seconds":0}"#;
+    fs::write(&lock, legacy).unwrap();
+    assert_busy(root.lock_legacy_conversation_store(&profile));
+    assert_eq!(fs::read(&lock).unwrap(), legacy);
+    fs::remove_file(&lock).unwrap();
+
+    let transaction = root.lock_legacy_conversation_store(&profile).unwrap();
+    let prior = transaction.read(MAX).unwrap();
+    assert_eq!(prior.as_deref(), Some(b"prior".as_slice()));
+    assert_busy(root.lock_legacy_conversation_store(&profile));
+    assert_eq!(
+        fs::metadata(&lock).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(matches!(
+        transaction.publish(prior.as_deref(), b"denied", MAX, || {
+            assert_eq!(fs::read(&store).unwrap(), b"prior");
+            assert!(lock.is_file());
+            Err("lease expired")
+        }),
+        Err(LegacyRegistryPublishError::Guard("lease expired"))
+    ));
+    assert_eq!(fs::read(&store).unwrap(), b"prior");
+    assert_eq!(fs::read_dir(&conversation).unwrap().count(), 2);
+    assert_eq!(
+        fs::metadata(&conversation).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    drop(transaction);
+    assert!(!lock.exists());
+
+    let transaction = root.lock_legacy_conversation_store(&profile).unwrap();
+    assert!(matches!(
+        transaction.publish(None, b"created", MAX, || -> Result<(), ()> {
+            panic!("confirmation must not recreate a removed store")
+        }),
+        Err(LegacyRegistryPublishError::BeforePublish(
+            StoreError::NotFound
+        ))
+    ));
+    transaction
+        .publish(prior.as_deref(), b"updated", MAX, || Ok::<_, ()>(()))
+        .unwrap();
+    assert_eq!(fs::read(&store).unwrap(), b"updated");
+    assert_eq!(
+        fs::metadata(&store).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        fs::metadata(&conversation).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::read(provider.join(CONVERSATION_STORE_NAME)).unwrap(),
+        b"provider"
+    );
+    assert_eq!(
+        fs::read(other.join(CONVERSATION_STORE_NAME)).unwrap(),
+        b"unrelated"
+    );
+    drop(transaction);
+    assert!(!lock.exists());
+    assert_eq!(fs::read_dir(&conversation).unwrap().count(), 2);
 }
 
 #[test]

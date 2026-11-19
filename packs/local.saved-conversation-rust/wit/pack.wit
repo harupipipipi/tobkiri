@@ -30,10 +30,20 @@ interface legacy-receipt {
   get: func(document: option<string>, turn-id: string) -> result<json, error>;
 }
 
+interface legacy-confirmation {
+  use tobkiri:core/types@1.2.0.{json, error};
+
+  /// Evaluate the locked owner document with a Host-read terminal Turn.
+  /// Return the owner-result JSON string and an optional replacement document.
+  /// The guest has no authority to publish the replacement.
+  confirm: func(document: string, turn: string) -> result<json, error>;
+}
+
 world pack {
   include tobkiri:core/pack-minimal@1.2.0;
   import tobkiri:core/storage@1.2.0;
   export model;
   export legacy-read;
   export legacy-receipt;
+  export legacy-confirmation;
 }

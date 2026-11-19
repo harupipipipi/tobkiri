@@ -346,17 +346,22 @@ impl<'a> LiveConversationFixture<'a> {
         Ok(serde_json::from_str(&wire)?)
     }
 
-    async fn lookup(&self, id: &str, lookup: OriginalConversationLookup) -> Result<String> {
-        let mut inspection = self
-            .core
-            .inspect_declared_artifacts(Source::new(self.root))?;
+    fn archive(&self) -> Result<(fs::File, u64)> {
         let path = self
             .pin
             .source
             .strip_prefix("file:")
             .context("staged Conversation archive")?;
-        let mut archive = fs::File::open(path)?;
-        let length = archive.metadata()?.len();
+        let file = fs::File::open(path)?;
+        let length = file.metadata()?.len();
+        Ok((file, length))
+    }
+
+    async fn lookup(&self, id: &str, lookup: OriginalConversationLookup) -> Result<String> {
+        let mut inspection = self
+            .core
+            .inspect_declared_artifacts(Source::new(self.root))?;
+        let (mut archive, length) = self.archive()?;
         let pack = inspection.verify_pack_archive(&mut archive, length)?;
         ensure!(pack.hash == self.pin.sha256);
         let outcome: Result<String> = async {
@@ -438,6 +443,108 @@ async fn original_saved_receipt_reads_physical_store_without_writes() -> Result<
     ensure!(matches!(error.downcast_ref::<NativeArtifactError>(),
             Some(NativeArtifactError::ConversationRegistryRejected(error))
                 if error.code() == "unavailable"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires the staged Conversation Registry Pack archive"]
+async fn original_saved_confirmation_publishes_physical_store() -> Result<()> {
+    use std::{cell::Cell, os::unix::fs::MetadataExt};
+
+    const ORACLE: &str = include_str!(
+        "../../../../packs/local.saved-conversation-rust/fixtures/legacy-confirmation-oracle.json"
+    );
+    let sample: Value = serde_json::from_str(ORACLE)?;
+    let root = physical_temp()?;
+    let data = root.path().join("owner");
+    let disk = DataRoot::open(&data)?;
+    let profile = ProfileId::parse("defaults")?;
+    let core = Arc::new(Core::open(
+        CoreConfig::for_test_data_root(root.path().join("core")),
+        Arc::new(Host::default()),
+    )?);
+    let fixture = LiveConversationFixture {
+        core: &core,
+        root: root.path(),
+        data,
+        pin: registry::pack(SAVED_PACK)?.pin,
+        profile: &profile,
+    };
+    let document = sample["document"].as_str().context("old owner document")?;
+    let expected = sample["promotion"]
+        .as_str()
+        .context("published owner document")?;
+    let terminal = sample["turn"].to_string();
+    let path = fixture.data.join(fixture.relative_path());
+    let lock = path.parent().unwrap().join("locks/conversations.lock");
+    disk.write_atomic(fixture.relative_path(), document.as_bytes())?;
+    let original_inode = fs::metadata(&path)?.ino();
+    for (deny, wrote) in [(true, true), (false, true), (false, false)] {
+        let mut inspection = core.inspect_declared_artifacts(Source::new(root.path()))?;
+        let (mut archive, length) = fixture.archive()?;
+        let pack = inspection.verify_pack_archive(&mut archive, length)?;
+        ensure!(pack.hash == fixture.pin.sha256);
+        tobkiri_wasm::verify_legacy_conversation_confirmation_declaration(&pack)?;
+        let mut owner = inspection.legacy_conversation_store(&fixture.data, profile.as_str())?;
+        let prior = owner
+            .observe_locked(inspection.allocation_budget()?, || Ok(()))?
+            .context("locked Conversation document")?;
+        ensure!(lock.is_file());
+        if deny {
+            let mut other = core.inspect_declared_artifacts(Source::new(root.path()))?;
+            ensure!(matches!(
+                other
+                    .stage_legacy_conversation_confirmation(&pack, &owner, &terminal)
+                    .await,
+                Err(NativeArtifactError::Denied)
+            ));
+            other.finish().await?;
+        }
+        let staged = inspection
+            .stage_legacy_conversation_confirmation(&pack, &owner, &terminal)
+            .await?;
+        let wire = staged
+            .get_key("owner_result")
+            .context("Conversation confirmation reply")?;
+        let wire = wire
+            .as_str()
+            .context("Conversation confirmation reply is not text")?;
+        ensure!(serde_json::from_str::<Value>(wire)? == sample["reply"]);
+        let next = staged
+            .get_key("next_document")
+            .context("replacement decision")?;
+        let next = next.as_str();
+        ensure!(next == wrote.then_some(expected));
+        ensure!(fs::read(&path)? == prior.as_bytes());
+        inspection.finish().await?;
+        if let Some(next) = next {
+            let checks = Cell::new(0);
+            let publication = owner.publish(next.as_bytes(), || {
+                checks.set(checks.get() + 1);
+                if deny && checks.get() == 2 {
+                    return Err(NativeArtifactError::Denied);
+                }
+                Ok(())
+            });
+            ensure!(checks.get() == 2);
+            if deny {
+                ensure!(matches!(publication, Err(NativeArtifactError::Denied)));
+                ensure!(fs::read(&path)? == document.as_bytes());
+                ensure!(fs::metadata(&path)?.ino() == original_inode);
+            } else {
+                publication?;
+                ensure!(fs::read(&path)? == expected.as_bytes());
+                ensure!(fs::metadata(&path)?.ino() != original_inode);
+            }
+        } else {
+            let committed_inode = fs::metadata(&path)?.ino();
+            drop(owner);
+            ensure!(fs::read(&path)? == expected.as_bytes());
+            ensure!(fs::metadata(&path)?.ino() == committed_inode);
+        }
+        ensure!(!lock.exists());
+    }
     Ok(())
 }
 

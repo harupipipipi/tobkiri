@@ -5,7 +5,7 @@ use ordered_python_compat::{
     CodecError, PyValue, dumps_bounded, loads, loads_python_json, pystrip,
 };
 
-const MAX_BYTES: usize = 1024 * 1024;
+pub(super) const MAX_BYTES: usize = 1024 * 1024;
 const NATIVE_CONTAINER_DEPTH: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,7 +87,7 @@ fn owner_reply(field: &str, value: PyValue) -> Result<String, ReadError> {
     dumps_bounded(&reply, MAX_BYTES).map_err(output_error)
 }
 
-fn decode_document(
+pub(super) fn decode_document(
     raw: &str,
     profile: &str,
     conversation_id: Option<&str>,
@@ -162,7 +162,7 @@ fn within_container_depth(value: &PyValue, remaining: usize) -> bool {
     }
 }
 
-fn validate_profile(profile: &str) -> Result<(), ReadError> {
+pub(super) fn validate_profile(profile: &str) -> Result<(), ReadError> {
     if profile.is_empty()
         || profile != pystrip(profile)
         || profile.contains(['/', '\\', '\0'])
@@ -173,7 +173,7 @@ fn validate_profile(profile: &str) -> Result<(), ReadError> {
     Ok(())
 }
 
-fn validate_identifier(identifier: &str) -> Result<(), ReadError> {
+pub(super) fn validate_identifier(identifier: &str) -> Result<(), ReadError> {
     if valid_conversation_id(identifier) {
         Ok(())
     } else {
@@ -181,7 +181,7 @@ fn validate_identifier(identifier: &str) -> Result<(), ReadError> {
     }
 }
 
-fn normalize(conversation: &mut Vec<(String, PyValue)>) {
+pub(super) fn normalize(conversation: &mut Vec<(String, PyValue)>) {
     match field(conversation, "metadata") {
         Some(PyValue::Object(metadata)) => metadata.retain(|(name, _)| name != "icon_svg"),
         Some(metadata) => *metadata = PyValue::Object(Vec::new()),
@@ -204,14 +204,14 @@ fn normalize(conversation: &mut Vec<(String, PyValue)>) {
     }
 }
 
-fn field<'a>(fields: &'a mut [(String, PyValue)], key: &str) -> Option<&'a mut PyValue> {
+pub(super) fn field<'a>(fields: &'a mut [(String, PyValue)], key: &str) -> Option<&'a mut PyValue> {
     fields
         .iter_mut()
         .find(|(name, _)| name == key)
         .map(|(_, value)| value)
 }
 
-fn set_field(fields: &mut Vec<(String, PyValue)>, key: &str, value: PyValue) {
+pub(super) fn set_field(fields: &mut Vec<(String, PyValue)>, key: &str, value: PyValue) {
     if let Some(current) = field(fields, key) {
         *current = value;
     } else {

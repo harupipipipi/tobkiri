@@ -137,7 +137,7 @@ impl PythonJson {
             PythonJsonNode::Array(_) => None,
         };
         field
-            .map(|field| encode(field, MAX_BYTES, None).and_then(|text| loads(&text)))
+            .map(|field| encode(field, MAX_BYTES, Layout::Compact).and_then(|text| loads(&text)))
             .transpose()
     }
 }
@@ -733,24 +733,49 @@ pub fn dumps(value: &PyValue) -> Result<String, CodecError> {
 
 /// Encode ordered compact JSON with a caller-supplied UTF-8 byte ceiling.
 pub fn dumps_bounded(value: &PyValue, maximum: usize) -> Result<String, CodecError> {
-    encode(Part::Value(value, false), maximum.min(MAX_BYTES), None)
+    encode(
+        Part::Value(value, false),
+        maximum.min(MAX_BYTES),
+        Layout::Compact,
+    )
 }
 
 /// Encode a UTF-8 file like Python's `json.dumps(ensure_ascii=False, indent=2)`
 /// plus one LF, using the ordered codec's finite scalar domain. Empty objects
 /// and arrays remain compact. The byte ceiling includes the final newline.
 pub fn dumps_pretty_document(value: &PyValue, maximum: usize) -> Result<String, CodecError> {
-    encode(Part::Value(value, false), maximum.min(MAX_BYTES), Some(0))
+    encode(
+        Part::Value(value, false),
+        maximum.min(MAX_BYTES),
+        Layout::Indented,
+    )
 }
 
 /// Encode mixed native and opaque Python-JSON subtrees in one ordered traversal.
 /// Surrogate, nonfinite, byte and node failures are selected only when their
 /// original output position is visited, after provider normalization succeeds.
 pub fn dumps_python_json(value: &PythonJson) -> Result<String, CodecError> {
-    encode(Part::PythonJson(value), MAX_BYTES, None)
+    encode(Part::PythonJson(value), MAX_BYTES, Layout::Compact)
 }
 
-fn encode(first: Part<'_>, maximum: usize, indent: Option<usize>) -> Result<String, CodecError> {
+/// Encode fields in their supplied order with Python's default JSON separators.
+pub fn dumps_spaced_document(value: &PyValue, maximum: usize) -> Result<String, CodecError> {
+    encode(
+        Part::Value(value, false),
+        maximum.min(MAX_BYTES),
+        Layout::Spaced,
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    Compact,
+    Spaced,
+    Indented,
+}
+
+fn encode(first: Part<'_>, maximum: usize, layout: Layout) -> Result<String, CodecError> {
+    let indent = (layout == Layout::Indented).then_some(0);
     let mut output = Output {
         text: String::new(),
         maximum,
@@ -763,10 +788,10 @@ fn encode(first: Part<'_>, maximum: usize, indent: Option<usize>) -> Result<Stri
     while let Some(part) = parts.pop() {
         match part {
             Part::Next => {
-                output.append(",")?;
+                output.append(if layout == Layout::Spaced { ", " } else { "," })?;
                 output.line()?;
             }
-            Part::Colon => output.append(if indent.is_some() { ": " } else { ":" })?,
+            Part::Colon => output.append(if layout != Layout::Compact { ": " } else { ":" })?,
             Part::Close(delimiter, nonempty) => output.close(delimiter, nonempty)?,
             Part::Key(key, opaque) => {
                 visit(&mut nodes)?;

@@ -7,6 +7,7 @@ wit_bindgen::generate!({
 });
 
 use crate::{
+    legacy_confirmation::{self, ConfirmationError},
     legacy_read::{self, ReadError},
     saved_model::{SelectionError, select},
 };
@@ -64,7 +65,34 @@ impl exports::local::saved_conversation::legacy_receipt::Guest for Pack {
     }
 }
 
+impl exports::local::saved_conversation::legacy_confirmation::Guest for Pack {
+    fn confirm(document: String, turn: String) -> Result<String, Error> {
+        let profile = flow::current_profile()?;
+        legacy_confirmation::confirm(&profile, &document, &turn).map_err(confirmation_error)
+    }
+}
+
 export!(Pack);
+
+fn confirmation_error(error: ConfirmationError) -> Error {
+    match error {
+        ConfirmationError::Read(error) => read_error(error),
+        ConfirmationError::Terminal => failure(
+            ErrorCode::Denied,
+            "saved completion requires a durable terminal",
+        ),
+        ConfirmationError::Receipt => {
+            failure(ErrorCode::Denied, "saved completion receipt does not match")
+        }
+        ConfirmationError::Compatibility => failure(
+            ErrorCode::Unavailable,
+            "saved completion needs the original Conversation owner",
+        ),
+        ConfirmationError::Limit => {
+            failure(ErrorCode::LimitExceeded, "saved completion exceeds limits")
+        }
+    }
+}
 
 fn read_error(error: ReadError) -> Error {
     match error {

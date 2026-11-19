@@ -773,6 +773,12 @@ jobs:
             --output "$RUNNER_TEMP/native-registry-packs"
           receipt_sha256="$(sha256sum "$RUNNER_TEMP/native-registry-packs/receipt.json" | cut -d ' ' -f 1)"
           printf 'receipt_sha256=%s\n' "$receipt_sha256" >> "$GITHUB_OUTPUT"
+      - name: Replay Conversation confirmation against the physical owner
+        env:
+          TOBKIRI_TEST_REGISTRY_PACKS: ${{ runner.temp }}/native-registry-packs
+        run: |
+          cargo test --locked -p tobkiri-e2e --test model_registry -- --ignored --exact \
+            registered_network::original_saved_confirmation_publishes_physical_store
       - uses: actions/upload-artifact@v4
         with:
           name: native-registry-packs

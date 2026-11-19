@@ -107,6 +107,12 @@ pub enum NativeArtifactError {
     ConversationRegistry(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("{0}")]
     ConversationRegistryRejected(#[source] LegacyRegistryError),
+    #[error("native Conversation completion staging failed")]
+    ConversationConfirmation(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("legacy Conversation Store exceeds its native publication envelope")]
+    ConversationLimitBeforePublish,
+    #[error("legacy Conversation Store publication is unconfirmed")]
+    ConversationPublicationUnconfirmed(#[source] tobkiri_store::StoreError),
 }
 
 const READY: u8 = 0;
@@ -280,6 +286,16 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         self.legacy_registry(root, profile_id, LegacyRegistryKind::Model)
     }
 
+    /// Bind the trusted Profile's original Conversation Store and lock for
+    /// completion staging. The Launcher selects the root and authenticates it.
+    pub fn legacy_conversation_store(
+        &self,
+        root: &Path,
+        profile_id: &str,
+    ) -> Result<crate::NativeRegistry, NativeArtifactError> {
+        self.legacy_registry(root, profile_id, LegacyRegistryKind::Conversation)
+    }
+
     fn legacy_registry(
         &self,
         root: &Path,
@@ -427,6 +443,28 @@ impl<S: NativeDeclaredArtifactSource> NativeArtifactInspection<S> {
         staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
             Ok(rejected) => NativeArtifactError::ModelRegistryRejected(rejected),
             Err(error) => NativeArtifactError::ModelSaveStaging(error.into()),
+        })
+    }
+
+    /// Stage the independent completion of a Host-read terminal Turn while the
+    /// native caller retains the original Conversation lock. The guest returns
+    /// a proposal, then native custody must check authority before publication.
+    pub async fn stage_legacy_conversation_confirmation(
+        &mut self,
+        pack: &VerifiedPack,
+        owner: &crate::NativeRegistry,
+        turn: &str,
+    ) -> Result<CoreValue, NativeArtifactError> {
+        let (profile_id, document) = owner.locked_conversation(&self.work.get().invocation)?;
+        self.claim_execution()?;
+        let store = self.store.as_mut().ok_or(NativeDataIoError::Retired)?;
+        let staged = store
+            .stage_legacy_conversation_confirmation(pack, profile_id, document, turn)
+            .await;
+        self.require_live()?;
+        staged.map_err(|error| match error.downcast::<LegacyRegistryError>() {
+            Ok(rejected) => NativeArtifactError::ConversationRegistryRejected(rejected),
+            Err(error) => NativeArtifactError::ConversationConfirmation(error.into()),
         })
     }
 

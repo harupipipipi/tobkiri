@@ -3947,6 +3947,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   互換確定、確定応答未確認を検証した。実SQLite・会話ストアを使い、外部Providerと
   Launcher応答をfixtureで供給した。実Rust＋Wasmの確定検証は上記の分離Launcherで行った。
   既存の署名付きレシート復旧とモデル設定の回帰2件、およびHostの確定応答・監査境界11件も通過した。
+  `ConversationStore.confirm_saved_completion` の判定を同じConversation Packの専用Wasmポートに
+  移植した。Turnの永続確定と分け、元の `locks/conversations.lock` 取得後の観測だけを
+  同じCore invocationのWasmに渡す。確定済みの再送と失効した候補は無書込。
+  保存時は旧ownerと同じ全行のメタデータと順序番号の整形、元のUTF-8 JSONの区切りとキー順、
+  追記時刻と会話revisionを保持する。成功時に増えるのはstore revisionのみ。
+  現在の互換読取りと書込みで共用する整形とJSONコードを二重に移植しない。
+  互換経路を除去する前に、旧サロゲートや有限でない数値を含む文書、1MiBを超える保存値の
+  扱いと、再試行における永続結果の再観測を検証する。非失効の旧NamedLockが残る異常終了は
+  SQLiteの強制終了確認とは別の問題。既存ロックを強制解除しない。
+  CPython 3.13.16の実会話・SQLite Turn ownerから生成したfixtureと、保存バイトまで照合した。
+  Pack・共有codecの38件、元の物理Storeの4件、Wasm応答契約の1件、実Pack・Coreと実ファイルの
+  2件が通過した。実ファイルの試験では公開権限失効時のinode維持、別invocationの拒否、
+  承認後の置換と無書込の再送を照合し、Registry Pack CIにも追加した。
+  次は既存Completion Hostが権限確認済みのTurn Resourceから得た証跡を、このポートに
+  つなぐ。Saved・Reconcileの別リースと公開直前の再確認、Calendarの追加権限照合を保持する。
   Pack 11件、旧保存領域18件、実Core＋Wasm 3件、元のSetupでの権限照合1件が通過。
   IPC 66件、実WasmとLauncherワーカーの分離検証35件、元の署名済みHTTPの会話読み取り・
   保存ターンとモデル設定の回帰が通過。HTTPのLauncher応答と、分離検証のTauriサービスは

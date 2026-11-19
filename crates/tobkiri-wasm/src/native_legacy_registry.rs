@@ -134,6 +134,16 @@ const CONVERSATION_RECEIPT: RegistryExport = RegistryExport {
     reads: 0,
     clock: RegistryClock::None,
 };
+const CONVERSATION_CONFIRMATION: RegistryExport = RegistryExport {
+    pack: CONVERSATION_PACK,
+    shape: "local.saved-conversation.legacy-confirmation@1.0",
+    interface: "local:saved-conversation/legacy-confirmation@1.0.0",
+    function: "confirm",
+    error_subject: "legacy Conversation completion confirmation",
+    parameters: &["document", "turn"],
+    reads: 0,
+    clock: RegistryClock::None,
+};
 
 enum LegacyProviderOperation<'a> {
     Prepare,
@@ -151,6 +161,10 @@ enum RegistryInput<'a> {
     DocumentLookup {
         document: Option<&'a str>,
         identifier: &'a str,
+    },
+    ConversationConfirmation {
+        document: &'a str,
+        turn: &'a str,
     },
     ModelSave {
         request: &'a CoreValue,
@@ -217,6 +231,14 @@ pub fn verify_legacy_conversation_read_declaration(pack: &VerifiedPack) -> Resul
 pub fn verify_legacy_conversation_receipt_declaration(pack: &VerifiedPack) -> Result<()> {
     declared_registry_component(pack, &CONVERSATION_RECEIPT)?;
     declared_registry_function(pack, &CONVERSATION_RECEIPT)?;
+    Ok(())
+}
+
+/// Check the fixed completion confirmation declaration independently from the
+/// read and receipt ports. Invocation also checks the executable ABI.
+pub fn verify_legacy_conversation_confirmation_declaration(pack: &VerifiedPack) -> Result<()> {
+    declared_registry_component(pack, &CONVERSATION_CONFIRMATION)?;
+    declared_registry_function(pack, &CONVERSATION_CONFIRMATION)?;
     Ok(())
 }
 
@@ -417,6 +439,28 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         .await
     }
 
+    /// Stage a completion confirmation against the original Conversation owner
+    /// document and the durable Turn record read by the host. The native caller
+    /// owns any publication of the staged replacement.
+    pub async fn stage_legacy_conversation_confirmation(
+        &mut self,
+        pack: &VerifiedPack,
+        profile_id: &str,
+        document: &str,
+        turn: &str,
+    ) -> Result<CoreValue> {
+        let reply = self
+            .invoke_legacy_registry(
+                pack,
+                profile_id,
+                &CONVERSATION_CONFIRMATION,
+                RegistryInput::ConversationConfirmation { document, turn },
+            )
+            .await?;
+        validate_conversation_confirmation_reply(&reply)?;
+        Ok(reply)
+    }
+
     async fn invoke_legacy_registry(
         &mut self,
         pack: &VerifiedPack,
@@ -444,7 +488,9 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         .is_some_and(|(_, ty)| *ty == WitType::CallbackHandle)
             }
             RegistryInput::ModelList(_) => optional_string(&function.params[0].1),
-            RegistryInput::ModelSave { .. } | RegistryInput::DocumentLookup { .. } => true,
+            RegistryInput::ModelSave { .. }
+            | RegistryInput::DocumentLookup { .. }
+            | RegistryInput::ConversationConfirmation { .. } => true,
         };
         ensure!(
             abi_matches,
@@ -480,7 +526,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         // before instantiating anything or accepting an invocation of the host.
         let linker = registry_linker(engine, &component, &function.params, export, &owners)?;
         let model_parameters;
-        let lookup_parameters;
+        let two_parameters;
         let without_plan;
         let with_plan;
         let (values, read): (&[Val], _) = match input {
@@ -513,8 +559,19 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 identifier,
             } => {
                 let id = BudgetedString::copy_from(identifier, owners.component(), 1)?;
-                lookup_parameters = [optional_document(document, &owners)?, Val::String(id)];
-                (&lookup_parameters, None)
+                two_parameters = [optional_document(document, &owners)?, Val::String(id)];
+                (&two_parameters, None)
+            }
+            RegistryInput::ConversationConfirmation { document, turn } => {
+                ensure!(
+                    turn.len() <= MAX_DOCUMENT_BYTES,
+                    "legacy Conversation durable Turn record exceeds its limit"
+                );
+                two_parameters = [
+                    raw_document(document, &owners)?,
+                    Val::String(BudgetedString::copy_from(turn, owners.component(), 1)?),
+                ];
+                (&two_parameters, None)
             }
             RegistryInput::ModelSave {
                 request,
@@ -561,6 +618,31 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             "legacy Registry observations differ from the fixed operation"
         );
         Ok(reply)
+    }
+}
+
+fn validate_conversation_confirmation_reply(reply: &CoreValue) -> Result<()> {
+    let CoreRef::Obj(fields) = reply.inspect() else {
+        bail!("legacy Conversation confirmation stage must return an object");
+    };
+    ensure!(
+        fields.len() == 2,
+        "legacy Conversation confirmation stage fields differ"
+    );
+    let owner = fields
+        .get("owner_result")
+        .context("missing legacy Conversation confirmation owner result")?;
+    ensure!(
+        matches!(owner.inspect(), CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}')),
+        "legacy Conversation confirmation owner result must enclose an object"
+    );
+    let document = fields
+        .get("next_document")
+        .context("missing legacy Conversation confirmation next document")?;
+    match document.inspect() {
+        CoreRef::Null => Ok(()),
+        CoreRef::Str(value) if value.starts_with('{') && value.ends_with('}') => Ok(()),
+        _ => bail!("legacy Conversation confirmation next document differs"),
     }
 }
 
@@ -682,6 +764,12 @@ fn declared_registry_function<'a>(
             "legacy owner lookup parameter ABI differs"
         );
     }
+    if export.shape == CONVERSATION_CONFIRMATION.shape {
+        ensure!(
+            function.params.iter().all(|(_, ty)| *ty == WitType::String),
+            "legacy Conversation confirmation parameter ABI differs"
+        );
+    }
     Ok(function)
 }
 
@@ -698,13 +786,23 @@ fn optional_document(document: Option<&str>, owners: &crate::AllocationOwners) -
     let Some(document) = document else {
         return Ok(Val::Option(None));
     };
+    Ok(Val::Option(Some(BudgetedBox::new(
+        raw_document(document, owners)?,
+        owners.component(),
+        0,
+    )?)))
+}
+
+fn raw_document(document: &str, owners: &crate::AllocationOwners) -> Result<Val> {
     ensure!(
         document.len() <= MAX_DOCUMENT_BYTES,
         "legacy owner document exceeds its limit"
     );
-    let owner = owners.component();
-    let raw = Val::String(BudgetedString::copy_from(document, owner, 1)?);
-    Ok(Val::Option(Some(BudgetedBox::new(raw, owner, 0)?)))
+    Ok(Val::String(BudgetedString::copy_from(
+        document,
+        owners.component(),
+        1,
+    )?))
 }
 
 fn observe_handle(owners: &crate::AllocationOwners) -> Result<Val> {
@@ -1109,5 +1207,54 @@ fn decode_reply(
             Err(LegacyRegistryError { code, subject }.into())
         }
         _ => bail!("legacy Provider prepare reply differs"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tobkiri_canon::AllocationRequest;
+
+    struct FixtureBudget;
+
+    impl AllocationBudget for FixtureBudget {
+        fn reserve(&self, _: AllocationRequest) -> Result<(), AllocationError> {
+            Ok(())
+        }
+
+        fn release(&self, _: u64) {}
+    }
+
+    #[test]
+    fn confirmation_requires_the_closed_reply_and_preserves_opaque_json() -> Result<()> {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(FixtureBudget);
+        let owner = r#"{"revision": 12345678901234567890, "detail": -0.0}"#;
+        let document = r#"{"z": "会話", "a": []}"#;
+        let encoded = serde_json::to_vec(&serde_json::json!({
+            "owner_result": owner,
+            "next_document": document,
+        }))?;
+        let staged = CoreValue::parse_guest(&encoded, &budget)?;
+        validate_conversation_confirmation_reply(&staged)?;
+        let result = staged.get_key("owner_result").unwrap();
+        assert!(matches!(result.inspect(), CoreRef::Str(value) if value == owner));
+        let next = staged.get_key("next_document").unwrap();
+        assert!(matches!(next.inspect(), CoreRef::Str(value) if value == document));
+
+        let no_op =
+            CoreValue::parse_guest(br#"{"owner_result":"{}","next_document":null}"#, &budget)?;
+        validate_conversation_confirmation_reply(&no_op)?;
+
+        for invalid in [
+            &br#"{"owner_result":"{}"}"#[..],
+            br#"{"owner_result":{},"next_document":null}"#,
+            br#"{"owner_result":"{}","next_document":{}}"#,
+            br#"{"owner_result":"{}","next_document":"null"}"#,
+            br#"{"owner_result":"{}","next_document":null,"extra":null}"#,
+        ] {
+            let invalid = CoreValue::parse_guest(invalid, &budget)?;
+            assert!(validate_conversation_confirmation_reply(&invalid).is_err());
+        }
+        Ok(())
     }
 }

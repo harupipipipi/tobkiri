@@ -1,4 +1,7 @@
-//! Reads from the original saved conversation owner document.
+//! Reads and completion transitions for the original saved conversation owner document.
+
+#[cfg(any(feature = "component", test))]
+mod legacy_confirmation;
 
 #[cfg(any(feature = "component", test))]
 mod legacy_read;
