@@ -4055,6 +4055,9 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     start_envelopes: list[RequestEnvelope] = []
     settlement_requests: list[ipc.NativeSavedTurnSettlementRequest] = []
     settlement_envelopes: list[RequestEnvelope] = []
+    receipt_target = saved_conversation.TARGETS[0]
+    receipt_reads: list[ipc.NativeSavedReceiptRequest] = []
+    receipt_envelopes: list[RequestEnvelope] = []
     fixture_failures: list[AssertionError] = []
     backend = _SavedPackVmBackend()
     original_invoke = V4DispatchSession.invoke
@@ -4233,6 +4236,44 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             fixture_failures.append(error)
             raise
 
+    def checked_side_receipt(request: ipc.NativeSavedReceiptRequest) -> Mapping[str, object]:
+        request.assert_current()
+        side, turn = settlement_envelopes[-2:]
+        owner = receipt_envelopes[-1]
+        assert side.payload["operation"] == "reconcile"
+        assert request.caller == "side-chat-reconcile"
+        assert request.context == owner.context
+        assert owner.context.caller_principal == turn.target_principal
+        assert turn.context.caller_principal == side.target_principal
+        assert request.turn_id == turn.payload["turn_id"] == side.payload["turn_id"]
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert request.deadline_monotonic == owner.deadline_monotonic
+        assert owner.deadline_monotonic <= turn.deadline_monotonic <= side.deadline_monotonic
+        chain = (side, turn, owner)
+        assert len({item.lease.token for item in chain}) == len(chain)
+        assert owner.resource_reservation_id is not None
+        assert owner.resource_reservation_id not in {
+            side.resource_reservation_id, turn.resource_reservation_id,
+        }
+        for item in chain:
+            _, state, _, _ = authority.inspect_dispatch_authority(
+                item.lease.token.decode("ascii"),
+            )
+            assert state is LeaseState.DISPATCHED
+        receipt_reads.append(request)
+        before = conversations.path.read_bytes()
+        receipt = conversations.saved_receipt(request.turn_id)
+        assert receipt is not None and receipt["conversation_id"] == side.payload["conversation_id"]
+        assert conversations.path.read_bytes() == before
+        return {"receipt": receipt}
+
+    def side_receipt(request: ipc.NativeSavedReceiptRequest) -> Mapping[str, object]:
+        try:
+            return checked_side_receipt(request)
+        except AssertionError as error:
+            fixture_failures.append(error)
+            raise
+
     def observe_packvm(
         binding: ResolvedOperationBinding, reservation_id: str,
     ) -> RuntimeEvidence:
@@ -4268,6 +4309,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ipc, "capture_launcher_saved_turn_settlement_writer",
         lambda: side_settlement if settlement else None,
     )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_receipt_reader",
+        lambda: side_receipt if settlement == "reconcile" else None,
+    )
     if use_native:
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", "1")
         monkeypatch.setenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", manifest)
@@ -4297,6 +4342,11 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
                 side_target, targets[1], reconcile_target,
             }:
                 settlement_envelopes.append(envelope)
+            if (
+                (envelope.contract_id, envelope.operation_id) == receipt_target
+                and envelope.payload.get("operation") == "saved_receipt"
+            ):
+                receipt_envelopes.append(envelope)
             if (
                 (envelope.contract_id, envelope.operation_id) == message_target
                 and envelope.payload.get("operation") == "append_saved"
@@ -4506,6 +4556,12 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
             expected_settlement.append("side-chat-reconcile")
         assert [request.caller for request in settlement_requests] == expected_settlement
         for request in settlement_requests:
+            with pytest.raises(PermissionError):
+                request.assert_current()
+        assert [request.caller for request in receipt_reads] == (
+            ["side-chat-reconcile"] if settlement == "reconcile" else []
+        )
+        for request in receipt_reads:
             with pytest.raises(PermissionError):
                 request.assert_current()
 

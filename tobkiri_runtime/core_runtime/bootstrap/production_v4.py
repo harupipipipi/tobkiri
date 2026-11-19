@@ -1975,7 +1975,7 @@ def capture_production_dispatch(
         NativeSavedTurnStartFailure,
         NativeSavedTurnStartRequest,
         SavedReceiptCaller,
-        SavedTurnSettlementCaller,
+        SavedTurnOrigin,
         SavedTurnStartAction,
         SavedTurnStartCaller,
         capture_launcher_ai_gateway_policy_projector,
@@ -5345,21 +5345,38 @@ def capture_production_dispatch(
         resource: _CapturedPlanEdge
 
     @dataclass(frozen=True)
-    class _SavedSettlementRoute:
-        caller: SavedTurnSettlementCaller
+    class _SavedTurnRoute:
+        caller: SavedTurnOrigin
         edge: _CapturedPlanEdge
         side_chat: _CapturedPlanEdge | None = None
 
+        def is_reconcile(self) -> bool:
+            return self.caller in {"saved-reconcile", "side-chat-reconcile"}
+
     saved_receipt_routes: dict[
-        str, tuple[SavedReceiptCaller, _CapturedPlanEdge, _CapturedPlanEdge]
+        str, list[tuple[_SavedTurnRoute, _CapturedPlanEdge]]
     ] = {}
-    saved_turn_routes: dict[str, list[_SavedSettlementRoute]] = {}
+    saved_turn_routes: dict[str, list[_SavedTurnRoute]] = {}
     confirmation_routes: dict[str, _SavedCompletionRoute] = {}
     completion_function = "rumi_conversation_store_pack.conversation-store.completion"
     completion_operation = (
         "tobkiri.action.conversation.completion.v1",
         "rumi_conversation_store_pack.conversation-completion",
     )
+
+    def capture_saved_turn_route(route: _SavedTurnRoute) -> None:
+        turn_principal = route.edge.target.principal_id
+        if native_saved_turn_settlement_writer is not None:
+            saved_turn_routes.setdefault(turn_principal, []).append(route)
+        if native_saved_receipt_reader is not None:
+            receipt = select_original_chat_edge(
+                {turn_principal}, conversation_pack,
+                conversation_contract, conversation_operation, conversation_function,
+                EffectClass.PRIVILEGED,
+            )
+            if receipt is not None:
+                saved_receipt_routes.setdefault(turn_principal, []).append((route, receipt))
+
     if (
         native_saved_receipt_reader is not None
         or native_saved_turn_settlement_writer is not None
@@ -5387,10 +5404,7 @@ def capture_production_dispatch(
             if len(parents) != 1:
                 continue
             parent_edge, = parents
-            if native_saved_turn_settlement_writer is not None:
-                saved_turn_routes.setdefault(parent_edge.target.principal_id, []).append(
-                    _SavedSettlementRoute(caller, parent_edge),
-                )
+            capture_saved_turn_route(_SavedTurnRoute(caller, parent_edge))
             if native_confirmation_writer is not None or native_saved_turn_reader is not None:
                 completion_edges = tuple(
                     edge for edge in captured_edges
@@ -5417,41 +5431,21 @@ def capture_production_dispatch(
                         confirmation_routes[parent_edge.target.principal_id] = _SavedCompletionRoute(
                             caller, completion_edge, parent_edge, resource_edges[0],
                         )
-            if native_saved_receipt_reader is None:
-                continue
-            receipt_edges = tuple(
-                edge for edge in captured_edges
-                if edge.caller.principal_id == parent_edge.target.principal_id
-                and edge.caller.function_id == turn_function
-                and edge.resolved_binding.artifact.pack_id == conversation_pack
-                and edge.binding_key[1:] == (
-                    conversation_contract, conversation_operation,
-                )
-                and edge.resolved_binding.operation.effect_class
-                is EffectClass.PRIVILEGED
-                and is_exact_original_python_edge(edge, conversation_function)
-            )
-            if len(receipt_edges) == 1:
-                receipt_edge, = receipt_edges
-                saved_receipt_routes[receipt_edge.caller.principal_id] = (
-                    caller, receipt_edge, parent_edge,
-                )
-
-    if native_saved_turn_settlement_writer is not None and side_chat_edge is not None:
+    if side_chat_edge is not None and (
+        native_saved_turn_settlement_writer is not None or native_saved_receipt_reader is not None
+    ):
         side_reconcile = select_original_chat_edge(
             {side_chat_edge.target.principal_id},
             turn_pack, "tobkiri.action.turn.reconcile.v1", f"{turn_pack}.turn-reconcile",
             f"{turn_pack}.turn-runtime.reconcile", EffectClass.PRIVILEGED,
         )
-        side_routes: tuple[tuple[SavedTurnSettlementCaller, _CapturedPlanEdge | None], ...] = (
+        side_routes: tuple[tuple[SavedTurnOrigin, _CapturedPlanEdge | None], ...] = (
             ("side-chat-turn", side_chat_turn_edge),
             ("side-chat-reconcile", side_reconcile),
         )
         for caller, side_edge in side_routes:
             if side_edge is not None:
-                saved_turn_routes.setdefault(side_edge.target.principal_id, []).append(
-                    _SavedSettlementRoute(caller, side_edge, side_chat_edge),
-                )
+                capture_saved_turn_route(_SavedTurnRoute(caller, side_edge, side_chat_edge))
 
     saved_owner_publications: WeakValueDictionary[int, RequestEnvelope] = WeakValueDictionary()
     saved_owner_publication_lock = threading.Lock()
@@ -5657,18 +5651,38 @@ def capture_production_dispatch(
             candidate = request.get("turn_id") if isinstance(request, Mapping) else None
         return candidate if isinstance(candidate, str) and 0 < len(candidate) <= 256 else None
 
+    def matches_side_turn_request(
+        route: _SavedTurnRoute, turn: Mapping[str, Any], turn_id: str,
+        side: RequestEnvelope, profile_id: str,
+    ) -> bool:
+        reconcile = route.is_reconcile()
+        if (
+            side.context.profile_id != profile_id
+            or side.payload.get("operation") != ("reconcile" if reconcile else "send")
+            or side.payload.get("turn_id") != turn_id
+            or requested_saved_turn_id("saved-reconcile" if reconcile else "saved-turn", turn)
+            != turn_id
+        ):
+            return False
+        if reconcile:
+            return True
+        source = turn["request"]
+        return (
+            side.payload.get("conversation_id") == source.get("conversation_id")
+            and side.payload.get("expected_child_revision") == source.get("conversation_revision")
+        )
+
     def saved_turn_settlement_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-        routes: Sequence[_SavedSettlementRoute],
-    ) -> tuple[_SavedSettlementRoute, str, tuple[RequestEnvelope, ...]] | None:
+        routes: Sequence[_SavedTurnRoute],
+    ) -> tuple[_SavedTurnRoute, str, tuple[RequestEnvelope, ...]] | None:
         for route in routes:
             if context.caller_principal.value != route.edge.caller.principal_id:
                 continue
-            reconcile = route.caller in {"saved-reconcile", "side-chat-reconcile"}
             turn_id = requested_saved_turn_id(
-                "saved-reconcile" if reconcile else "saved-turn", payload,
+                "saved-reconcile" if route.is_reconcile() else "saved-turn", payload,
             )
             if turn_id is None:
                 continue
@@ -5676,22 +5690,10 @@ def capture_production_dispatch(
             ancestors = match_captured_ancestors(parent, expected)
             if ancestors is None:
                 continue
-            if ancestors:
-                side = ancestors[0]
-                if (
-                    side.context.profile_id != context.profile_id
-                    or side.payload.get("operation") != ("reconcile" if reconcile else "send")
-                    or side.payload.get("turn_id") != turn_id
-                ):
-                    return None
-                if not reconcile:
-                    source = payload["request"]
-                    if (
-                        side.payload.get("conversation_id") != source.get("conversation_id")
-                        or side.payload.get("expected_child_revision")
-                        != source.get("conversation_revision")
-                    ):
-                        return None
+            if ancestors and not matches_side_turn_request(
+                route, payload, turn_id, ancestors[0], context.profile_id,
+            ):
+                return None
             return route, turn_id, ancestors
         return None
 
@@ -5699,14 +5701,14 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         *,
-        routes: Sequence[_SavedSettlementRoute],
+        routes: Sequence[_SavedTurnRoute],
     ) -> bool:
         return native_provider_runtime is not None and saved_turn_settlement_lineage(
             context, payload, parent_invocation_scopes.lookup(context.caller_session_id), routes,
         ) is not None
 
     def capture_turn_settlement_port(
-        routes: Sequence[_SavedSettlementRoute],
+        routes: Sequence[_SavedTurnRoute],
         writer: Callable[[NativeSavedTurnSettlementRequest], Mapping[str, Any]],
     ) -> Callable[[HostProviderInvocationContextV4], SavedTurnSettlementPort | None]:
         def borrow(invocation: HostProviderInvocationContextV4) -> SavedTurnSettlementPort | None:
@@ -5751,8 +5753,7 @@ def capture_production_dispatch(
             ) -> dict[str, Any] | None:
                 if (
                     turn_id != root_turn_id
-                    or (caller in {"saved-reconcile", "side-chat-reconcile"}
-                        and expected_revision is None)
+                    or (route.is_reconcile() and expected_revision is None)
                     or (ancestors and result_reference.get("conversation_id")
                         != ancestors[0].payload.get("conversation_id"))
                 ):
@@ -6077,15 +6078,10 @@ def capture_production_dispatch(
         context: RequestContext,
         payload: Mapping[str, Any],
         parent: CapturedInvocationScopeV4 | None,
-    ) -> tuple[SavedReceiptCaller, _CapturedPlanEdge, RequestEnvelope] | None:
-        route = saved_receipt_routes.get(context.caller_principal.value)
+    ) -> tuple[SavedTurnOrigin, _CapturedPlanEdge, tuple[RequestEnvelope, ...]] | None:
         turn_id = payload.get("turn_id")
         if (
-            route is None
-            or parent is None
-            or parent.parent is not None
-            or not matches_captured_edge(parent.envelope, route[2])
-            or payload.get("operation") != "saved_receipt"
+            payload.get("operation") != "saved_receipt"
             or payload.get("profile_id") != context.profile_id
             or set(payload) - {"_session_id"} != {"profile_id", "operation", "turn_id"}
             or not isinstance(turn_id, str)
@@ -6096,7 +6092,20 @@ def capture_production_dispatch(
             turn_id.encode("utf-8", errors="strict")
         except UnicodeEncodeError:
             return None
-        return route[0], route[1], parent.envelope
+        for route, receipt in saved_receipt_routes.get(context.caller_principal.value, ()):
+            parents = (route.edge,) if route.side_chat is None else (route.edge, route.side_chat)
+            ancestors = match_captured_ancestors(parent, parents)
+            if ancestors is None:
+                continue
+            turn = ancestors[0]
+            if turn.context.profile_id != context.profile_id or (
+                route.side_chat is not None and not matches_side_turn_request(
+                    route, turn.payload, turn_id, ancestors[1], context.profile_id,
+                )
+            ):
+                return None
+            return route.caller, receipt, ancestors
+        return None
 
     def is_native_saved_receipt_route(
         context: RequestContext, payload: Mapping[str, Any],
@@ -6127,35 +6136,43 @@ def capture_production_dispatch(
             pinned_runtime = native_provider_runtime
             if lineage is None or pinned_runtime is None:
                 return contribution.invoke(operation_id, payload, invocation)
-            caller, edge, parent = lineage
+            caller, edge, ancestors = lineage
+            chain = (envelope, *ancestors)
             if (
                 operation_id != envelope.operation_id
                 or payload is not envelope.payload
                 or not matches_captured_edge(envelope, edge)
-                or envelope.lease.token == parent.lease.token
-                or envelope.deadline_monotonic > parent.deadline_monotonic
-                or envelope.resource_reservation_id == parent.resource_reservation_id
+                or len({item.lease.token for item in chain}) != len(chain)
+                or any(child.deadline_monotonic > ancestor.deadline_monotonic
+                       for child, ancestor in zip(chain[:-1], ancestors, strict=True))
+                or any(item.resource_reservation_id == envelope.resource_reservation_id
+                       for item in ancestors)
             ):
                 raise AuthorityDenied("native saved receipt lineage changed")
 
             def guard() -> None:
                 invocation.assert_current()
-                retained = parent_invocation_scopes.lookup(context.caller_session_id)
-                if (
-                    retained is None or retained.envelope is not parent
-                    or parent_invocation_scopes.lookup(parent.context.caller_session_id)
-                    is not None
-                    or native_provider_runtime is not pinned_runtime
-                ):
+                if native_provider_runtime is not pinned_runtime:
                     raise AuthorityDenied("native saved receipt capture changed")
+                require_retained_ancestors(envelope, ancestors)
                 pinned_runtime[1]()
                 production_admission.native_resources(envelope.resource_reservation_id)
+
+            def checked_reply(result: Mapping[str, Any]) -> Mapping[str, Any]:
+                if len(ancestors) > 1:
+                    receipt = result.get("receipt")
+                    if receipt is not None and (
+                        not isinstance(receipt, Mapping)
+                        or receipt.get("conversation_id") != ancestors[1].payload.get("conversation_id")
+                    ):
+                        raise AuthorityDenied("native saved receipt belongs to another conversation")
+                return result
 
             def legacy_read() -> Mapping[str, Any]:
                 guard()
                 result = contribution.invoke(operation_id, payload, invocation)
                 guard()
-                return result
+                return checked_reply(result)
 
             guard()
             resources = production_admission.native_resources(
@@ -6189,7 +6206,7 @@ def capture_production_dispatch(
                     ) from None
                 raise
             guard()
-            return result
+            return checked_reply(result)
 
         return replace(contribution, invoke=invoke)
 
@@ -7425,7 +7442,7 @@ def capture_production_dispatch(
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
     native_turn_settlement_bindings: dict[
-        tuple[str, str, str], tuple[ResolvedOperationBinding, tuple[_SavedSettlementRoute, ...]]
+        tuple[str, str, str], tuple[ResolvedOperationBinding, tuple[_SavedTurnRoute, ...]]
     ] = {}
     native_conversation_confirmation_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
@@ -7636,7 +7653,8 @@ def capture_production_dispatch(
         if native_saved_receipt_reader is not None:
             receipt_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
-                for _, edge, _parent in saved_receipt_routes.values()
+                for routes in saved_receipt_routes.values()
+                for _, edge in routes
                 if edge.resolved_binding in captured_bindings
             }
             native_saved_receipt_bindings.update(receipt_bindings)

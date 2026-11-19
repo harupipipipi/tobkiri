@@ -2132,7 +2132,7 @@ def test_conversation_get_rejects_malformed_results_and_publication(
 
 def _saved_receipt_request(
     borrow: _Borrow,
-    caller: ipc.SavedReceiptCaller = "saved-turn",
+    caller: ipc.SavedTurnOrigin = "saved-turn",
     turn_id: str = "turn-1",
 ) -> ipc.NativeSavedReceiptRequest:
     return ipc.NativeSavedReceiptRequest(
@@ -2160,6 +2160,8 @@ def _served_saved_receipt(
     [
         ("saved-turn", "", None),
         ("saved-reconcile", " ../もの \n ", {}),
+        ("side-chat-turn", "child-turn", {"conversation_id": "child"}),
+        ("side-chat-reconcile", "child-turn", {"conversation_id": "child"}),
         (
             "saved-turn", "\0" * ipc.SAVED_RECEIPT_MAX_ID_CHARS,
             {"extra": ["会話", {"zero": -0.0, "wide": 1 << 145}]},
@@ -2168,7 +2170,7 @@ def _served_saved_receipt(
 )
 def test_saved_receipt_preserves_raw_turn_id_and_original_owner_values(
     monkeypatch: pytest.MonkeyPatch,
-    caller: ipc.SavedReceiptCaller,
+    caller: ipc.SavedTurnOrigin,
     turn_id: str,
     receipt: dict[str, Any] | None,
 ) -> None:
@@ -2211,6 +2213,8 @@ def test_saved_receipt_preserves_raw_turn_id_and_original_owner_values(
     [
         ("shell", "turn-1"),
         ("saved-orchestration", "turn-1"),
+        ("side-chat", "turn-1"),
+        ("side-chat-reconcile", "a" * (ipc.SAVED_RECEIPT_MAX_ID_CHARS + 1)),
         ("saved-turn", "a" * (ipc.SAVED_RECEIPT_MAX_ID_CHARS + 1)),
         ("saved-reconcile", 42),
     ],

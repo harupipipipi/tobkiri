@@ -359,6 +359,9 @@ class NativeConversationAppendRequest:
 
 
 SavedReceiptCaller = Literal["saved-turn", "saved-reconcile"]
+SavedTurnOrigin = Literal[
+    "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
+]
 
 
 @dataclass(frozen=True)
@@ -369,7 +372,7 @@ class NativeSavedReceiptRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    caller: SavedReceiptCaller
+    caller: SavedTurnOrigin
     turn_id: str
 
 
@@ -470,11 +473,6 @@ class NativeSavedLocalChatRequest:
     compile_policy: bool = False
 
 
-SavedTurnSettlementCaller = Literal[
-    "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
-]
-
-
 @dataclass(frozen=True)
 class NativeSavedTurnSettlementRequest:
     """Borrow the signed Turn invocation and its verified result reference."""
@@ -483,7 +481,7 @@ class NativeSavedTurnSettlementRequest:
     runtime_instance: str
     deadline_monotonic: float
     assert_current: Callable[[], None]
-    caller: SavedTurnSettlementCaller
+    caller: SavedTurnOrigin
     turn_id: str
     input_digest: str
     expected_revision: int | None
@@ -1017,7 +1015,9 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedReceiptRequest):
         if (
             type(borrow.caller) is not str
-            or borrow.caller not in ("saved-turn", "saved-reconcile")
+            or borrow.caller not in {
+                "saved-turn", "saved-reconcile", "side-chat-turn", "side-chat-reconcile",
+            }
             or not isinstance(borrow.turn_id, str)
             or len(borrow.turn_id) > SAVED_RECEIPT_MAX_ID_CHARS
         ):
