@@ -6038,6 +6038,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ことを確認した。
   Job BrokerをRustへ移した後は、現在のBrokerアーカイブのdigestに結びつくHost側の捕捉処理を
   廃止し、元の発生回とAdapterの確認をRustのBrokerで行う。
+- `33482ee12` はCalendarから会話本体の `saved_complete` へ進む既存のProfile権限をRustで選ぶ。
+  自動起床の4権限とGUI手動実行の5権限を別に照合する。保存入力・開始用のLifecycle権限や通常チャットの
+  権限だけでは選べない。署名済みProfile規則を使った経路選択のRust検証60件と、
+  元の発生回、会話送信の権限、停止と再照合を検証するPython回帰73件が通過した。
+  配布Bundleの照合ではScheduler・Broker・Adapterの `privileged` と会話本体の `pure` を区別する。
+  LauncherとHostへの接続では、同じ発生回の保存入力と実行権取得を確認し、自動・手動の実行証明と
+  Brokerの期限切れ確認を別に照合する。効果のある呼出しは現在のHostの承認を使う。
+  期限切れ確認とClockはキャンセル信号を共有するため、独立した実行が必要な会話送信と停止は
+  従来どおり `dispatch` の証明を要求する。配布経路の切り替え、実Wasmでの会話と承認の検証、
+  SchedulerとJob Broker自体のRustへの移植は残る。
 - `ada704c89` は公開時の期限と検査を一つの引数にまとめて、既存入力確定の `too_many_arguments` を
   修正した。元の[Clippyゲート](https://github.com/harupipipipi/tobkiri/actions/runs/44660705548)は
   `8b21d6696` でこの指摘により停止した。`817341b81` の
