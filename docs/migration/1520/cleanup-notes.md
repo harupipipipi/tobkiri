@@ -6711,6 +6711,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   照合するため、読み取り専用のPython observerが1か所残る。この照合を別のIPCへ移すには、
   待機中の要求に再入せず、同じ期限と永続化前の鮮度確認を維持できることが条件。
   旧writerの削除は、残りのCalendar経路を移し、配布Launcherで既存DBの再開と復旧を確認してから行う。
+- [macOS Launcher CI 44691018469](https://github.com/harupipipipi/tobkiri/actions/runs/44691018469)で
+  CalendarのIPCとジョブの検査、既存Setupの実AppKit/WebKitを通過した。
+- [セキュリティCI 44690107214](https://github.com/harupipipipi/tobkiri/actions/runs/44690107214)は
+  Linuxで成功し、macOSの自動Calendar fixtureで想定外の再読取りと `begin_saved` を検出した。
+  自動ケースは複数の未確定ジョブを残しながら順にtickするため、実行が続くと以前のジョブの5分の
+  leaseも次のtickで期限切れになり得る。`0dd79ab83` は検査済みの未確定fixtureを後続のtickまで保持し、
+  回復させる対象だけを明示的に期限切れにする。製品のleaseと既存の回復検査は変更していない。
+  修正後の署名済みfixtureは両OSのCIで再確認する。
 
 ## 065 DMGのマウント前後で実バイトを照合する
 
@@ -6726,3 +6734,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `13687f050` で配布ワークフローとテスト数を照合し、静的・単体検査57件が通過した。
   `67593a730` では、ローカルのテストビルドで見つかったテスト専用の分岐を補い、
   CalendarのBodyが必須であることを既存テストでも確認する。再試行のリンクは空き容量不足で中断した。
+
+## 066 未使用の OAuth dotenv 探索を削除する
+
+- `9804921d6` は `domain/ai_client/oauth_store.py` の参照されていない `.env` 候補探索と
+  パーサーを削除した。既存経路は明示されたSecret StoreとHost契約から設定を取得する。
+- 回帰では一時Packと親ディレクトリにダミーの `.env` および旧 `oauth.env` を置き、
+  ファイルに入れた値は採用されずHost契約の値は認識されることを確認した。接続設定テストは
+  実際の設定ownerを明示して、設定にトークンが出ないことも従来通り検査する。OAuthとHost契約の
+  ローカルテスト56件が通過。`0dd79ab83` でOAuthテストを両OSのセキュリティCIに追加した。
