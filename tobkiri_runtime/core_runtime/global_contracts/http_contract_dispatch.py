@@ -7,9 +7,9 @@ composition; this module only enforces the generic HTTP and capture fences.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from tobkiri_protocol.errors import ProtocolError
@@ -38,11 +38,12 @@ class HTTPContractRouteError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedHTTPContractRoute:
-    """A validated Host route and the query values bound to it."""
+    """A validated Host route with query values and any alias-bound parameters."""
 
     method: str
     path: str
     query: dict[str, str]
+    path_parameters: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -130,12 +131,16 @@ def resolve_contract_route(
     request_path: str,
     *,
     namespace: str | None = None,
+    path_alias: (
+        Callable[[Any, str, str, str], tuple[str, dict[str, str]] | None] | None
+    ) = None,
 ) -> ResolvedHTTPContractRoute | None:
     """Resolve one opaque HTTP contract operation against captured bindings.
 
     ``None`` means that the request is outside the contract namespace.  A
     malformed request inside that namespace is always rejected rather than
     falling through to a route table maintained by an application.
+    A Host-supplied compatibility alias must resolve to a registered binding.
     """
 
     request_value = str(request_path or "")
@@ -189,15 +194,26 @@ def resolve_contract_route(
         raise HTTPContractRouteError(
             "CONTRACT_PATH_INVALID", "Invalid contract target path", 400
         )
+    route_path = parsed.path
+    path_parameters: dict[str, str] = {}
     if not _registered_target(
         server,
         operation_method,
-        parsed.path,
+        route_path,
         namespace=requested_namespace,
     ):
-        raise HTTPContractRouteError(
-            "CONTRACT_OPERATION_UNKNOWN", "Unknown contract operation", 404
+        alias = (
+            path_alias(server, operation_method, route_path, requested_namespace)
+            if path_alias is not None
+            else None
         )
+        if alias is None or not _registered_target(
+            server, operation_method, alias[0], namespace=requested_namespace,
+        ):
+            raise HTTPContractRouteError(
+                "CONTRACT_OPERATION_UNKNOWN", "Unknown contract operation", 404
+            )
+        route_path, path_parameters = alias
     parsed_query = parse_qs(parsed.query, keep_blank_values=True)
     if any(len(values) != 1 for values in parsed_query.values()):
         raise HTTPContractRouteError(
@@ -205,8 +221,9 @@ def resolve_contract_route(
         )
     return ResolvedHTTPContractRoute(
         operation_method,
-        parsed.path,
+        route_path,
         {key: values[0] for key, values in parsed_query.items() if values},
+        path_parameters,
     )
 
 

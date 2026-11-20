@@ -36,6 +36,7 @@ from .api.auth_gate import (
     SESSION_COOKIE_NAMES,
     AuthGateMixin,
 )
+from .api.calendar_contract_alias import bundled_calendar_contract_alias
 from .api.http_response import ResponseWriterMixin
 from .api.packvm_capacity_errors import (
     PACKVM_HOST_CAPACITY_INSUFFICIENT,
@@ -1354,7 +1355,9 @@ class PackAPIHandler(
         if not is_contract_route_path(urlparse(self.path).path):
             return False
         try:
-            resolved = resolve_contract_route(self, method, self.path)
+            resolved = resolve_contract_route(
+                self, method, self.path, path_alias=bundled_calendar_contract_alias,
+            )
         except HTTPContractRouteError as error:
             self._discard_request_body()
             self._send_contract_error(error)
@@ -1410,16 +1413,33 @@ class PackAPIHandler(
                 503,
             )
             return True
-        if method.upper() == "GET":
+        is_read = method.upper() == "GET"
+        if is_read:
             self._discard_request_body()
-            payload: dict[str, object] = dict(resolved.query)
-            target = route_binding.targets[0] if len(route_binding.targets) == 1 else None
+            body = {}
         else:
             body = self._parse_object_body()
             if body is None:
                 return True
+        if any(
+            key in supplied and supplied[key] != expected
+            for key, expected in resolved.path_parameters.items()
+            for supplied in (resolved.query, body)
+        ):
+            self._send_contract_error(
+                HTTPContractRouteError(
+                    "CONTRACT_PATH_PARAMETER_CONFLICT",
+                    "Contract path parameter conflicts with the request payload",
+                    400,
+                )
+            )
+            return True
+        if is_read:
+            payload: dict[str, object] = {**resolved.query, **resolved.path_parameters}
+            target = route_binding.targets[0] if len(route_binding.targets) == 1 else None
+        else:
             if len(route_binding.targets) == 1:
-                payload = {**resolved.query, **body}
+                payload = {**resolved.query, **body, **resolved.path_parameters}
                 target = route_binding.targets[0]
             else:
                 presentation = self._application_presentation

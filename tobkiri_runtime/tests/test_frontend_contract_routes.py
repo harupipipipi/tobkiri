@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -217,3 +218,103 @@ def test_pack_handler_does_not_rewrite_frontend_operations() -> None:
     from core_runtime.pack_api_server import PackAPIHandler
 
     assert not hasattr(PackAPIHandler, "_resolve_frontend_contract_target")
+
+
+def test_bundled_calendar_urls_preserve_the_signed_routes_and_schedule_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from contextlib import contextmanager
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from core_runtime.api.calendar_contract_alias import bundled_calendar_contract_alias
+    from ecosystem.rumi_schedule_store_pack.runtime.store import ScheduleStore
+    from tests.test_production_frontend_contract_http import (
+        _authenticate,
+        _captured_production_server,
+        _request,
+    )
+
+    schedule_id = "calendar:route-test"
+    prefix = "/api/agent/schedules/"
+    with contextmanager(_captured_production_server)(tmp_path, monkeypatch) as (
+        server, _session, _authority,
+    ):
+        host = server.handler_class
+        assert host is not None
+        for method, suffix in (
+            ("PUT", ""), ("DELETE", ""), ("GET", "/history"),
+            ("POST", "/pause"), ("POST", "/resume"), ("POST", "/trigger"),
+        ):
+            encoded = quote(schedule_id, safe="")
+            request = _operation(method, prefix + encoded + suffix)
+            with pytest.raises(ContractRouteError, match="Unknown contract operation"):
+                resolve_contract_route(host, method, request)
+            resolved = resolve_contract_route(
+                host, method, request, path_alias=bundled_calendar_contract_alias,
+            )
+            assert resolved is not None
+            assert resolved.path == prefix + "{schedule_id}" + suffix
+            assert resolved.path_parameters == {"schedule_id": schedule_id}
+
+        trigger = ("POST", prefix + "{schedule_id}/trigger")
+        binding = host._contract_routes[trigger]
+        wrong_target = replace(binding.targets[0], provider_id="other.provider")
+        for routes, namespace, path in (
+            ({}, "defaultspack", prefix + schedule_id + "/trigger"),
+            ({trigger: replace(binding, targets=(wrong_target,))},
+             "defaultspack", prefix + schedule_id + "/trigger"),
+            (host._contract_routes, "other", prefix + schedule_id + "/trigger"),
+            (host._contract_routes, "defaultspack", prefix + "invalid%2Fid/trigger"),
+            (host._contract_routes, "defaultspack", prefix + schedule_id + "/unknown"),
+        ):
+            request = _operation("POST", path).replace(
+                "/defaultspack/", f"/{namespace}/", 1,
+            )
+            with pytest.raises(ContractRouteError, match="Unknown contract operation"):
+                resolve_contract_route(
+                    SimpleNamespace(_contract_routes=routes),
+                    "POST",
+                    request,
+                    path_alias=bundled_calendar_contract_alias,
+                )
+
+        concrete_trigger = _operation("POST", prefix + schedule_id + "/trigger")
+        status, _reply, _headers = _request(server, "POST", concrete_trigger, body={})
+        assert status == 401
+        cookie, csrf, origin = _authenticate(server)
+
+        def request(
+            method: str, path: str, body: object | None = None,
+        ) -> tuple[int, dict[str, object]]:
+            status, payload, _headers = _request(
+                server, method, _operation(method, path), body=body,
+                headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid4()),
+                },
+            )
+            return status, payload
+
+        for query, body in (
+            ("", {"schedule_id": "other"}),
+            ("?schedule_id=other", {"schedule_id": schedule_id}),
+        ):
+            status, reply = request("POST", prefix + schedule_id + "/trigger" + query, body)
+            assert status == 400
+            assert reply["data"]["code"] == "CONTRACT_PATH_PARAMETER_CONFLICT"
+
+        store = ScheduleStore("defaults", root=tmp_path / "user-data")
+        store.apply("create", {
+            "schedule_id": schedule_id, "name": "Calendar route test",
+            "action_id": "chat.saved", "payload": {"message": "test"},
+            "next_run_at_ms": 9_000_000_000_000, "interval_ms": 0,
+            "max_attempts": 1, "expected_revision": store.snapshot()["revision"],
+        })
+        history = prefix + quote(schedule_id, safe="") + "/history"
+        literal = prefix + "{schedule_id}/history?schedule_id=" + quote(schedule_id, safe="")
+        public = request("GET", history + "?limit=2")
+        signed = request("GET", literal + "&limit=2")
+        assert public == signed
+        assert public[0] == 200
