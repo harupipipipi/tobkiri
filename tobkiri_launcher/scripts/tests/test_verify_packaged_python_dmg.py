@@ -533,6 +533,8 @@ def _write_registry_packs(
         pack_ids.append("local.application-presentation")
     if version >= 7:
         pack_ids.append("local.conversation-complete")
+    if version >= 8:
+        pack_ids.append("local.workflow-messages")
     pack_versions = {
         "local.provider-adapter": adapter_version,
         "local.ai-routing": ai_routing_version,
@@ -572,6 +574,7 @@ def _write_registry_packs(
         pytest.param((5, {}), id="with-ai-routing-0.7.0"),
         pytest.param((6, {}), id="with-application-presentation-0.1.0"),
         pytest.param((7, {}), id="with-conversation-complete-0.1.0"),
+        pytest.param((8, {}), id="with-workflow-messages-0.1.0"),
     ],
 )
 def registry_mount(
@@ -764,6 +767,7 @@ def test_registry_receipt_version_requires_its_exact_pack_set(
         (3, "0.1.1"), (3, "0.2.0"), (4, "0.1.1"), (4, "0.2.1"), (4, "0.3.1"),
         (5, "0.1.1"), (5, "0.2.1"), (5, "0.3.1"), (5, "0.4.1"), (5, "0.5.1"),
         (5, "0.6.1"), (5, "0.7.1"),
+        (8, "0.1.1"),
     ],
 )
 def test_registry_receipt_rejects_unapproved_pack_releases(
@@ -798,7 +802,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
     component_bytes = b"fixed Wasm fixture"
     component.write_bytes(component_bytes)
     component_digest = hashlib.sha256(component_bytes).hexdigest()
-    registry_digest = _write_registry_packs(app, version=4)
+    registry_digest = _write_registry_packs(app, version=8)
     dmg = tmp_path / "fixture.dmg"
     subprocess.run(
         [

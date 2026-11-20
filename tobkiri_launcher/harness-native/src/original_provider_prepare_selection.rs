@@ -419,6 +419,29 @@ static WORKFLOW_STEP_RETRY: Route = Route {
     ..WORKFLOW_ADVANCE
 };
 
+static WORKFLOW_MESSAGES: Route = Route {
+    pack: "tobkiri_conversation_orchestration_pack",
+    function: "tobkiri_conversation_orchestration_pack.messages",
+    contract: "tobkiri.service.conversation.messages.build.v1",
+    operation: "messages_build",
+    variant: "tobkiri_conversation_orchestration_pack.messages.python",
+    execution: PYTHON_PACK_VM,
+};
+
+const WORKFLOW_OWNER_DIGESTS: [&str; 4] = [
+    "sha256:554ac10f71b594db331f270d4a08804e96a06ebf1838fe42f81595703acefa5b",
+    "sha256:e071e8aabd0aaf59e7d13609c00d0efb02053df6ddbc519356006bd14526df11",
+    "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+    "sha256:012b80fe7aa7ce1dfd8a1f138c62b4025324fecaf70c539c80467b9cbbc3a1f2",
+];
+
+const WORKFLOW_MESSAGES_DIGESTS: [&str; 4] = [
+    "sha256:6f739b26adf92428c91bfc93af7aae3dc273907c6f929af120bcf1b349a60624",
+    "sha256:867f6ea4f8b60076d724d1edabc1090800ad58acbdd02474234e3bf9dc4b60a3",
+    "sha256:ca936271987aa3941dd8b1b3836a23af4601a8905650949a2970332c770cbe31",
+    "sha256:7f6e38f70c2ab3a5c0339579f941861720efcd858f597f485e5e434db0359559",
+];
+
 static GATEWAY_TEXT: Route = Route {
     pack: "rumi_ai_gateway_pack",
     function: "rumi_ai_gateway_pack.ai-gateway.text-generate",
@@ -788,6 +811,33 @@ impl<'a> OriginalConversationCompleteChoice<'a> {
             .application_artifacts
             .each_ref()
             .map(verified_text)
+    }
+}
+
+/// Exact signed desktop Workflow entry and that function's Messages Build grant.
+pub struct OriginalWorkflowMessagesChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 2],
+}
+
+impl<'a> OriginalWorkflowMessagesChoice<'a> {
+    /// Select the original Workflow and Python PackVM implementation in defaults.
+    /// The installed signed Bundle must independently prove the returned pins.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_workflow_messages_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// Desktop Workflow entry and the original nested Messages Build route.
+    pub fn pins(&self) -> &[OriginalRoutePin; 2] {
+        &self.pins
     }
 }
 
@@ -2880,6 +2930,49 @@ fn select_workflow_provider_snapshot_records(
         .then_some((entries, callers)))
 }
 
+fn select_workflow_messages_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 2]>> {
+    if !is_text(active.0, "profile_id", "defaults") {
+        return Ok(None);
+    }
+    let Some(records) = selected_desktop_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    // Use the same first available execution binding as Workflow's own capture.
+    let mut entry = None;
+    for route in [
+        &WORKFLOW_ADVANCE,
+        &WORKFLOW_STEP_EXECUTE,
+        &WORKFLOW_STEP_RESUME,
+        &WORKFLOW_STEP_RETRY,
+    ] {
+        entry = records.select_shell_route(route)?;
+        if entry.is_some() {
+            break;
+        }
+    }
+    let Some(entry) = entry else {
+        return Ok(None);
+    };
+    let Some(messages) = records.select_route(entry.function_id(), &WORKFLOW_MESSAGES)? else {
+        return Ok(None);
+    };
+    let matches = |pin: &OriginalRoutePin, expected| {
+        [
+            pin.artifact_digest(),
+            pin.executable_catalog_digest(),
+            pin.function_implementation_digest(),
+            pin.contract_revision_digest(),
+        ] == expected
+    };
+    Ok(
+        (matches(&entry, WORKFLOW_OWNER_DIGESTS) && matches(&messages, WORKFLOW_MESSAGES_DIGESTS))
+            .then_some([entry, messages]),
+    )
+}
+
 fn select_gateway_provider_snapshot_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
@@ -4150,14 +4243,24 @@ mod tests {
         route: &Route,
         budget: &Arc<dyn AllocationBudget>,
     ) {
+        let revision = Digest::hash(route.contract.as_bytes());
+        add_fixture_grant_with_revision(fixture, caller, route, revision.as_str(), budget);
+    }
+
+    fn add_fixture_grant_with_revision(
+        fixture: &mut Value,
+        caller: &str,
+        route: &Route,
+        revision: &str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) {
         let snapshot = fixture["profile"]["profile_authority_snapshot_digest"]
             .as_str()
             .unwrap();
         let reference = authority_reference(caller, route, snapshot, budget).unwrap();
-        let revision = Digest::hash(route.contract.as_bytes());
         let scope = json!({
             "capability": "operation.invoke",
-            "semantics_digest": revision.as_str(),
+            "semantics_digest": revision,
             "dimensions": {"operation": [route.operation], "contract": [route.contract]},
             "quotas": {},
             "opaque": false,
@@ -4172,9 +4275,101 @@ mod tests {
             route,
             caller,
             &format!("authority-ref:{}", reference.hex()),
-            revision.as_str(),
+            revision,
             scope_digest.as_str(),
         );
+    }
+
+    #[test]
+    fn workflow_messages_requires_signed_execution_entry_and_exact_original_packvm_grant() {
+        let mut fixture = records();
+        fixture["profile"]["profile_id"] = json!("defaults");
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_workflow_messages_records((&profile, &lock, &plan), &budget)
+        };
+        let pin = |fixture: &mut Value,
+                   route: &Route,
+                   [artifact, catalog, implementation, _]: [&str; 4]| {
+            for (document, field) in [
+                ("profile", "packs"),
+                ("lock", "variant_pins"),
+                ("plan", "bindings"),
+            ] {
+                for row in fixture[document][field].as_array_mut().unwrap() {
+                    if row["pack_id"] == route.pack {
+                        row["artifact_digest"] = json!(artifact);
+                        if document != "profile" {
+                            row["executable_catalog_digest"] = json!(catalog);
+                        }
+                        if document == "plan" {
+                            row["function_principal"]["parent_artifact_digest"] = json!(artifact);
+                            row["function_principal"]["function_implementation_digest"] =
+                                json!(implementation);
+                        }
+                    }
+                }
+            }
+        };
+        add_fixture_grant_with_revision(
+            &mut fixture,
+            WORKFLOW_ADVANCE.function,
+            &WORKFLOW_MESSAGES,
+            WORKFLOW_MESSAGES_DIGESTS[3],
+            &budget,
+        );
+        pin(&mut fixture, &WORKFLOW_MESSAGES, WORKFLOW_MESSAGES_DIGESTS);
+        assert!(select(&fixture).unwrap().is_none());
+        add_fixture_grant_with_revision(
+            &mut fixture,
+            TURN_SHELL_CALLER,
+            &WORKFLOW_STEP_RESUME,
+            WORKFLOW_OWNER_DIGESTS[3],
+            &budget,
+        );
+        let mut resumed_only = fixture.clone();
+        pin(
+            &mut resumed_only,
+            &WORKFLOW_STEP_RESUME,
+            WORKFLOW_OWNER_DIGESTS,
+        );
+        let [entry, messages] = select(&resumed_only).unwrap().unwrap();
+        assert_eq!(entry.operation_id(), "run.step.resume");
+        assert_eq!(messages.caller_function_id(), "tobkiri.workflow.provider");
+        assert_eq!(messages.execution_kind(), "pack_vm");
+
+        add_fixture_grant_with_revision(
+            &mut fixture,
+            TURN_SHELL_CALLER,
+            &WORKFLOW_ADVANCE,
+            WORKFLOW_OWNER_DIGESTS[3],
+            &budget,
+        );
+        pin(&mut fixture, &WORKFLOW_ADVANCE, WORKFLOW_OWNER_DIGESTS);
+        let [entry, _] = select(&fixture).unwrap().unwrap();
+        assert_eq!(entry.operation_id(), "run.advance");
+        let row = fixture["profile"]["requested_edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|edge| edge["operation_id"] == WORKFLOW_MESSAGES.operation)
+            .unwrap();
+        for (field, value) in [
+            ("caller_function_id", "other.workflow"),
+            ("authority_mode", "interactive_only"),
+        ] {
+            let mut altered = fixture.clone();
+            altered["profile"]["requested_edges"][row][field] = json!(value);
+            altered["plan"]["bindings"][row][field] = json!(value);
+            assert!(select(&altered).unwrap().is_none());
+        }
+        let mut altered = fixture.clone();
+        altered["plan"]["bindings"][row]["function_principal"]["function_implementation_digest"] =
+            json!(Digest::hash(b"different PackVM bytes").as_str());
+        assert!(select(&altered).unwrap().is_none());
+        fixture["profile"]["profile_id"] = json!("other");
+        assert!(select(&fixture).unwrap().is_none());
     }
 
     fn workflow_snapshot_records(health_callers: &[OriginalWorkflowSnapshotCaller]) -> Value {

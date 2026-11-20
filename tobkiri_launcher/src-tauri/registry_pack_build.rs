@@ -128,13 +128,14 @@ mod unix {
             verify_installed_with_conversation_complete, verify_installed_with_model,
             verify_installed_with_orchestration, verify_installed_with_orchestration_archives,
             verify_installed_with_provider, verify_installed_with_provider_adapter,
-            verify_installed_with_provider_and_model, verify_installed_with_settlement, Pack,
-            AI_ROUTING_PACK_ID, AI_ROUTING_RECEIPT_FORMAT, APPLICATION_PRESENTATION_PACK_ID,
+            verify_installed_with_provider_and_model, verify_installed_with_settlement,
+            verify_installed_with_workflow_messages, Pack, AI_ROUTING_PACK_ID,
+            AI_ROUTING_RECEIPT_FORMAT, APPLICATION_PRESENTATION_PACK_ID,
             APPLICATION_PRESENTATION_RECEIPT_FORMAT, ARCHIVE_LIMIT, CONVERSATION_COMPLETE_PACK_ID,
             CONVERSATION_COMPLETE_RECEIPT_FORMAT, ORCHESTRATION_PACK_ID,
             ORCHESTRATION_RECEIPT_FORMAT, PACK_IDS, PROVIDER_ADAPTER_PACK_ID,
             PROVIDER_ADAPTER_RECEIPT_FORMAT, RECEIPT_FORMAT, SETTLEMENT_PACK_ID,
-            SETTLEMENT_RECEIPT_FORMAT,
+            SETTLEMENT_RECEIPT_FORMAT, WORKFLOW_MESSAGES_PACK_ID, WORKFLOW_MESSAGES_RECEIPT_FORMAT,
         };
         use super::super::super::{write_runtime_resource_manifest, RUNTIME_RESOURCE_MANIFEST};
         use super::*;
@@ -865,6 +866,84 @@ mod unix {
                 .write_receipt(&receipt)?
                 .stage(&fixture.root)
                 .is_err());
+            Ok(())
+        }
+
+        #[test]
+        fn v8_receipt_pins_workflow_messages() -> io::Result<()> {
+            let ids = PACK_IDS.into_iter().chain([
+                SETTLEMENT_PACK_ID,
+                ORCHESTRATION_PACK_ID,
+                PROVIDER_ADAPTER_PACK_ID,
+                AI_ROUTING_PACK_ID,
+                APPLICATION_PRESENTATION_PACK_ID,
+                CONVERSATION_COMPLETE_PACK_ID,
+                WORKFLOW_MESSAGES_PACK_ID,
+            ]);
+            let previous =
+                Fixture::with_packs(CONVERSATION_COMPLETE_RECEIPT_FORMAT, ids.clone().take(9))?;
+            let input = previous.write_receipt(&previous.document)?;
+            input.stage(&previous.stage)?;
+            assert_eq!(
+                verify_installed_with_workflow_messages(
+                    &previous.stage,
+                    input.receipt_sha256(),
+                    || Ok(()),
+                    |_, _| panic!("v7 cannot select Workflow messages"),
+                )?,
+                None::<()>
+            );
+
+            let fixture = Fixture::with_packs(WORKFLOW_MESSAGES_RECEIPT_FORMAT, ids)?;
+            let input = fixture.write_receipt(&fixture.document)?;
+            input.stage(&fixture.stage)?;
+            let pin = input.receipt_sha256();
+            let inspect = || {
+                verify_installed_with_workflow_messages(
+                    &fixture.stage,
+                    pin,
+                    || Ok(()),
+                    |pack, reader| {
+                        assert_eq!(pack.id(), WORKFLOW_MESSAGES_PACK_ID);
+                        assert_eq!(pack.version(), "0.1.0");
+                        let mut prefix = [0; 6];
+                        reader.read_exact(&mut prefix)?;
+                        Ok(prefix)
+                    },
+                )
+            };
+            assert_eq!(inspect()?, Some(*b"local."));
+            verify_installed(&fixture.stage, pin, || Ok(()))?;
+            let archive = fixture
+                .stage
+                .join(DIRECTORY)
+                .join(format!("{WORKFLOW_MESSAGES_PACK_ID}.tpk"));
+            fs::write(&archive, "local.workflow-messageS")?;
+            assert!(inspect().is_err());
+            assert!(verify_installed(&fixture.stage, pin, || Ok(())).is_err());
+            fs::remove_file(&archive)?;
+            assert!(inspect().is_err());
+
+            let mut downgraded = fixture.document.clone();
+            downgraded["format"] = json!(CONVERSATION_COMPLETE_RECEIPT_FORMAT);
+            assert!(fixture
+                .write_receipt(&downgraded)?
+                .stage(&fixture.root)
+                .is_err());
+            let mut reordered = fixture.document.clone();
+            reordered["packs"].as_array_mut().unwrap().swap(8, 9);
+            assert!(fixture
+                .write_receipt(&reordered)?
+                .stage(&fixture.root)
+                .is_err());
+            let mut wrong_version = fixture.document.clone();
+            wrong_version["packs"][9]["version"] = json!("0.1.1");
+            assert!(fixture
+                .write_receipt(&wrong_version)?
+                .stage(&fixture.root)
+                .unwrap_err()
+                .to_string()
+                .contains(WORKFLOW_MESSAGES_PACK_ID));
             Ok(())
         }
 

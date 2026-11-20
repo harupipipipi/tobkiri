@@ -24,8 +24,9 @@ use tobkiri_harness_native::{
     OriginalReviewerHealthChoice, OriginalSavedGatewayChoice, OriginalSavedLocalChatChoice,
     OriginalShellProviderSnapshotSelection, OriginalSideChatSavedReceiptChoice,
     OriginalStreamResultSelection, OriginalToolIntentsChoice, OriginalUsageCostChoice,
-    OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
-    OriginalWorkflowSnapshotEntry, CONVERSATION_COMPLETE_APPLICATION_ID,
+    OriginalWorkflowMessagesChoice, OriginalWorkflowProviderSnapshotSelection,
+    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+    CONVERSATION_COMPLETE_APPLICATION_ID,
 };
 use tobkiri_harness_native::{
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
@@ -177,6 +178,14 @@ enum LockedWorkflowProviderSnapshotCaller<'pin> {
     Nested([LockedRegistryRoute<'pin>; 3]),
 }
 
+/// Signed Pack and executable catalog documents for the original Workflow Messages chain.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedWorkflowMessagesBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [LockedRegistryRoute<'pin>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 type VerifiedWorkflowProviderSnapshotRoutes = (
     [bool; OriginalWorkflowSnapshotEntry::ALL.len()],
@@ -276,6 +285,37 @@ impl VerifiedOrdinarySavedBundle {
 }
 
 impl NativeApplicationSources {
+    /// Bind the original Workflow grant to the actual owner of the desktop launch.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn workflow_messages_bundle<'pin>(
+        &self,
+        choice: &'pin OriginalWorkflowMessagesChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<LockedWorkflowMessagesBundle<'pin>>> {
+        if self.authority.profile_id != "defaults"
+            || !self.owns_runtime_pack("defaultspack")
+            || self.authority.application_id != CONVERSATION_COMPLETE_APPLICATION_ID
+        {
+            return Ok(None);
+        }
+        let [entry, messages] = choice.pins();
+        ensure!(
+            self.authority.shell_provider_id == "shell.tauri.default"
+                && entry.caller_function_id() == self.authority.shell_provider_id
+                && messages.caller_function_id() == entry.function_id()
+                && self.authority.launch.provider_id == CONVERSATION_COMPLETE_APPLICATION_ID,
+            "Workflow Messages differs from the selected desktop launch"
+        );
+        Ok(Some(LockedWorkflowMessagesBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [
+                LockedRegistryRoute::from_lock(&self.bundle_lock, entry, budget)?,
+                LockedRegistryRoute::from_lock(&self.bundle_lock, messages, budget)?,
+            ],
+            budget: Arc::clone(budget),
+        }))
+    }
+
     /// Capture the installed documents behind the selected presentation caller.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn application_presentation_bundle<'pin>(
@@ -1633,6 +1673,52 @@ impl LockedApplicationPresentationBundle<'_> {
             checkpoint,
             ["privileged", "pure"],
         )
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedWorkflowMessagesBundle<'_> {
+    /// Physically read the selected Bundle lock and both original executable catalogs and Packs.
+    pub(crate) fn verify(
+        self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        let mut source = self.source;
+        source.revalidate(&self.budget, &mut checkpoint)?;
+        for (route, effect, version, implementation_path) in [
+            (
+                &self.routes[0],
+                "privileged",
+                "4.0.0",
+                "runtime/provider.py",
+            ),
+            (&self.routes[1], "pure", "1.0.0", "runtime/messages.py"),
+        ] {
+            let root = &source.bundle_root;
+            let pack = route.pack.read(root, &self.budget, &mut checkpoint)?;
+            let catalog = route.catalog.read(root, &self.budget, &mut checkpoint)?;
+            checkpoint()?;
+            route.verify_documents(&pack, &catalog, Some(effect))?;
+            let variant = unique_row(&catalog, "variants", "variant_id", route.pin.variant_id())?;
+            let operation = unique_row(
+                &variant,
+                "operations",
+                "operation_id",
+                route.pin.operation_id(),
+            )?;
+            ensure!(
+                text_matches(&variant, "implementation_path", implementation_path)
+                    && text_matches(&operation, "contract_version", version),
+                "Workflow Messages original implementation or contract version differs"
+            );
+            for document in [&route.pack, &route.catalog] {
+                source
+                    .documents
+                    .push((document.path.as_str()?.to_owned(), document.digest.clone()));
+            }
+        }
+        checkpoint()?;
+        Ok(source)
     }
 }
 

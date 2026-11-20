@@ -68,6 +68,7 @@ _CALENDAR_ORCHESTRATION_MARKERS = {
 }
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
+_WORKFLOW_MESSAGES_ENV = "TOBKIRI_NATIVE_WORKFLOW_MESSAGES"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _PROVIDER_SNAPSHOT_ENV = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
@@ -121,6 +122,8 @@ APPLICATION_PRESENTATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _APPLICATION_PRESENTATION_INPUT_LIMIT = 128 * 1024
 CONVERSATION_COMPLETE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _CONVERSATION_COMPLETE_INPUT_LIMITS = {"prepare": 1024 * 1024, "finish": 512 * 1024}
+WORKFLOW_MESSAGES_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+_WORKFLOW_MESSAGES_LIMIT = 512 * 1024
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 PROVIDER_SNAPSHOT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
@@ -540,6 +543,17 @@ class NativeConversationCompleteRequest:
     input: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class NativeWorkflowMessagesRequest:
+    """Borrow the exact live Workflow child for read-only message assembly."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    input: Mapping[str, Any]
+
+
 SavedLocalChatRole = Literal[
     "generate", "stream", "side-chat-generate", "side-chat-stream",
 ]
@@ -756,6 +770,7 @@ _NativeBorrow = (
     | NativeSavedOrchestrationRequest
     | NativeApplicationPresentationRequest
     | NativeConversationCompleteRequest
+    | NativeWorkflowMessagesRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
@@ -766,7 +781,7 @@ _NativeOperation = Literal[
     "conversation_list", "conversation_receipt", "model_resolve", "turn_start",
     "turn_settlement", "saved_input",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
-    "application_presentation", "conversation_complete",
+    "application_presentation", "conversation_complete", "workflow_messages",
 ]
 
 
@@ -1167,6 +1182,19 @@ def capture_launcher_conversation_complete() -> (
     return manifest, partial(_invoke, launcher, operation="conversation_complete")
 
 
+def capture_launcher_workflow_messages() -> (
+    tuple[str, Callable[[NativeWorkflowMessagesRequest], dict[str, Any]]] | None
+):
+    """Capture the managed Launcher's admitted Workflow message builder."""
+    manifest = os.environ.get(_WORKFLOW_MESSAGES_ENV)
+    if manifest is None or _TURN_INPUT_DIGEST.fullmatch(manifest) is None:
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return manifest, partial(_invoke, launcher, operation="workflow_messages")
+
+
 def capture_launcher_ai_routing_evaluator() -> (
     Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
 ):
@@ -1555,6 +1583,10 @@ def _start_payload(
         frame["conversation_complete"] = {
             "phase": borrow.phase, "input_bytes": body_input_bytes,
         }
+    elif isinstance(borrow, NativeWorkflowMessagesRequest):
+        if not 0 < body_input_bytes <= _WORKFLOW_MESSAGES_LIMIT:
+            raise _ProtocolError("native Workflow messages input size is invalid")
+        frame["workflow_messages"] = {"input_bytes": body_input_bytes}
     elif isinstance(borrow, NativeAiRoutingRequest):
         if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
             raise _ProtocolError("native AI routing input size is invalid")
@@ -3277,6 +3309,12 @@ class _Exchange:
                         and canonical_json(plan) != payload
                     ):
                         raise _ProtocolError("native Conversation result is not canonical")
+                    if isinstance(borrow, NativeWorkflowMessagesRequest) and (
+                        plan.keys() != {"messages"}
+                        or not isinstance(plan["messages"], list)
+                        or canonical_json(plan) != payload
+                    ):
+                        raise _ProtocolError("native Workflow messages result is invalid")
                 wait_seconds()
                 self.terminal = True
                 return plan
@@ -3284,6 +3322,7 @@ class _Exchange:
                 tag == _INAPPLICABLE
                 and not isinstance(borrow, (
                     NativeConversationCompleteRequest, NativeSavedInputRequest,
+                    NativeWorkflowMessagesRequest,
                 ))
                 and not self.entered_live_phase
                 and (not self.requires_body_ready or body_input is not None)
@@ -3450,6 +3489,7 @@ def _invoke(
     saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
     application_presentation = isinstance(borrow, NativeApplicationPresentationRequest)
     conversation_complete = isinstance(borrow, NativeConversationCompleteRequest)
+    workflow_messages = isinstance(borrow, NativeWorkflowMessagesRequest)
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -3468,6 +3508,7 @@ def _invoke(
         or saved_orchestration != (operation == "saved_orchestration")
         or application_presentation != (operation == "application_presentation")
         or conversation_complete != (operation == "conversation_complete")
+        or workflow_messages != (operation == "workflow_messages")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -3495,9 +3536,16 @@ def _invoke(
         body_input = canonical_json(dict(borrow.input))
         if len(body_input) > _CONVERSATION_COMPLETE_INPUT_LIMITS.get(borrow.phase, 0):
             raise _ProtocolError("native Conversation phase or input size is invalid")
+    elif isinstance(borrow, NativeWorkflowMessagesRequest):
+        wait_seconds()
+        body_input = canonical_json(dict(borrow.input))
+        if len(body_input) > _WORKFLOW_MESSAGES_LIMIT:
+            raise _ProtocolError("native Workflow messages input exceeds IPC limit")
     with _connect_launcher(launcher, wait_seconds) as connection:
         if saved_orchestration or conversation_complete or saved_input:
             plan_limit = MAX_CANONICAL_JSON_BYTES
+        elif workflow_messages:
+            plan_limit = _WORKFLOW_MESSAGES_LIMIT
         elif turn_start:
             plan_limit = _TURN_START_RESULT_LIMIT
         elif ai_routing:
@@ -3520,11 +3568,12 @@ def _invoke(
             conversation_mutation=conversation_confirmation or conversation_append,
             requires_body_ready=(
                 saved_orchestration or ai_routing or application_presentation
-                or conversation_complete or model_access_projection or saved_input
+                or conversation_complete or workflow_messages
+                or model_access_projection or saved_input
             ),
             ai_routing=ai_routing,
             read_only_body=(
-                application_presentation or conversation_complete
+                application_presentation or conversation_complete or workflow_messages
                 or model_access_projection
                 or (saved_input and not saved_input_bind)
             ),

@@ -367,6 +367,7 @@ where
         command.env_remove(crate::sealed_python::CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV);
         command.env_remove(crate::sealed_python::APPLICATION_PRESENTATION_ENV);
         command.env_remove(crate::sealed_python::CONVERSATION_COMPLETE_ENV);
+        command.env_remove(crate::sealed_python::WORKFLOW_MESSAGES_ENV);
         command.env_remove(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV);
         command.env_remove(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV);
         command.env_remove(crate::sealed_python::CALENDAR_SAVED_TURN_START_ENV);
@@ -443,6 +444,13 @@ where
                         native_registry.conversation_complete_manifest.as_deref()
                     {
                         command.env(crate::sealed_python::CONVERSATION_COMPLETE_ENV, manifest);
+                    }
+                    if let Some(manifest) = native_registry
+                        .workflow_messages_manifest
+                        .as_deref()
+                        .filter(|_| !config.is_dev_workspace())
+                    {
+                        command.env(crate::sealed_python::WORKFLOW_MESSAGES_ENV, manifest);
                     }
                     if native_registry.conversation_side_chat_append {
                         command.env(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV, "1");

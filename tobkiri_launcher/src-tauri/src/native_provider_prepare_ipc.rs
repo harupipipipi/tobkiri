@@ -27,9 +27,9 @@ use crate::{
     defaultspack_manager::{ApplicationProcessManager, ProviderPrepareListener},
     host_contract::ExecutionProfileIdentity,
     native_harness_bootstrap::{
-        start_provider_prepare, AiGatewayDataOperation, AiGatewayDataRequiresLegacyCodec,
-        ApplicationPresentationRole, ConversationAppendCaller, ConversationCompletePhase,
-        ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
+        check_workflow_messages_input_size, start_provider_prepare, AiGatewayDataOperation,
+        AiGatewayDataRequiresLegacyCodec, ApplicationPresentationRole, ConversationAppendCaller,
+        ConversationCompletePhase, ConversationReadCaller, ConversationRegistryRequiresLegacyRead,
         ConversationWriteRequiresLegacyRead, LinkedConversationReadMode,
         ModelAccessProjectionPhase, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
         OriginalModelResolveRole, OriginalSavedReceiptRole, PendingProviderPrepare,
@@ -42,7 +42,7 @@ use crate::{
         CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
         CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
         PROVIDER_SNAPSHOT_REPLY_LIMIT, SAVED_INPUT_FRAME_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
-        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT, WORKFLOW_MESSAGES_FRAME_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -117,6 +117,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     conversation_complete: Option<ConversationCompleteStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    workflow_messages: Option<WorkflowMessagesStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     saved_local_chat: Option<SavedLocalChatStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
     ai_route: Option<AiRoutingStart>,
@@ -141,6 +143,9 @@ enum RequestStart {
         phase: ConversationCompletePhase,
         input_bytes: usize,
     },
+    WorkflowMessages {
+        input_bytes: usize,
+    },
     ModelAccessProjection {
         phase: ModelAccessProjectionPhase,
         input_bytes: usize,
@@ -162,6 +167,7 @@ impl RequestStart {
                 proof.permits_application_presentation(*role)
             }
             Self::ConversationComplete { .. } => proof.permits_conversation_complete(),
+            Self::WorkflowMessages { .. } => proof.permits_workflow_messages(),
             Self::ModelAccessProjection { phase, .. } => {
                 proof.permits_model_access_projection(phase.role())
             }
@@ -177,6 +183,7 @@ impl RequestStart {
     ) -> Result<()> {
         let (tag, payload): (u8, &[u8]) = match self {
             Self::ConversationComplete { .. }
+            | Self::WorkflowMessages { .. }
             | Self::ModelAccessProjection { .. }
             | Self::SavedOrchestration {
                 caller:
@@ -198,6 +205,7 @@ enum BodyStart<'a> {
     SavedOrchestration(&'a SavedOrchestrationStart),
     ApplicationPresentation(&'a ApplicationPresentationStart),
     ConversationComplete(&'a ConversationCompleteStart),
+    WorkflowMessages(&'a WorkflowMessagesStart),
     ModelAccessProjection(&'a ModelAccessProjectionStart),
     SavedLocalChat(&'a SavedLocalChatStart),
     AiRouting(&'a AiRoutingStart),
@@ -242,27 +250,33 @@ impl Start<'_> {
             &self.saved_local_chat,
             &self.ai_route,
             &self.saved_input,
+            &self.workflow_messages,
         ) {
-            (None, None, None, None, None, None, None) => None,
-            (Some(saved), None, None, None, None, None, None) => {
+            (None, None, None, None, None, None, None, None) => None,
+            (Some(saved), None, None, None, None, None, None, None) => {
                 Some(BodyStart::SavedOrchestration(saved))
             }
-            (None, Some(presentation), None, None, None, None, None) => {
+            (None, Some(presentation), None, None, None, None, None, None) => {
                 Some(BodyStart::ApplicationPresentation(presentation))
             }
-            (None, None, Some(complete), None, None, None, None) => {
+            (None, None, Some(complete), None, None, None, None, None) => {
                 Some(BodyStart::ConversationComplete(complete))
             }
-            (None, None, None, Some(projection), None, None, None) => {
+            (None, None, None, Some(projection), None, None, None, None) => {
                 Some(BodyStart::ModelAccessProjection(projection))
             }
-            (None, None, None, None, Some(chat), None, None) => {
+            (None, None, None, None, Some(chat), None, None, None) => {
                 Some(BodyStart::SavedLocalChat(chat))
             }
-            (None, None, None, None, None, Some(routing), None) => {
+            (None, None, None, None, None, Some(routing), None, None) => {
                 Some(BodyStart::AiRouting(routing))
             }
-            (None, None, None, None, None, None, Some(input)) => Some(BodyStart::SavedInput(input)),
+            (None, None, None, None, None, None, Some(input), None) => {
+                Some(BodyStart::SavedInput(input))
+            }
+            (None, None, None, None, None, None, None, Some(messages)) => {
+                Some(BodyStart::WorkflowMessages(messages))
+            }
             _ => bail!("native Registry start must name exactly one operation"),
         };
         let registry_read = match (
@@ -447,6 +461,25 @@ impl Start<'_> {
                 None,
                 None,
                 None,
+                Some(BodyStart::WorkflowMessages(messages)),
+                None,
+            ) => {
+                check_workflow_messages_input_size(messages.input_bytes)?;
+                return Ok(RequestStart::WorkflowMessages {
+                    input_bytes: messages.input_bytes,
+                });
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 Some(BodyStart::ModelAccessProjection(projection)),
                 None,
             ) => {
@@ -507,6 +540,7 @@ impl Start<'_> {
             | RequestStart::SavedInput(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
+            | RequestStart::WorkflowMessages { .. }
             | RequestStart::ModelAccessProjection { .. }
             | RequestStart::SavedLocalChat(_)
             | RequestStart::AiGatewayData { .. } => {
@@ -704,6 +738,12 @@ struct ApplicationPresentationStart {
 #[serde(deny_unknown_fields)]
 struct ConversationCompleteStart {
     phase: ConversationCompletePhase,
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkflowMessagesStart {
     input_bytes: usize,
 }
 
@@ -1525,6 +1565,7 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
             && start.saved_local_chat.is_none()
             && start.provider_snapshot.is_none()
             && start.application_presentation.is_none()
+            && start.workflow_messages.is_none()
             && start.conversation_complete.is_none())
             || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
         "native Registry start requires a named operation"
@@ -1564,11 +1605,14 @@ pub(crate) fn admit_connection(
         Ok(request) => request,
         Err(error)
             if (start.conversation_complete.is_some()
-                || start.model_access_projection.is_some())
+                || start.model_access_projection.is_some()
+                || start.workflow_messages.is_some())
                 && error.is::<SavedOrchestrationStepError>() =>
         {
             let reply = if start.model_access_projection.is_some() {
                 ReplyRole::ModelAccessProjection
+            } else if start.workflow_messages.is_some() {
+                ReplyRole::WorkflowMessages
             } else {
                 ReplyRole::ConversationComplete
             };
@@ -1590,6 +1634,7 @@ pub(crate) fn admit_connection(
             | RequestStart::SavedInput(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
+            | RequestStart::WorkflowMessages { .. }
             | RequestStart::ModelAccessProjection { .. }
             | RequestStart::AiGatewayData { .. }
             | RequestStart::SavedLocalChat(_)
@@ -1797,6 +1842,25 @@ impl AdmittedConnection {
                     },
                 );
             }
+            RequestStart::WorkflowMessages { input_bytes } => {
+                let connection = Connection::new(
+                    manager,
+                    candidate,
+                    stream,
+                    deadline,
+                    ReplyRole::WorkflowMessages,
+                );
+                let input_connection = Arc::clone(&connection);
+                return connection.run(
+                    app,
+                    NativeRegistryRequest::WorkflowMessages {
+                        input_bytes,
+                        receive_input: Box::new(move |deadline| {
+                            input_connection.receive_funded_input(input_bytes, deadline)
+                        }),
+                    },
+                );
+            }
             RequestStart::ModelAccessProjection { phase, input_bytes } => {
                 let connection = Connection::new(
                     manager,
@@ -1873,6 +1937,7 @@ impl AdmittedConnection {
                 ReplyRole::ApplicationPresentation
             }
             NativeRegistryRequest::ConversationComplete { .. } => ReplyRole::ConversationComplete,
+            NativeRegistryRequest::WorkflowMessages { .. } => ReplyRole::WorkflowMessages,
             NativeRegistryRequest::AiGatewayData { .. } => ReplyRole::AiGatewayData,
             NativeRegistryRequest::SavedLocalChat { .. } => ReplyRole::SavedLocalChat,
         };
@@ -1898,6 +1963,7 @@ enum ReplyRole {
     SavedOrchestration,
     ApplicationPresentation,
     ConversationComplete,
+    WorkflowMessages,
     AiGatewayData,
     SavedLocalChat,
 }
@@ -1908,6 +1974,7 @@ impl ReplyRole {
             self,
             Self::ApplicationPresentation
                 | Self::ConversationComplete
+                | Self::WorkflowMessages
                 | Self::ModelAccessProjection
                 | Self::SavedInput(_)
         )
@@ -1967,6 +2034,7 @@ impl ReplyRole {
                 (APPLICATION_PRESENTATION_RESULT_LIMIT, "limit-exceeded")
             }
             Self::ConversationComplete => (CONVERSATION_COMPLETE_RESULT_LIMIT, "limit-exceeded"),
+            Self::WorkflowMessages => (WORKFLOW_MESSAGES_FRAME_LIMIT, "limit-exceeded"),
             Self::AiGatewayData => (AI_GATEWAY_DATA_LIMIT, "limit-exceeded"),
             Self::SavedLocalChat => (LEGACY_LOCAL_CHAT_RESPONSE_LIMIT, "invalid-response"),
             Self::TurnStart(_) if authority == WireAuthority::PublicationPermitted => {
@@ -2052,6 +2120,7 @@ impl ReplyRole {
             Self::SavedOrchestration
                 | Self::ApplicationPresentation
                 | Self::ConversationComplete
+                | Self::WorkflowMessages
                 | Self::AiGatewayData
         ) {
             return match error.downcast_ref::<SavedOrchestrationStepError>() {
@@ -2201,6 +2270,7 @@ impl ReplyRole {
                 | Self::SavedOrchestration
                 | Self::ApplicationPresentation
                 | Self::ConversationComplete
+                | Self::WorkflowMessages
                 | Self::AiGatewayData
         ) {
             if authority != WireAuthority::Live {
@@ -4308,6 +4378,58 @@ mod tests {
         let mut denied = [0; 6];
         read_exact(&mut host, &mut denied, deadline).unwrap();
         assert_eq!(&denied, b"denied");
+    }
+
+    #[test]
+    fn workflow_messages_requires_an_exclusive_funded_start_and_live_result() {
+        let start = |descriptor: &str, extra: &str| {
+            start_frame(&format!(r#", "workflow_messages":{descriptor}{extra}"#))
+        };
+        for input_bytes in [1, WORKFLOW_MESSAGES_FRAME_LIMIT] {
+            let frame = start(&format!(r#"{{"input_bytes":{input_bytes}}}"#), "");
+            assert!(matches!(
+                parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                Ok(RequestStart::WorkflowMessages { input_bytes: declared })
+                    if declared == input_bytes
+            ));
+        }
+        for (descriptor, extra) in [
+            ("null", ""),
+            (r#"{"input_bytes":0}"#, ""),
+            (r#"{"input_bytes":524289}"#, ""),
+            (r#"{"input_bytes":4,"caller":"shell"}"#, ""),
+            (r#"{"input_bytes":4}"#, PROVIDER_REQUEST),
+            (r#"{"input_bytes":4}"#, r#", "model_list":{}"#),
+        ] {
+            let frame = start(descriptor, extra);
+            assert!(parse_start(START, frame.as_bytes())
+                .and_then(|request| request.request_start())
+                .is_err());
+        }
+        let (mut listener, mut caller) = UnixStream::pair().unwrap();
+        let deadline = Instant::now() + FRAME_TIMEOUT;
+        RequestStart::WorkflowMessages { input_bytes: 4 }
+            .reject_missing_launch_proof(&mut listener, deadline)
+            .unwrap();
+        assert_eq!(read_header(&mut caller, deadline).unwrap(), (FAILURE, 6));
+        let mut denied = [0; 6];
+        read_exact(&mut caller, &mut denied, deadline).unwrap();
+        assert_eq!(&denied, b"denied");
+        let role = ReplyRole::WorkflowMessages;
+        assert!(role.uses_funded_input());
+        assert!(role.effect_check().is_none());
+        assert_eq!(
+            role.result_limit(WireAuthority::Live),
+            (WORKFLOW_MESSAGES_FRAME_LIMIT, "limit-exceeded")
+        );
+        assert_eq!(
+            role.validate_result(WireAuthority::Live, br#"{"messages":[]}"#),
+            Ok(())
+        );
+        assert_eq!(
+            role.validate_result(WireAuthority::AwaitingLive, br#"{"messages":[]}"#),
+            Err("unavailable")
+        );
     }
 
     #[test]

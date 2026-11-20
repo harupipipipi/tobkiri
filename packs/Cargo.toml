@@ -12,6 +12,7 @@ members = [
   "local.saved-turn-runtime-rust",
   "local.saved-orchestration-rust",
   "local.conversation-complete-rust",
+  "local.workflow-messages-rust",
   "local.application-presentation-rust",
   "local.ai-routing-rust",
   "local.ai-usage-cost-rust",

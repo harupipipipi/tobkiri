@@ -20,18 +20,24 @@ PROVIDER_ADAPTER_PACK = "provider-adapter"
 AI_ROUTING_PACK = "ai-routing"
 APPLICATION_PRESENTATION_PACK = "application-presentation"
 CONVERSATION_COMPLETE_PACK = "conversation-complete"
+WORKFLOW_MESSAGES_PACK = "workflow-messages"
 SETTLEMENT_PACKS = (*ORIGINAL_PACKS, SETTLEMENT_PACK)
 ORCHESTRATION_PACKS = (*SETTLEMENT_PACKS, ORCHESTRATION_PACK)
 PROVIDER_ADAPTER_PACKS = (*ORCHESTRATION_PACKS, PROVIDER_ADAPTER_PACK)
 AI_ROUTING_PACKS = (*PROVIDER_ADAPTER_PACKS, AI_ROUTING_PACK)
 APPLICATION_PRESENTATION_PACKS = (*AI_ROUTING_PACKS, APPLICATION_PRESENTATION_PACK)
-PACKS = (*APPLICATION_PRESENTATION_PACKS, CONVERSATION_COMPLETE_PACK)
+CONVERSATION_COMPLETE_PACKS = (
+    *APPLICATION_PRESENTATION_PACKS,
+    CONVERSATION_COMPLETE_PACK,
+)
+PACKS = (*CONVERSATION_COMPLETE_PACKS, WORKFLOW_MESSAGES_PACK)
 PINNED_VERSIONS = {
     ORCHESTRATION_PACK: "0.1.0",
     PROVIDER_ADAPTER_PACK: "0.3.0",
     AI_ROUTING_PACK: "0.7.0",
     APPLICATION_PRESENTATION_PACK: "0.1.0",
     CONVERSATION_COMPLETE_PACK: "0.1.0",
+    WORKFLOW_MESSAGES_PACK: "0.1.0",
 }
 CORE_WIT = REPO / "crates/tobkiri-wit/wit/core-v1-2/core.wit"
 
@@ -99,8 +105,14 @@ def main() -> None:
     args = parser.parse_args()
     selected = set(args.pack or ORIGINAL_PACKS)
     receipt_version = 1
-    if CONVERSATION_COMPLETE_PACK in selected:
+    if WORKFLOW_MESSAGES_PACK in selected:
         if selected != set(PACKS):
+            parser.error(
+                "the workflow-messages Pack requires the full Registry Pack set"
+            )
+        receipt_version = 8
+    elif CONVERSATION_COMPLETE_PACK in selected:
+        if selected != set(CONVERSATION_COMPLETE_PACKS):
             parser.error("the conversation-complete Pack requires the full Registry Pack set")
         receipt_version = 7
     elif APPLICATION_PRESENTATION_PACK in selected:

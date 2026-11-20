@@ -73,6 +73,7 @@ pub(crate) const CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
 pub(crate) const PROVIDER_SNAPSHOT_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT";
 pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
 pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
+pub(crate) const WORKFLOW_MESSAGES_ENV: &str = "TOBKIRI_NATIVE_WORKFLOW_MESSAGES";
 pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
     "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND";
 pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START";
@@ -143,6 +144,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) calendar_status_saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
+    pub(crate) workflow_messages_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
     pub(crate) linked_conversation_read: bool,
     pub(crate) conversation_list: bool,
@@ -302,6 +304,9 @@ impl RoleArguments {
                 .map(str::to_owned),
             conversation_complete_manifest: proof
                 .and_then(|proof| proof.conversation_complete_manifest_sha256())
+                .map(str::to_owned),
+            workflow_messages_manifest: proof
+                .and_then(|proof| proof.workflow_messages_manifest_sha256())
                 .map(str::to_owned),
             conversation_side_chat_append: proof.is_some_and(|proof| {
                 proof.permits_conversation_append_for(
@@ -506,6 +511,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV
             | APPLICATION_PRESENTATION_ENV
             | CONVERSATION_COMPLETE_ENV
+            | WORKFLOW_MESSAGES_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
             | SIDE_CHAT_SAVED_TURN_START_ENV
             | CALENDAR_SAVED_TURN_START_ENV
@@ -4839,6 +4845,38 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
+    fn workflow_messages_environment_requires_its_own_verified_manifest() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use crate::native_harness_bootstrap::VerifiedRegistryLaunch;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        let complete =
+            VerifiedRegistryLaunch::test_conversation_complete_proof(identity.clone(), "catalog");
+        let messages = VerifiedRegistryLaunch::test_workflow_messages_proof(identity, "catalog");
+        assert!(!complete.permits_workflow_messages());
+        assert!(messages.permits_workflow_messages());
+        let manifest = messages.workflow_messages_manifest_sha256().unwrap();
+        for (proof, expected) in [
+            (None, None),
+            (Some(&complete), None),
+            (Some(&messages), Some(manifest)),
+        ] {
+            let (args, environment) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(environment.workflow_messages_manifest.as_deref(), expected);
+            assert_eq!(args.into_values(), [OsString::from("serve")]);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
     fn side_chat_append_environment_requires_its_own_launch_proof() {
         use crate::host_contract::ExecutionProfileIdentity;
         use crate::native_harness_bootstrap::{ConversationAppendCaller, VerifiedRegistryLaunch};
@@ -5230,6 +5268,7 @@ mod tests {
             PROVIDER_SNAPSHOT_ENV,
             APPLICATION_PRESENTATION_ENV,
             CONVERSATION_COMPLETE_ENV,
+            WORKFLOW_MESSAGES_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
             SIDE_CHAT_SAVED_TURN_START_ENV,
             CALENDAR_SAVED_TURN_START_ENV,

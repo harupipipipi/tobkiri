@@ -81,7 +81,7 @@ pub use original_provider_prepare_selection::{
     OriginalSavedTurnSettlementChoice, OriginalSavedTurnSettlementRole,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, OriginalWorkflowHealthCaller,
+    OriginalUsageCostChoice, OriginalWorkflowHealthCaller, OriginalWorkflowMessagesChoice,
     OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
     OriginalWorkflowSnapshotEntry, SavedInputCaller, SavedTurnStartCaller,
     select_original_saved_turn_settlement,

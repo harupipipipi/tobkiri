@@ -35,6 +35,7 @@ mod unix {
     pub(crate) const AI_ROUTING_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/5";
     pub(crate) const APPLICATION_PRESENTATION_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/6";
     pub(crate) const CONVERSATION_COMPLETE_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/7";
+    pub(crate) const WORKFLOW_MESSAGES_RECEIPT_FORMAT: &str = "tobkiri.registry-packs/8";
     const RECEIPT_LIMIT: u64 = 16 * 1024;
     // The Pack authoring CLI's .tpk size ceiling.
     pub(crate) const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
@@ -50,18 +51,20 @@ mod unix {
     pub(crate) const AI_ROUTING_PACK_ID: &str = "local.ai-routing";
     pub(crate) const APPLICATION_PRESENTATION_PACK_ID: &str = "local.application-presentation";
     pub(crate) const CONVERSATION_COMPLETE_PACK_ID: &str = "local.conversation-complete";
+    pub(crate) const WORKFLOW_MESSAGES_PACK_ID: &str = "local.workflow-messages";
     const ORCHESTRATION_PACK_VERSION: &str = "0.1.0";
     const PROVIDER_ADAPTER_PACK_VERSIONS: [&str; 3] = ["0.1.0", "0.2.0", "0.3.0"];
     const AI_ROUTING_PACK_VERSIONS: [&str; 7] = [
         "0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0",
     ];
-    const ADDITIONAL_PACK_IDS: [&str; 6] = [
+    const ADDITIONAL_PACK_IDS: [&str; 7] = [
         SETTLEMENT_PACK_ID,
         ORCHESTRATION_PACK_ID,
         PROVIDER_ADAPTER_PACK_ID,
         AI_ROUTING_PACK_ID,
         APPLICATION_PRESENTATION_PACK_ID,
         CONVERSATION_COMPLETE_PACK_ID,
+        WORKFLOW_MESSAGES_PACK_ID,
     ];
 
     #[derive(Deserialize)]
@@ -214,7 +217,8 @@ mod unix {
             PROVIDER_ADAPTER_RECEIPT_FORMAT => PACK_IDS.len() + 3,
             AI_ROUTING_RECEIPT_FORMAT => PACK_IDS.len() + 4,
             APPLICATION_PRESENTATION_RECEIPT_FORMAT => PACK_IDS.len() + 5,
-            CONVERSATION_COMPLETE_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
+            CONVERSATION_COMPLETE_RECEIPT_FORMAT => PACK_IDS.len() + 6,
+            WORKFLOW_MESSAGES_RECEIPT_FORMAT => PACK_IDS.len() + ADDITIONAL_PACK_IDS.len(),
             _ => return Err(invalid("Registry Pack receipt format is invalid")),
         };
         if receipt.packs.len() != expected_count {
@@ -234,6 +238,7 @@ mod unix {
                     && !AI_ROUTING_PACK_VERSIONS.contains(&pack.version.as_str()))
                 || (id == APPLICATION_PRESENTATION_PACK_ID && pack.version != "0.1.0")
                 || (id == CONVERSATION_COMPLETE_PACK_ID && pack.version != "0.1.0")
+                || (id == WORKFLOW_MESSAGES_PACK_ID && pack.version != "0.1.0")
                 || !(1..=ARCHIVE_LIMIT).contains(&pack.archive_bytes)
                 || !tagged_sha256(&pack.archive_sha256)
                 || !tagged_sha256(&pack.manifest_sha256)
@@ -413,9 +418,11 @@ mod unix {
     pub(crate) fn verify_installed(
         app_root: &Path,
         expected_sha256: &str,
-        checkpoint: impl FnMut() -> io::Result<()>,
+        mut checkpoint: impl FnMut() -> io::Result<()>,
     ) -> io::Result<()> {
-        verify_installed_with_provider(app_root, expected_sha256, checkpoint, discard_archive)
+        let directory = open_installed_pack_directory(app_root, &mut checkpoint)?;
+        let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
+        receipt.verify_archives(&directory, |_| Ok(io::sink()), checkpoint)
     }
 
     /// Inspect the exact Provider archive stream and publish its result only
@@ -684,7 +691,7 @@ mod unix {
         Ok(ai_routing)
     }
 
-    /// Inspect the installed archives in receipt order before returning any results.
+    /// Inspect the archives through AI Routing in receipt order before returning any results.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub(crate) fn verify_installed_with_ai_routing_archives<P, M, C, S, O, A, R>(
         app_root: &Path,
@@ -698,10 +705,7 @@ mod unix {
         inspect_provider_adapter: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<A>,
         inspect_ai_routing: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
     ) -> io::Result<(P, M, C, Option<S>, Option<O>, Option<A>, Option<R>)> {
-        checkpoint()?;
-        let app = open_directory(app_root)?;
-        let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
-        let directory = open_child_directory(&app, &name)?;
+        let directory = open_installed_pack_directory(app_root, &mut checkpoint)?;
         let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
         let ([provider, model, conversation], newest) = receipt
             .packs
@@ -799,6 +803,23 @@ mod unix {
         )
     }
 
+    /// Reopen the Workflow messages archive under the exact installed receipt.
+    #[allow(dead_code)]
+    pub(crate) fn verify_installed_with_workflow_messages<R>(
+        app_root: &Path,
+        expected_sha256: &str,
+        checkpoint: impl FnMut() -> io::Result<()>,
+        inspect_workflow_messages: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
+    ) -> io::Result<Option<R>> {
+        inspect_installed_pack(
+            app_root,
+            expected_sha256,
+            WORKFLOW_MESSAGES_PACK_ID,
+            checkpoint,
+            inspect_workflow_messages,
+        )
+    }
+
     fn inspect_installed_pack<R>(
         app_root: &Path,
         expected_sha256: &str,
@@ -806,10 +827,7 @@ mod unix {
         mut checkpoint: impl FnMut() -> io::Result<()>,
         inspect: impl FnOnce(&Pack, &mut dyn Read) -> io::Result<R>,
     ) -> io::Result<Option<R>> {
-        checkpoint()?;
-        let app = open_directory(app_root)?;
-        let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
-        let directory = open_child_directory(&app, &name)?;
+        let directory = open_installed_pack_directory(app_root, &mut checkpoint)?;
         let (receipt, _) = read_verified_receipt(&directory, expected_sha256, &mut checkpoint)?;
         receipt
             .packs
@@ -817,6 +835,16 @@ mod unix {
             .find(|pack| pack.id == pack_id)
             .map(|pack| inspect_archive(&directory, pack, &mut checkpoint, inspect))
             .transpose()
+    }
+
+    fn open_installed_pack_directory(
+        app_root: &Path,
+        checkpoint: &mut impl FnMut() -> io::Result<()>,
+    ) -> io::Result<File> {
+        checkpoint()?;
+        let app = open_directory(app_root)?;
+        let name = CString::new(DIRECTORY).expect("Registry Pack directory is a fixed name");
+        open_child_directory(&app, &name)
     }
 
     fn discard_archive(_: &Pack, input: &mut dyn Read) -> io::Result<()> {

@@ -2064,6 +2064,7 @@ def capture_production_dispatch(
         NativeSavedTurnSettlementRequest,
         NativeSavedTurnStartFailure,
         NativeSavedTurnStartRequest,
+        NativeWorkflowMessagesRequest,
         SavedReceiptCaller,
         SavedTurnOrigin,
         SavedTurnStartAction,
@@ -2100,6 +2101,7 @@ def capture_production_dispatch(
         capture_launcher_saved_turn_start_writer,
         capture_launcher_side_chat_conversation_append_writer,
         capture_launcher_side_chat_turn_start_writer,
+        capture_launcher_workflow_messages,
         is_canonical_model_resolve_identifier,
         project_model_access_catalog_pages,
         is_native_saved_turn_read_identifier,
@@ -2175,6 +2177,7 @@ def capture_production_dispatch(
     }
     native_presentation = capture_launcher_application_presentation()
     native_conversation_port = capture_launcher_conversation_complete()
+    native_workflow_messages_port = capture_launcher_workflow_messages()
     native_saved_local_chat = capture_launcher_saved_local_chat_executor()
     native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
     if native_saved_step is not None and native_saved_manifest is not None:
@@ -3469,11 +3472,85 @@ def capture_production_dispatch(
             native_conversation_edge = edge
             native_conversation_gateway = gateway
 
+    from tobkiri_host.native_workflow_messages import (
+        WORKFLOW_CALLER_ARTIFACT,
+        WORKFLOW_CALLER_IMPLEMENTATION,
+        WORKFLOW_CALLER_REVISION,
+        WORKFLOW_MESSAGES,
+        WORKFLOW_MESSAGES_ARTIFACT,
+        WORKFLOW_MESSAGES_FUNCTION,
+        WORKFLOW_MESSAGES_IMPLEMENTATION,
+        WORKFLOW_MESSAGES_REVISION,
+        NativeWorkflowMessagesBackend,
+    )
+
+    native_workflow_messages: NativeWasmBinding | None = None
+    native_workflow_messages_original_provider: str | None = None
+    workflow_entry_priority = ("run.advance", "run.step.execute", "run.step.resume", "run.step.retry")
+    workflow_entry_principals = {
+        edge.target.principal_id for edge in captured_edges
+        if edge.caller.principal_id in shell_principal_ids
+        and edge.binding_key[1] == "tobkiri.workflow.v4"
+        and edge.target.operation_id in workflow_entry_priority
+    }
+    workflow_messages_candidates = tuple(
+        edge for edge in captured_edges
+        if edge.caller.function_id == "tobkiri.workflow.provider"
+        and edge.caller.principal_id in workflow_entry_principals
+        and edge.caller.parent_artifact_digest == WORKFLOW_CALLER_ARTIFACT
+        and edge.caller.function_implementation_digest == WORKFLOW_CALLER_IMPLEMENTATION
+        and edge.caller.contract_revision_digest == WORKFLOW_CALLER_REVISION
+        and edge.binding_key[1:] == WORKFLOW_MESSAGES
+        and edge.target.parent_artifact_digest == WORKFLOW_MESSAGES_ARTIFACT
+        and edge.target.function_implementation_digest == WORKFLOW_MESSAGES_IMPLEMENTATION
+        and edge.target.contract_revision_digest == WORKFLOW_MESSAGES_REVISION
+        and edge.resolved_binding.operation.effect_class is EffectClass.PURE
+        and edge.resolved_binding.operation.contract_version == "1.0.0"
+        and edge.resolved_binding.artifact.pack_id == "tobkiri_conversation_orchestration_pack"
+        and is_exact_original_python_edge(
+            edge, WORKFLOW_MESSAGES_FUNCTION, backend="tobkiri.python-pack-v4",
+            execution_kind="pack_vm", domain_kind="pack_vm",
+        )
+    )
+    # Workflow attempt contexts use one canonical coordinator principal,
+    # including when the live parent is a different admitted Workflow entry.
+    native_workflow_messages_edge = None
+    for operation_id in workflow_entry_priority:
+        matching = tuple(
+            edge for edge in workflow_messages_candidates if edge.caller.operation_id == operation_id
+        )
+        if matching:
+            if len(matching) == 1:
+                native_workflow_messages_edge = matching[0]
+            break
+    if native_workflow_messages_port is not None and native_workflow_messages_edge is not None:
+        manifest, _ = native_workflow_messages_port
+        caller = OpaqueAuthorityRef(native_workflow_messages_edge.caller.principal_id)
+        caller_suffix = caller.value.removeprefix("sha256:")[:24]
+        native_domain = (
+            f"domain.provider.workflow-messages-wasm.{caller_suffix}."
+            f"{activation_suffix}.{manifest.removeprefix('sha256:')}"
+        )
+        binding = native_workflow_messages_edge.resolved_binding
+        native_workflow_messages = NativeWasmBinding(
+            binding=binding,
+            backend=NativeWorkflowMessagesBackend(
+                binding, caller, native_domain, manifest, authority_store=authority_store,
+                execute=lambda envelope, guard: execute_native_workflow_messages(envelope, guard),
+                capture_current=lambda envelope: capture_current_native_workflow_messages(envelope),
+            ),
+            caller_principal=caller,
+            domain_id=native_domain,
+            executable_digest=manifest,
+        )
+
     def physical_wasm_for_edge(edge: _CapturedPlanEdge) -> NativeWasmBinding | None:
         if edge is ordinary_orchestration_edge:
             return native_saved_execution
         if edge is native_conversation_edge:
             return native_conversation
+        if edge is native_workflow_messages_edge:
+            return native_workflow_messages
         return native_presentation_bindings.get(edge.key)
 
     def physical_authority_edges() -> Iterator[
@@ -3574,6 +3651,8 @@ def capture_production_dispatch(
             native_presentation_bindings.pop(captured_edge.key, None)
             if captured_edge is native_conversation_edge:
                 native_conversation = None
+            if captured_edge is native_workflow_messages_edge:
+                native_workflow_messages = None
             if captured_edge is calendar_orchestration_edge:
                 native_calendar_saved_executions.clear()
             continue
@@ -3589,6 +3668,8 @@ def capture_production_dispatch(
                 native_presentation_bindings.pop(captured_edge.key, None)
                 if captured_edge is native_conversation_edge:
                     native_conversation = None
+                if captured_edge is native_workflow_messages_edge:
+                    native_workflow_messages = None
                 if captured_edge is calendar_orchestration_edge:
                     native_calendar_saved_executions.clear()
                 continue
@@ -3649,12 +3730,17 @@ def capture_production_dispatch(
                     if calendar_caller is not None
                     else "profile-conversation-wasm-"
                     if physical_wasm is native_conversation
+                    else "profile-workflow-messages-wasm-"
+                    if physical_wasm is native_workflow_messages
                     else "profile-presentation-wasm-"
                 ) + physical_wasm.executable_digest[7:31]
                 if physical_wasm is not None else None
             ),
             attach_legacy_provider=(
-                physical_wasm is None and captured_edge is calendar_orchestration_edge
+                physical_wasm is None and (
+                    captured_edge is calendar_orchestration_edge
+                    or captured_edge is native_workflow_messages_edge
+                )
             ),
         )
         profile_edge_authority_records.setdefault(captured_edge.binding_key, records)
@@ -3671,6 +3757,8 @@ def capture_production_dispatch(
                 native_calendar_saved_original_provider = original_provider
             elif physical_wasm is native_conversation:
                 native_conversation_original_provider = original_provider
+            elif physical_wasm is native_workflow_messages:
+                native_workflow_messages_original_provider = original_provider
             else:
                 native_presentation_original_providers[physical_wasm.domain_id] = (
                     original_provider
@@ -6430,6 +6518,66 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("original Conversation Provider was revoked")
 
+    def assert_original_workflow_messages_provider_current() -> None:
+        if native_workflow_messages_original_provider is None or authority_store.is_revoked(
+            "provider_authority", native_workflow_messages_original_provider,
+        ):
+            raise AuthorityDenied("original Workflow messages Provider was revoked")
+
+    def capture_current_native_workflow_messages(
+        envelope: RequestEnvelope,
+    ) -> Callable[[], None]:
+        launcher_runtime = native_provider_runtime
+        edge, native = native_workflow_messages_edge, native_workflow_messages
+        scope = capture_invocation_scope(envelope)
+        parent = scope.parent
+        if (
+            launcher_runtime is None or edge is None or native is None or parent is None
+            or workflow_assembly is None
+            or not matches_captured_edge(envelope, edge)
+            or not native.matches(envelope.context, edge.resolved_binding)
+            or workflow_assembly.binding.principal_ref != native.caller_principal
+            or (
+                parent.envelope.contract_id,
+                parent.envelope.operation_id,
+                parent.envelope.target_principal.value,
+            ) not in workflow_assembly.admitted_invocations
+            or envelope.lease.token == parent.envelope.lease.token
+            or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
+            or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
+        ):
+            raise AuthorityDenied("native Workflow messages captured scope changed")
+
+        def guard() -> None:
+            if (
+                native_provider_runtime is not launcher_runtime
+                or parent_invocation_scopes.lookup(envelope.context.caller_session_id) is not parent
+            ):
+                raise AuthorityDenied("native Workflow messages Launcher capture changed")
+            scope.assert_current()
+            assert_original_workflow_messages_provider_current()
+            launcher_runtime[1]()
+            resources = production_admission.native_resources(envelope.resource_reservation_id)
+            if resources.memory_bytes < NativeWorkflowMessagesBackend.memory_reservation_bytes:
+                raise AuthorityDenied("native Workflow messages capacity is unavailable")
+
+        return guard
+
+    def execute_native_workflow_messages(
+        envelope: RequestEnvelope, guard: Callable[[], None],
+    ) -> dict[str, Any]:
+        launcher_runtime = native_provider_runtime
+        if native_workflow_messages_port is None or launcher_runtime is None:
+            raise AuthorityDenied("native Workflow messages Launcher is unavailable")
+        _, invoke = native_workflow_messages_port
+        return invoke(NativeWorkflowMessagesRequest(
+            context=envelope.context,
+            runtime_instance=launcher_runtime[0],
+            deadline_monotonic=envelope.deadline_monotonic,
+            assert_current=guard,
+            input=envelope.payload,
+        ))
+
     def require_native_conversation_gateway() -> None:
         gateway = native_conversation_gateway
         if gateway is None or gateway.binding_key not in approved_host_binding_keys:
@@ -6582,6 +6730,21 @@ def capture_production_dispatch(
                 or context.target_backend_digest == native.backend_digest
             ):
                 raise AuthorityDenied("native Conversation authority identity changed")
+        messages = native_workflow_messages
+        if messages is not None:
+            if (
+                context.caller_principal == messages.caller_principal
+                and target == messages.binding.principal_ref
+            ):
+                if not messages.matches(context, messages.binding):
+                    raise AuthorityDenied("native Workflow messages authority identity changed")
+                assert_original_workflow_messages_provider_current()
+                return messages
+            if (
+                context.target_domain_id == messages.domain_id
+                or context.target_backend_digest == messages.backend_digest
+            ):
+                raise AuthorityDenied("native Workflow messages authority identity changed")
         for presentation in native_presentation_bindings.values():
             if (
                 context.caller_principal == presentation.caller_principal
@@ -10157,6 +10320,12 @@ def capture_production_dispatch(
             CONVERSATION_COMPLETE_MINIMUM_MEMORY,
             lambda context, _: context.target_domain_id == native_conversation.domain_id,
         ))
+    if native_workflow_messages is not None:
+        native_admission_rules.append((
+            native_workflow_messages.binding,
+            NativeWorkflowMessagesBackend.memory_reservation_bytes,
+            lambda context, _: context.target_domain_id == native_workflow_messages.domain_id,
+        ))
     native_admission_rules.extend(
         (
             native.binding,
@@ -10213,6 +10382,7 @@ def capture_production_dispatch(
         native_saved_execution is not None
         or bool(native_calendar_saved_executions)
         or native_conversation is not None
+        or native_workflow_messages is not None
         or bool(native_presentation_bindings)
     )
     if use_native_wasm:
@@ -10363,6 +10533,19 @@ def capture_production_dispatch(
     def ready_native_backend(
         binding: ResolvedOperationBinding,
     ) -> ExecutionBackend | None:
+        if native_workflow_messages is not None and native_workflow_messages.binding == binding:
+            if native_provider_runtime is None or native_workflow_messages_edge is None:
+                raise BackendUnavailableError("native Workflow messages is unavailable")
+            native_provider_runtime[1]()
+            provider, grant = profile_edge_authority_records[native_workflow_messages_edge.binding_key]
+            assert_original_workflow_messages_provider_current()
+            if (
+                grant is None
+                or authority_store.is_revoked("grant", grant.grant_id)
+                or authority_store.is_revoked("provider_authority", provider.record_id)
+            ):
+                raise AuthorityDenied("native Workflow messages authority was revoked")
+            return native_workflow_messages.backend
         if native_conversation is not None and native_conversation.binding == binding:
             if native_provider_runtime is None or native_conversation_edge is None:
                 raise BackendUnavailableError("native Conversation is unavailable")
@@ -10416,6 +10599,9 @@ def capture_production_dispatch(
                 else native_conversation.backend
                 if native_conversation is not None
                 and resolved_binding == native_conversation.binding
+                else native_workflow_messages.backend
+                if native_workflow_messages is not None
+                and resolved_binding == native_workflow_messages.binding
                 else presentation_backend_for(resolved_binding)
                 or broker._backends.select(resolved_binding)
             )
@@ -10560,14 +10746,17 @@ def capture_production_dispatch(
                 session_id, workflow_principal.value, owner,
             )
             try:
-                context = context_for(
-                    route.binding.operation.contract_id,
-                    route.binding.operation.operation_id,
-                    session_id,
+                operation = route.binding.operation
+                edge = select_edge(operation.contract_id, operation.operation_id, session_id)
+                if edge.resolved_binding != route.binding:
+                    raise AuthorityDenied("Workflow child signed binding changed")
+                context = context_for(operation.contract_id, operation.operation_id, session_id)
+                native = physical_wasm_for_edge(edge)
+                matches_target = (
+                    native.matches(context, route.binding) if native is not None
+                    else context.target_domain_id == authority_target_domain(route.binding)
                 )
-                if context.caller_principal != workflow_principal or (
-                    context.target_domain_id != authority_target_domain(route.binding)
-                ):
+                if context.caller_principal != workflow_principal or not matches_target:
                     raise AuthorityDenied("Workflow child context binding changed")
                 return context
             finally:
@@ -11013,12 +11202,14 @@ def capture_production_dispatch(
                 or native_calendar_saved_executions
                 or saved_local_chat_routes or native_provider_snapshot_bindings
                 or native_presentation_bindings
+                or native_workflow_messages is not None
                 or native_conversation is not None)
             else None
         ),
         native_readiness_for=(
             ready_native_backend
-            if native_presentation_bindings or native_conversation is not None
+            if (native_presentation_bindings or native_conversation is not None
+                or native_workflow_messages is not None)
             else None
         ),
     )

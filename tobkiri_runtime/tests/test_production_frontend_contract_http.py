@@ -5512,6 +5512,78 @@ def test_manual_runtime_mode_selection_schema_rejects_nonboolean_without_write(
         assert not storage.exists(), value
 
 
+def test_native_workflow_messages_runs_the_original_signed_step_without_packvm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import AuthorityDenied
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.messages import (
+        tobkiri_packvm_invoke,
+    )
+    from tests.test_voice_workflow_e2e_v4 import _invoke, _run_step
+    from tobkiri_host.native_workflow_messages import WORKFLOW_MESSAGES
+
+    input_data = {
+        "conversation": {
+            "messages": [
+                {"id": "u", "role": "user", "status": "complete", "content": "日本語"},
+                {"id": "a", "parent_id": "u", "role": "assistant",
+                 "status": "complete", "content": "応答"},
+            ],
+            "current_node_id": "a",
+        },
+        "system_prompt": None,
+    }
+    requests = []
+    expected = tobkiri_packvm_invoke(WORKFLOW_MESSAGES[1], input_data)
+
+    def build(request: ipc.NativeWorkflowMessagesRequest) -> dict:
+        request.assert_current()
+        assert request.input == input_data
+        assert request.context.target_domain_id.startswith("domain.provider.workflow-messages-wasm.")
+        requests.append(request)
+        return expected
+
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_workflow_messages", lambda: ("sha256:" + "a" * 64, build),
+    )
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_disabled=True,
+    ) as (_server, session, _authority):
+        session.assert_operation_ready(*WORKFLOW_MESSAGES)
+        with pytest.raises(AuthorityDenied, match="captured Shell caller edge"):
+            session.context_for(*WORKFLOW_MESSAGES, "external-panel")
+        palette = _invoke(session, "operation.palette", {})["operations"]
+        operation = next(
+            item for item in palette
+            if (item["contract_id"], item["operation_id"]) == WORKFLOW_MESSAGES
+        )
+        request = {
+            key: operation[key] for key in (
+                "contract_id", "contract_revision_digest", "operation_id", "function_principal_id",
+            )
+        }
+        created = _invoke(session, "definition.create", {
+            "definition_id": "workflow.native-messages",
+            "document": {
+                "workflow_api_version": "io.tobkiri.workflow.v4",
+                "steps": [{"id": "build", "request": {**request, "input": input_data}}],
+            },
+        })
+        _invoke(session, "definition.publish", {
+            "definition_id": "workflow.native-messages", "if_match": created["etag"],
+        })
+        _invoke(session, "run.create", {
+            "definition_id": "workflow.native-messages", "run_id": "native-messages", "inputs": {},
+        })
+        attempt = _run_step(session, "native-messages", "build")
+        assert attempt["state"] == "succeeded", attempt
+        assert len(requests) == 1
+        with pytest.raises(AuthorityDenied):
+            requests[0].assert_current()
+
+
 def test_native_presentation_preserves_exact_nested_broker_edges_without_packvm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

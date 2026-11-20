@@ -59,13 +59,13 @@ use super::{
         reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
         reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
         reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
-        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SavedInputCaller,
-        SavedOrchestrationCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
-        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
-        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
-        GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
-        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        reacquire_usage_cost_pack, reacquire_workflow_messages_pack,
+        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationAppendCaller,
+        ConversationReadCaller, SavedInputCaller, SavedOrchestrationCaller, SavedTurnStartCaller,
+        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
+        FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
+        GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
         STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
@@ -107,8 +107,20 @@ pub(crate) const APPLICATION_PRESENTATION_INPUT_LIMIT: usize = 128 * 1024;
 pub(crate) const APPLICATION_PRESENTATION_RESULT_LIMIT: usize = 1024 * 1024;
 /// Maximum success document from either Conversation completion DATA port.
 pub(crate) const CONVERSATION_COMPLETE_RESULT_LIMIT: usize = 4 * 1024 * 1024;
+/// Maximum canonical Workflow messages input and output.
+pub(crate) const WORKFLOW_MESSAGES_FRAME_LIMIT: usize = 512 * 1024;
 /// Maximum original Gateway DATA input and result JSON.
 pub(crate) const AI_GATEWAY_DATA_LIMIT: usize = 1024 * 1024;
+
+pub(crate) fn check_workflow_messages_input_size(input_bytes: usize) -> Result<()> {
+    if input_bytes == 0 {
+        return Err(SavedOrchestrationStepError::Invalid.into());
+    }
+    if input_bytes > WORKFLOW_MESSAGES_FRAME_LIMIT {
+        return Err(SavedOrchestrationStepError::Capacity.into());
+    }
+    Ok(())
+}
 
 /// The read-only phases of the original Model Access operations.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -318,6 +330,10 @@ pub(crate) enum NativeRegistryRequest {
         input_bytes: usize,
         receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
     },
+    WorkflowMessages {
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     AiGatewayData {
         operation: AiGatewayDataOperation,
         input: Vec<u8>,
@@ -366,6 +382,7 @@ impl NativeRegistryRequest {
                 proof.permits_application_presentation(*role)
             }
             Self::ConversationComplete { .. } => proof.permits_conversation_complete(),
+            Self::WorkflowMessages { .. } => proof.permits_workflow_messages(),
             Self::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
             Self::SavedLocalChat { role, .. } => proof.permits_saved_local_chat(*role),
         }
@@ -392,6 +409,7 @@ impl NativeRegistryRequest {
             self,
             Self::ApplicationPresentation { .. }
                 | Self::ConversationComplete { .. }
+                | Self::WorkflowMessages { .. }
                 | Self::ModelAccessProjection { .. }
                 | Self::SavedInput { .. }
         )
@@ -450,6 +468,10 @@ impl NativeRegistryRequest {
                 phase, input_bytes, ..
             } => {
                 phase.check_input_size(*input_bytes)?;
+                return Ok(*input_bytes);
+            }
+            Self::WorkflowMessages { input_bytes, .. } => {
+                check_workflow_messages_input_size(*input_bytes)?;
                 return Ok(*input_bytes);
             }
             Self::SavedOrchestration { input, .. } | Self::AiGatewayData { input, .. } => {
@@ -1930,6 +1952,47 @@ async fn run(
                     return decode_bounded_data_reply(
                         output.as_str(),
                         CONVERSATION_COMPLETE_RESULT_LIMIT,
+                        &graph,
+                    );
+                }
+                NativeRegistryRequest::WorkflowMessages {
+                    input_bytes,
+                    receive_input,
+                } => {
+                    require_current_source()?;
+                    let funding = input_funding
+                        .take()
+                        .context("Workflow messages input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    if input.len() != input_bytes || input.capacity() > input_bytes {
+                        return Err(SavedOrchestrationStepError::Invalid.into());
+                    }
+                    revalidate()?;
+                    let pack = reacquire_workflow_messages_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.workflow-messages.data@1.0")?;
+                    let operation = OpName::parse("build")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    revalidate()?;
+                    let output =
+                        invoke_original_saved_orchestration_port(port, input, funding).await?;
+                    return decode_bounded_data_reply(
+                        output.as_str(),
+                        WORKFLOW_MESSAGES_FRAME_LIMIT,
                         &graph,
                     );
                 }
@@ -3511,6 +3574,41 @@ mod tests {
                 Err(SavedOrchestrationStepError::Invalid)
             );
         }
+    }
+
+    #[test]
+    fn workflow_messages_job_requires_its_own_proof_before_funding() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        let other =
+            VerifiedRegistryLaunch::test_conversation_complete_proof(identity.clone(), "catalog");
+        let proof = VerifiedRegistryLaunch::test_workflow_messages_proof(identity, "catalog");
+        let request = |input_bytes| NativeRegistryRequest::WorkflowMessages {
+            input_bytes,
+            receive_input: Box::new(|_| panic!("admission cannot read the body")),
+        };
+        let valid = request(WORKFLOW_MESSAGES_FRAME_LIMIT);
+        assert!(!valid.has_launch_proof(&other));
+        assert!(valid.has_launch_proof(&proof));
+        assert!(valid.uses_funded_input());
+        assert!(!valid.requires_publication_permit());
+        assert_eq!(
+            valid.input_capacity().unwrap(),
+            WORKFLOW_MESSAGES_FRAME_LIMIT
+        );
+        let error = request(WORKFLOW_MESSAGES_FRAME_LIMIT + 1)
+            .input_capacity()
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref(),
+            Some(&SavedOrchestrationStepError::Capacity)
+        );
     }
 
     #[test]

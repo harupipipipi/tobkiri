@@ -999,6 +999,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-workflow-messages-rust"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ordered-python-compat",
+ "serde_json",
+ "thiserror",
+ "tobkiri-canon",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-saved-input"
 version = "0.1.0"
 dependencies = [

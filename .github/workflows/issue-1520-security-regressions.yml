@@ -68,6 +68,7 @@ jobs:
           tobkiri_runtime/tests/test_defaultspack_tool_protocol_v2.py
           tobkiri_runtime/tests/test_defaultspack_coding_hardening.py
           tobkiri_runtime/tests/test_defaultspack_terminal_policy.py
+          tobkiri_runtime/tests/test_production_frontend_contract_http.py::test_native_workflow_messages_runs_the_original_signed_step_without_packvm
           -q
       - name: Retain bounded test execution evidence
         if: always()

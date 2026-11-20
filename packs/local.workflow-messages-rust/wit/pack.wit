@@ -1,0 +1,14 @@
+package local:workflow-messages@1.0.0;
+
+interface data {
+  use tobkiri:core/types@1.2.0.{error};
+
+  /// Assemble model messages from resolved conversation and prompt data.
+  build: func(input: string) -> result<string, error>;
+}
+
+world pack {
+  import tobkiri:core/types@1.2.0;
+  export tobkiri:core/lifecycle@1.2.0;
+  export data;
+}

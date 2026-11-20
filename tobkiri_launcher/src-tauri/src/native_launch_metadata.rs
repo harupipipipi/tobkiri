@@ -14,7 +14,7 @@ use tobkiri_core::{
     pack::{RuntimeSpec, ShapeKind, VerifiedPack},
     Digest, NativeArtifactInspection, NativeSetupInvocation,
 };
-use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
+use tobkiri_gate::{ControlKind, CoreCancellation, LoopLimits, PermissionSet, ResourceLimits};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
@@ -31,7 +31,7 @@ use tobkiri_harness_native::{
     OriginalSavedOrchestrationChoice, OriginalSavedReceiptRole, OriginalSavedReceiptSelection,
     OriginalSavedTurnStartChoice, OriginalShellProviderSnapshotSelection,
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
-    OriginalUsageCostChoice, OriginalWorkflowHealthCaller,
+    OriginalUsageCostChoice, OriginalWorkflowHealthCaller, OriginalWorkflowMessagesChoice,
     OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
     OriginalWorkflowSnapshotEntry,
 };
@@ -103,6 +103,7 @@ pub(crate) struct VerifiedRegistryLaunch {
     local_chat: Option<VerifiedSavedLocalChatSource>,
     application_presentation: Option<VerifiedApplicationPresentationSource>,
     conversation_complete: Option<VerifiedConversationCompleteSource>,
+    workflow_messages: Option<VerifiedWorkflowMessagesSource>,
 }
 
 /// The caller of the original conversation-owner read grant.
@@ -141,6 +142,18 @@ impl SavedOrchestrationCaller {
 }
 
 impl VerifiedRegistryLaunch {
+    /// Require the exact Workflow-to-Messages grant and the verified pure DATA export.
+    pub(crate) fn permits_workflow_messages(&self) -> bool {
+        self.workflow_messages_manifest_sha256().is_some()
+    }
+
+    /// Replacement manifest admitted for the signed Workflow Messages route.
+    pub(crate) fn workflow_messages_manifest_sha256(&self) -> Option<&str> {
+        self.workflow_messages
+            .as_ref()
+            .map(|source| source.manifest_sha256.as_str())
+    }
+
     /// Require the signed ordinary Conversation and Gateway grants and the verified DATA port.
     pub(crate) fn permits_conversation_complete(&self) -> bool {
         self.conversation_complete.is_some()
@@ -525,6 +538,14 @@ impl VerifiedApplicationPresentationSource {
 /// The exact ordinary Conversation Complete source and build-pinned archive.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedConversationCompleteSource {
+    bundle: VerifiedOrdinarySavedBundle,
+    archive_sha256: String,
+    archive_bytes: u64,
+    manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedWorkflowMessagesSource {
     bundle: VerifiedOrdinarySavedBundle,
     archive_sha256: String,
     archive_bytes: u64,
@@ -1250,6 +1271,20 @@ impl VerifiedRegistryLaunch {
         proof
     }
 
+    pub(crate) fn test_workflow_messages_proof(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+    ) -> Self {
+        let mut proof = Self::test_proof(identity, catalog_revision);
+        proof.workflow_messages = Some(VerifiedWorkflowMessagesSource {
+            bundle: VerifiedOrdinarySavedBundle::fixture(),
+            archive_sha256: Digest::hash(b"workflow-messages-archive").to_string(),
+            archive_bytes: 512,
+            manifest_sha256: Digest::hash(b"workflow-messages-manifest").to_string(),
+        });
+        proof
+    }
+
     pub(crate) fn test_complete_application_presentation_proof(
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
@@ -1303,6 +1338,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -1331,6 +1367,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -1360,6 +1397,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -1394,6 +1432,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -1626,6 +1665,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -1758,6 +1798,7 @@ impl VerifiedRegistryLaunch {
             local_chat: None,
             application_presentation: None,
             conversation_complete: None,
+            workflow_messages: None,
         }
     }
 
@@ -2601,6 +2642,17 @@ impl LaunchActivationObserver<'_> {
             )
             .context("bundled Conversation Complete Pack verification failed during Launch")?
             .flatten();
+        let workflow_messages = registry_pack_receipt::verify_installed_with_workflow_messages(
+            &app_root,
+            REGISTRY_RECEIPT_SHA256,
+            || registry_checkpoint(inspection, &checkpoint),
+            |receipt, input| {
+                verify_workflow_messages_source(inspection, active, receipt, input, checkpoint)
+                    .map_err(io::Error::other)
+            },
+        )
+        .context("bundled Workflow Messages Pack verification failed during Launch")?
+        .flatten();
         if !has_existing_grants
             && model_save.is_none()
             && conversation.is_none()
@@ -2611,6 +2663,7 @@ impl LaunchActivationObserver<'_> {
             && ai_routing.is_none()
             && application_presentation.is_none()
             && conversation_complete.is_none()
+            && workflow_messages.is_none()
         {
             return Ok(None);
         }
@@ -2672,6 +2725,7 @@ impl LaunchActivationObserver<'_> {
             local_chat,
             application_presentation,
             conversation_complete,
+            workflow_messages,
         };
         if let Some(local_chat) = &verified.local_chat {
             let mut roles = 0;
@@ -2758,6 +2812,41 @@ pub(super) fn reacquire_conversation_complete_pack(
         },
     )?
     .context("bundled Registry receipt has no Conversation Complete archive")
+}
+
+/// Reopen the admitted Messages Build DATA export and revalidate its original Workflow source.
+pub(super) fn reacquire_workflow_messages_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    let source = proof
+        .workflow_messages
+        .as_ref()
+        .context("admitted launch has no verified Workflow Messages source")?;
+    let app_root = registry_pack_root(inspection, proof)?;
+    checkpoint()?;
+    inspection.with_source(|sources| source.bundle.require_source(sources))??;
+    source
+        .bundle
+        .revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    registry_pack_receipt::verify_installed_with_workflow_messages(
+        &app_root,
+        REGISTRY_RECEIPT_SHA256,
+        || registry_checkpoint(inspection, &checkpoint),
+        |receipt, input| {
+            require_archive_receipt(
+                receipt,
+                &source.archive_sha256,
+                source.archive_bytes,
+                &source.manifest_sha256,
+            )?;
+            let pack = verify_registry_archive(inspection, receipt, input)?;
+            require_workflow_messages_declaration(&pack).map_err(io::Error::other)?;
+            Ok(pack)
+        },
+    )?
+    .context("bundled Registry receipt has no Workflow Messages archive")
 }
 
 /// Reacquire the Provider Pack from the original signed resolver source and receipt pin.
@@ -3793,6 +3882,33 @@ fn verify_conversation_complete_source(
     }))
 }
 
+fn verify_workflow_messages_source(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    receipt: &registry_pack_receipt::Pack,
+    input: &mut dyn io::Read,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<VerifiedWorkflowMessagesSource>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(choice) = OriginalWorkflowMessagesChoice::select(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(locked) =
+        inspection.with_source(|sources| sources.workflow_messages_bundle(&choice, budget))??
+    else {
+        return Ok(None);
+    };
+    let bundle = locked.verify(&checkpoint)?;
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_workflow_messages_declaration(&pack)?;
+    Ok(Some(VerifiedWorkflowMessagesSource {
+        bundle,
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
 fn verify_side_chat_saved_receipt_source(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     active: &OriginalActiveProfile,
@@ -4737,6 +4853,51 @@ const CONVERSATION_COMPLETE_WIT: [(&str, &[u8]); 3] = [
     ),
 ];
 
+const WORKFLOW_MESSAGES_WIT: [(&str, &[u8]); 3] = [
+    (
+        "wit/pack.wit",
+        include_bytes!("../../../packs/local.workflow-messages-rust/wit/pack.wit"),
+    ),
+    (
+        "wit/data.shape.json",
+        include_bytes!("../../../packs/local.workflow-messages-rust/wit/data.shape.json"),
+    ),
+    CORE_V1_2_WIT,
+];
+
+fn require_workflow_messages_declaration(pack: &VerifiedPack) -> Result<()> {
+    verify_stateless_registry_surface(pack, registry_pack_receipt::WORKFLOW_MESSAGES_PACK_ID, 1)?;
+    let manifest = &pack.manifest;
+    let wasm = ResourceLimits {
+        fuel_per_call: 1_400_000_000,
+        memory_mib: 32,
+        wall_ms: 10_000,
+        table_elements: 10_000,
+        output_bytes: 512 * 1024,
+    };
+    let loops = LoopLimits {
+        max_iterations: 100,
+        max_wall_ms: 10_000,
+        max_cost_units: 10_000,
+    };
+    ensure!(
+        manifest.version == "0.1.0"
+            && matches!(&manifest.runtime, RuntimeSpec::Wasm { toolchain, .. } if toolchain == "rust/1.94.0")
+            && manifest.permissions.wasm == wasm
+            && manifest.permissions.loops == loops
+            && manifest.files.len() == WORKFLOW_MESSAGES_WIT.len() + 1
+            && manifest.shapes[0].wit == "wit/pack.wit"
+            && WORKFLOW_MESSAGES_WIT.into_iter().all(|(path, bytes)| {
+                pack.files
+                    .get(path)
+                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+            }),
+        "bundled Workflow Messages Pack has unexpected WIT or resource limits"
+    );
+    require_registry_ports(pack, "build", &["local.workflow-messages.data@1.0"])?;
+    Ok(())
+}
+
 fn require_conversation_complete_declaration(pack: &VerifiedPack) -> Result<()> {
     verify_stateless_registry_surface(
         pack,
@@ -5510,6 +5671,48 @@ mod tests {
         )
         .unwrap();
         assert!(require_conversation_complete_declaration(&verify(draft)).is_err());
+    }
+
+    #[test]
+    fn workflow_messages_declaration_rejects_altered_wit_and_limits() {
+        use std::fs;
+        use tobkiri_core::pack::{generate_manifest, verify_directory};
+
+        struct Root(std::path::PathBuf);
+        impl Drop for Root {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Root(std::env::temp_dir().join(format!(
+            "tobkiri-workflow-messages-declaration-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        )));
+        fs::create_dir_all(root.0.join("wit/deps")).unwrap();
+        let path = root.0.canonicalize().unwrap();
+        for (relative, bytes) in WORKFLOW_MESSAGES_WIT {
+            fs::write(path.join(relative), bytes).unwrap();
+        }
+        fs::write(path.join("component.wasm"), b"fixture").unwrap();
+        let draft = include_bytes!("../../../packs/local.workflow-messages-rust/pack.draft.json");
+        let verify = |draft: &[u8]| {
+            let manifest = generate_manifest(&path, draft).unwrap();
+            fs::write(path.join("pack.json"), manifest).unwrap();
+            verify_directory(&path, &Default::default()).unwrap()
+        };
+        require_workflow_messages_declaration(&verify(draft)).unwrap();
+        let mut modified: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        modified["permissions"]["wasm"]["output_bytes"] = serde_json::json!(524289);
+        assert!(require_workflow_messages_declaration(&verify(
+            &serde_json::to_vec(&modified).unwrap()
+        ))
+        .is_err());
+        let (wit_path, bytes) = WORKFLOW_MESSAGES_WIT[0];
+        let mut changed_wit = bytes.to_vec();
+        changed_wit.extend_from_slice(b"\n");
+        fs::write(path.join(wit_path), changed_wit).unwrap();
+        assert!(require_workflow_messages_declaration(&verify(draft)).is_err());
     }
 
     #[test]
