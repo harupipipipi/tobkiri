@@ -9,6 +9,7 @@ const TEXT: &str = "cherry";
 const REPLY: &str = "The rewrite completed.";
 const NEXT_INPUT: &str = "Summarize the preceding turn.";
 const NEXT_REPLY: &str = "The preceding turn asked for a rewrite.";
+const FIXTURE_WALL_MS: u64 = 30_000;
 
 fn sse(chunks: &[Value]) -> String {
     let mut wire = String::new();
@@ -54,8 +55,11 @@ async fn run_turn(session: &Session, text: &str) -> Result<Vec<Value>> {
         for frame in batch {
             ensure!(
                 frame["kind"]["kind"] != "failed" && frame["kind"]["kind"] != "cancelled",
-                "Flow failed: {:?}; prior steps: {:?}",
-                frame["kind"]["error"],
+                "Flow ended with {:?}; error: {:?}; prior steps: {:?}",
+                frame["kind"]["kind"],
+                frame["kind"]["error"]
+                    .as_object()
+                    .and_then(|error| error.get("code")),
                 frames
                     .iter()
                     .filter_map(|prior: &Value| Some((
@@ -140,7 +144,7 @@ async fn replay_tool_turn(tool: &str, expected: &str, executed: bool) -> Result<
     let origin = format!("http://{}", listener.local_addr()?);
     let root = physical_temp()?;
     let (core, start) =
-        structured_flow_core(root.path(), std::slice::from_ref(&origin), 10_000).await?;
+        structured_flow_core(root.path(), std::slice::from_ref(&origin), FIXTURE_WALL_MS).await?;
     let session = core.start_bound(&start).await?;
     let request = async {
         let revision =

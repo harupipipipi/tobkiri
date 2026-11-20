@@ -74,7 +74,7 @@
       "id": "tool-loop",
       "loop": {
         "while": { "eq": ["$response.message.response.finish.tag", "tool-calls"] },
-        "limits": { "max_iterations": 2, "max_wall_ms": 10000, "max_cost_units": 1000 },
+        "limits": { "max_iterations": 2, "max_wall_ms": 20000, "max_cost_units": 1000 },
         "body": [
           {
             "id": "tool-results",
