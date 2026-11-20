@@ -118,10 +118,6 @@ def _minimal_v4_stage(tmp_path: Path) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     (stage / "requirements.txt").write_text("", encoding="utf-8")
-    ui_root = stage / "ecosystem/defaultspack/ui"
-    ui_root.mkdir(parents=True)
-    (ui_root / "shell.html").write_text("<main></main>\n", encoding="utf-8")
-    (ui_root / "shell-app.js").write_text("console.log('ok');\n", encoding="utf-8")
 
     pack_root = stage / "ecosystem/defaultspack"
     pack_root.mkdir(parents=True, exist_ok=True)
@@ -137,7 +133,7 @@ def _minimal_v4_stage(tmp_path: Path) -> Path:
     manifest = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text())
     for artifact in manifest["artifacts"]:
         relative = artifact["path"]
-        if relative.startswith(("tools/", "extensions/tools/")):
+        if relative.startswith(("tools/", "extensions/tools/", "ui/")):
             target = pack_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(DEFAULTSPACK_ROOT / relative, target)
