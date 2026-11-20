@@ -373,7 +373,7 @@ def ui_pack(directory: Path | None = None) -> dict[str, Any]:
 
 
 def main() -> None:
-    """Build the complete source set, or only re-pin already built components."""
+    """Build the development Profile components, or re-pin existing artifacts."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-build", action="store_true")
     mode = parser.add_mutually_exclusive_group()
@@ -399,7 +399,10 @@ def main() -> None:
             "cargo", "build", "--manifest-path", str(ROOT / "Cargo.toml"),
             "--locked", "--target", "wasm32-wasip2",
         ]
-        subprocess.run([*cargo_build, "--workspace"], env=environment, check=True)
+        guest_packages = []
+        for name in GUESTS:
+            guest_packages.extend(("--package", f"tobkiri-pack-{name}"))
+        subprocess.run([*cargo_build, *guest_packages], env=environment, check=True)
         if args.pi_discovery:
             subprocess.run(
                 [*cargo_build, "--package", "tobkiri-pack-pi-adapter",

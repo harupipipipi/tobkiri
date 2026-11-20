@@ -16,12 +16,13 @@ python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
 cargo test -p tobkiri-e2e --locked --test chat --test network --test ui
 ```
 
-`packs/build.py` runs the separate guest workspace with its committed lock:
-`cargo build --manifest-path packs/Cargo.toml --locked --target wasm32-wasip2
---workspace`. It stages actual component bytes, records provenance, binds config
+`packs/build.py` builds the twelve guest packages used by the development Profiles
+from `packs/Cargo.toml` with the committed lock and the `wasm32-wasip2` target.
+It stages actual component bytes, records provenance, binds config
 and WIT by hash, and refreshes manifest/Profile pins. The builder refuses to run
 below the agreed 5 GiB disk floor. Heavy build and replay work uses one measured
-capacity lease at a time.
+capacity lease at a time. Registry staging builds the Workflow message component
+separately with its no-WASI linker configuration.
 
 Tracked inputs include sources, WIT, workspace locks, manifests, Profiles, SDKs
 and frozen fixtures. Pack `component.wasm`, Rust/JS `component.build.json`, staged

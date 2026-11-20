@@ -14,6 +14,7 @@ on:
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
       - 'crates/tobkiri-e2e/fixtures/harness-structured-tool.flow.json'
       - 'crates/test-guests/typed-tool/**'
+      - 'packs/build.py'
       - 'packs/local.model-registry-rust/**'
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/saved-input/**'
@@ -331,6 +332,8 @@ jobs:
         run: |
           cargo build --locked --target wasm32-wasip2 \
             --manifest-path crates/test-guests/Cargo.toml -p tobkiri-test-typed-tool
+          cargo build --locked --target wasm32-wasip2 \
+            --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-turn
           cargo build --locked --release --target wasm32-wasip2 \
             --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-conversation-store \
             --features structured-chat
