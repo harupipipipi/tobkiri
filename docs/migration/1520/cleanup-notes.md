@@ -5972,7 +5972,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実Wasmの初回保存と両種の待機行を検証するテスト2件が通過した。
   `scheduled_saved.py` 自身が使う保存コールバックは、署名済みCalendar親子経路を照合してから置き換える。
 - `408851049` はmacOS CIで見つかったLauncherの入力復元のimport、本文を必要とする開始フレームの
-  分岐、digestの所有権を修正した。修正後のTauriビルドをCIで確認する。
+  分岐、digestの所有権を修正した。`0dde86160` の [グループCI](https://github.com/harupipipipi/tobkiri/actions/runs/44656785684)
+  では、TauriのビルドとmacOSでのLauncherのテストに加え、移植可能なCoreのテストも通過した。
+- `fdcb25910` はCalendarの自動実行で、ClockからScheduler、Job Action Broker、保存ジョブAdapter、Turn Lifecycleへ
+  続く4つの同梱Profile権限をLauncherで検証し、実行時に選択された予定の証明をHostで照合してから、
+  同じWasm入力ポートとSQLite所有者を使う。予定の確定済みソースを使い、公開許可を出した後に結果が
+  不明になった場合は予定を解放せず、照合へ回す。手動実行や状態確認は従来の経路を使う。
+  先行の入力保存と状態確認が競合した場合、両経路が同じSQLiteトランザクションの書込みロックと
+  `saved_inputs` の主キーを使い、先に保存された入力を採用する。
+  `scheduled_job.py` と `scheduled_saved.py` は同梱署名に固定されており、Hostは検証して捕捉した
+  モジュールの予定処理を再利用する。Host側の限定した接続を
+  廃止するには、予定の準備・確定・再開を新しい署名済み実装へ移し、手動起動と状態確認も照合する。
+- Rustの経路選択58件とPythonのCalendar・IPC回帰840件が通過した。最終版の署名済み本番経路の
+  回帰では、捕捉したAdapterを使って既存の起床から4段のリースと予約を検証した。Launcher IPCと
+  保存後のターン実行は試験用の応答に差し替え、初回保存、先着入力、公開前の互換処理、公開後の
+  応答喪失、リース終了を確認した。配布Launcherから実WasmへつないだCalendarの通し試験を残す。
 
 ## 050: Side Chatのターン開始と実行権の取得
 
@@ -6508,3 +6522,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   記録しない。失敗時の診断からアプリの出力も除外する。LauncherとDMG検証のテスト455件が通過した。
 - 実際のDMGでは、専用承認ウィンドウの表示と操作、接続先URL、llama.cppサーバーでの実推論を
   同じ実行で確認する。GUIのローカルOpenAI互換接続は鍵なしのHTTPループバックを使える。
+- [実モデル・ローカルAPIの試験](https://github.com/harupipipipi/tobkiri/actions/runs/44655111065) は
+  `246f70722` で通過した。固定した1Bモデルを認証付きのloopback llama.cppで起動し、保存済み
+  ProviderとモデルをWasmで解決して実推論した。別のモックAPIでは構造化ツール呼出しを含めて
+  検証した。インストールしたLauncherからのGUI操作を含む試験はこの実行の範囲外。
+- `5ebba32dc` でHarnessの応答イベントの整形を修正した。旧コミットで複数の受け入れCIを止めた
+  `cargo fmt --all -- --check` を今回の作業ツリーで通した。整形後の受け入れCIは別途確認する。
+
+## 061 運用手順と移行検証のレビュー反映
+
+- `0b3df9d36` は運用ガイドと索引を現行のLauncherとHostの起動方法に合わせた。タグCIのアドホック
+  署名、手動のDeveloper ID署名・公証、ビルドの来歴証明を実装に沿って記載した。Core Hostの
+  11コマンドとSetup専用IPC、sealed Pythonの起動v3・起動証明v2・参照v1も照合した。
+- ネイティブ入力資料に、値の複数経路への配信、ストリームとコールバックの単一路転送の条件を追記した。
+  Wasm容量資料にカタログ準備でのEngineとComponent生成、未確認のメモリ計上範囲、SQL生成物の
+  検査が適用されるfeatureを記載した。現行CLIのヘルプ、スキーマ・Rustの引数、相対リンクと
+  起動例のシェル構文を照合した。
