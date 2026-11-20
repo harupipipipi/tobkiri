@@ -1,6 +1,6 @@
 # Active resource boundaries for issue #1520
 
-## Shared core-module loading — source change, execution proof pending
+## Shared core-module loading and the native replay
 
 `runtime.core_modules` maps exact root component import names to files in the
 ordinary Pack inventory. The manifest signature and Pack hash cover the mapping
@@ -21,10 +21,15 @@ source account and private snapshots, one temporary source buffer at a time.
 Only immutable compiled modules are shared. Instantiation still uses each Pack's
 own Store, memory, table, globals, restricted WASI, host callbacks and CallCx under
 the existing initialization grant. No core instance or ambient host module is
-cached. New regressions cover signature/pin changes, source limits, exact imports,
-type rejection, and independent mutable state and cancellation. Their execution
-results, transformed original five-Pack adoption and full production activation
-remain pending; the original Launcher remains the default.
+cached. The regressions cover signature and pin changes, source limits, exact
+imports, type rejection, and independent mutable state and cancellation.
+
+At the [2026-10-25 native checkpoint](acceptance-status.md#coherent-original-five-pack-native-checkpoint-2026-10-25),
+one Core ran all five original Packs with 62,877,304 source bytes under the
+unchanged 64 MiB catalog limit. The strict comparison ran 215 cases and failed
+with six differences. The follow-up passed the three shared-code integrity
+tests and reproduced the strict comparison differences. Product activation
+of the transformed five Packs remains pending.
 
 ## Earlier execution record
 

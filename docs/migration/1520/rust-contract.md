@@ -6,9 +6,8 @@
 requirement. This document records the final design decisions returned by Devin
 CLI `claude-opus-5-5-medium` in design-only `-p` sessions on 2026-10-15. Later
 decisions below supersede the preliminary design. The user subsequently replaced
-the design adviser with Astra, initially at max and then at high effort, for
-question answers only. New consultations use high;
-[astra-answers.md](astra-answers.md) supplies the later authority and recovery
+the design adviser with Astra for question answers only.
+[astra-answers.md](astra-answers.md) records the later authority and recovery
 decisions. This is an implementation contract, not a migration-completion claim.
 
 ## Runtime and ownership
@@ -37,6 +36,12 @@ imports and signatures must match declared, verified WIT; ambient sockets,
 HTTP, environment variables and directory preopens are unavailable. Guest
 components live in independently locked WASI workspaces.
 
+| Core ABI | Status and scope |
+| --- | --- |
+| [`1.0.0`](../../../crates/tobkiri-wit/wit/core/core.wit) | Baseline generic interfaces. |
+| [`1.1.0`](../../../crates/tobkiri-wit/wit/core-v1-1/core.wit) | Versioned storage ABI with lossless typed SQL results and transactions. |
+| [`1.2.0`](../../../crates/tobkiri-wit/wit/core-v1-2/core.wit) | Unpromoted draft for exact-source consumers. `flow.current-profile` observes the identity of the live admitted Profile frame. It grants no authority. Rebuild draft consumers when the exact WIT changes. |
+
 ## Bytes, files and shapes
 
 New documents use StrictV1 canonical JSON: duplicate keys, floats, unsafe integer
@@ -55,8 +60,12 @@ Shape names are `publisher.pack.seg(.seg)*`, with kebab-case path segments, at
 most eight path segments and 128 characters total. The first two segments are
 the owner Pack ID. WIT interfaces join the path segments with `-`; colliding
 names are rejected locally. The dotted name is authoritative, and reverse
-mapping uses the shape registry. Each shape has an independent versioned WIT
-document. Only `tobkiri:core` is reserved.
+mapping uses the shape registry. Each shape selects a specific interface and
+package version through its own shape metadata. A WIT file can define several
+such interfaces. For example, [`local:harness-chat@1.0.0`](../../../packs/shapes/harness-chat.wit)
+defines `user-input`, `conversation-store` and other interfaces in one file.
+The build resolves the metadata for each shape to its interface in that file.
+Only `tobkiri:core` is reserved.
 
 WIT is the type authority. Minor changes must be additive and projection-safe;
 major changes require an adapter Pack. Required connections, one-slot ambiguity,
@@ -127,9 +136,12 @@ journals use directory-FD capability resolution rather than pathname checks.
 Secrets are encrypted with Profile-bound AAD and cannot be exported by Packs.
 Audit is append-only, hash-chained, bounded and free of plaintext secret values.
 
-Untrusted SQL requires the private bounded Wasm backend and capability VFS;
-native arbitrary SQL fails unavailable before preparation. Core 1.1 adds lossless
-typed results and transactions without altering Core 1.0 or adding an interface.
+The Core DATA path may use bounded native SQLite through the capability VFS.
+Before preparation it applies statement and result limits, database and WAL
+quota, a bounded execution window and the exact Profile, Pack and tier rights.
+An operation without these prerequisites is unavailable. The private SQLite
+Wasm producer is an opt-in `private-sqlite-experiment` and carries its own
+verification requirements. See the adopted [resource boundary](resource-boundaries.md).
 Guest, SQL, ABI, host/VFS and retained output allocations share stable owner
 funds and allocation-owned leases. A pinned Wasmtime source patch supplies the
 supported preallocation hooks. A physical-root registry and proven OS ownership
@@ -166,12 +178,11 @@ explicit port intersections, invalid legacy signature quarantine, cumulative
 Flow scopes, a versioned lossless SQL contract and transactional terminal-audit
 outboxes with sink deduplication. Follow-ups settle User policy, the versioned
 SQL/transaction API, bounded-engine approval, generic descendant budgets,
-compiled provenance, allocation ownership and process exclusion. Current native
-untrusted SQL does not establish a hard allocation bound and must fail closed
-before preparation. The SQLite WAL coherence/recovery protocol, full ABI path
-coverage and runtime proof still require implementation and verification. See
-[astra-answers.md](astra-answers.md); do not widen permissions or claim SQL parity
-to hide unfinished implementation. SWE-2 max reviews continue.
+compiled provenance, allocation ownership and process exclusion. Arbitrary
+unbounded native SQL remains unavailable. End-to-end verification still needs
+to cover retained allocations across the full SQL/ABI path, WAL recovery and
+delivery after a commit. The focused DATA and experiment results and their
+remaining limits are recorded in the [acceptance status](acceptance-status.md).
 
 The legacy ledger, exhaustive migration inventory and final completion gate must
 all pass before Python runtime or PackVM deletion. New Harness/Echo examples do

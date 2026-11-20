@@ -39,9 +39,18 @@ interruption, and bounded captured stdout/stderr. The WASI subset has empty
 stdin, environment and arguments, no preopens, and no socket/HTTP interfaces.
 Consequently the current scratch quota is zero bytes. Host imports implement
 gated HTTP with DNS/address checks, opaque secret headers, private/public/read-
-only/user-global storage, audit, host I/O, clock, and random. Proc/PTY, filesystem
-grants, approval attestation UI, and a Wasm mediator remain unavailable until
-their trusted host contracts and backends are implemented.
+only/user-global storage, audit, host I/O, clock, and random. The guest filesystem
+adapter uses the [Core descriptor registry](../tobkiri-core/src/core.rs) and Gate.
+
+| Filesystem scope | Current behavior |
+| --- | --- |
+| Root registration | A trusted host registers an already-open directory. Guest access requires the exact root in the active Profile with matching rights and approval. A picker can return a registered candidate ID. |
+| Available Wasm operations | `fs.open-grant` consumes an authorized grant. The directory handle supports bounded `read`, `list`, `stat`, `write`, `rename`, `remove`, and `mkdir` under that root. |
+| Unsupported guest operations | Unregistered roots and operations outside the typed directory adapter fail closed. Ambient filesystem preopens and guest-chosen host paths are unavailable. |
+| Platform acceptance | Focused tests cover the registered-root adapter. Production directory selection and end-to-end acceptance remain platform-specific verification work. |
+
+Proc/PTY, approval attestation UI, and a Wasm mediator still require their
+own trusted host contracts and backends.
 Guest `host-io.request-ui-embed` is also unavailable until the Core Session
 registration/notification bridge exists. Every slot name, including `startup`,
 uses that same denial; the authorized grant receives a failed outcome and the

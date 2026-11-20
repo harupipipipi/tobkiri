@@ -5987,6 +5987,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   回帰では、捕捉したAdapterを使って既存の起床から4段のリースと予約を検証した。Launcher IPCと
   保存後のターン実行は試験用の応答に差し替え、初回保存、先着入力、公開前の互換処理、公開後の
   応答喪失、リース終了を確認した。配布Launcherから実WasmへつないだCalendarの通し試験を残す。
+  通常Saved TurnとSide Chatの署名済みHTTP回帰も8件通過した。`8b21d6696` の
+  [macOSグループCI](https://github.com/harupipipipi/tobkiri/actions/runs/44660705127) と
+  [PackVMなしのDMGステージング](https://github.com/harupipipipi/tobkiri/actions/runs/44660729958) を起動した。
 
 ## 050: Side Chatのターン開始と実行権の取得
 
@@ -6538,3 +6541,6 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Wasm容量資料にカタログ準備でのEngineとComponent生成、未確認のメモリ計上範囲、SQL生成物の
   検査が適用されるfeatureを記載した。現行CLIのヘルプ、スキーマ・Rustの引数、相対リンクと
   起動例のシェル構文を照合した。
+- 続く修正では、共有Coreの5-Pack比較を実行済み・差分ありと記録した。WasmのFilesystemは登録済み
+  rootを使う操作とプラットフォーム検証の範囲を記載した。Rust契約は既存のWITファイル構成、Core ABIの
+  版、採択済みのSQLite DATA境界に合わせた。追加した相対リンク9件を確認した。
