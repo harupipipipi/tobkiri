@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-10
+Runtime baseline: 2026-08-10
 
 ## Implemented
 
@@ -13,8 +13,9 @@ Last updated: 2026-08-10
 - Builtin core API routes now also include `core_system_api`, so shared system GET routes load from manifest data instead of handwritten `do_GET` branches.
 - Pack function invocation now runs through explicit execution policy checks before dispatch.
 - Compatibility alias use is locally audited without payload data, and non-internal `defaults.*` callers receive structured migration warnings.
-- All 143 bundled production Packs have the four canonical v4 artifacts and one
-  exact authority classification.
+- Bundled production Packs declare four canonical v4 artifacts and an exact
+  authority classification. See the [migration inventory](defaultspack-v4-cutover-inventory.md)
+  for the source revision, structural counts, and release verification status.
 - The `defaults` Profile resolves an explicit Base, `shell.tauri.default`,
   Application, authority snapshot, ProfileLock, ResolvedPlan, and atomic
   ActivationRecord. The CLI Shell remains a separate Pack and is not conflated
