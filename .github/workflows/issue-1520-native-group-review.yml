@@ -22,10 +22,12 @@ on:
       - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_ipc.rs'
       - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_job.rs'
       - 'tobkiri_launcher/src-tauri/src/native_launch_metadata.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_locked_provider.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat/**'
+      - 'tobkiri_launcher/harness-native/src/original_provider_prepare_selection.rs'
       - 'tobkiri_launcher/harness-native/src/original_saved_turn_settlement/**'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_commands.rs'
@@ -90,6 +92,8 @@ jobs:
         run: cargo test --locked -p tobkiri-harness-native --lib original_local_chat::tests
       - name: Verify atomic saved input in the original SQLite owner
         run: cargo test --locked -p tobkiri-harness-native --lib original_saved_turn_settlement::input_store::tests
+      - name: Verify the signed Calendar Saved Input route
+        run: cargo test --locked -p tobkiri-harness-native --lib calendar_saved_input_requires_a_complete_scheduler_clock_chain
   actual-macos-host:
     runs-on: macos-15
     timeout-minutes: 50
@@ -154,6 +158,7 @@ jobs:
           native_first_setup_launch_argument attestation_binds_role_prefixes_paths_sentinels_and_digest
           turn_settlement_declaration_pins_wit_and_rejects_extra_permissions
           saved_input_wire_separates_read_and_publication saved_input_job_checks_mode_proof_and_funded_body
-          saved_input_environment_requires_current_ordinary_turn_start_proof
+          saved_input_environment_requires_the_current_proof_for_each_caller
+          saved_request_markers_are_allowed_for_defaultspack_only
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
           malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

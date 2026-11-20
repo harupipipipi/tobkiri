@@ -703,10 +703,14 @@ def _saved_input_request(
 @contextmanager
 def _served_saved_input(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+    caller: ipc.SavedInputCaller = "saved-turn",
 ) -> Iterator[Callable[[ipc.NativeSavedInputRequest], Mapping[str, Any]]]:
-    monkeypatch.setenv(ipc._SAVED_INPUT_ENV, "1")
+    marker = (
+        ipc._CALENDAR_SAVED_INPUT_ENV if caller == "calendar" else ipc._SAVED_INPUT_ENV
+    )
+    monkeypatch.setenv(marker, "1")
     with _served(monkeypatch, serve):
-        writer = ipc.capture_launcher_saved_input_writer()
+        writer = ipc.capture_launcher_saved_input_writer(caller)
         assert writer is not None
         yield writer
 
@@ -728,12 +732,40 @@ def test_saved_input_capture_requires_exact_managed_opt_in(
             assert ipc.capture_launcher_saved_input_writer() is None
 
 
+def test_calendar_saved_input_capture_requires_its_own_marker_and_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._CALENDAR_SAVED_INPUT_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_INPUT_ENV, "1")
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        monkeypatch.setattr(ipc.os, "getppid", os.getpid)
+        ordinary = ipc.capture_launcher_saved_input_writer()
+        assert ordinary is not None
+        assert ipc.capture_launcher_saved_input_writer("calendar") is None
+        monkeypatch.delenv(ipc._SAVED_INPUT_ENV)
+        monkeypatch.setenv(ipc._CALENDAR_SAVED_INPUT_ENV, "1")
+        calendar = ipc.capture_launcher_saved_input_writer("calendar")
+        assert calendar is not None
+        assert ipc.capture_launcher_saved_input_writer() is None
+        request = _saved_input_request(_Borrow())
+        with pytest.raises(ipc._ProtocolError, match="caller differs"):
+            calendar(request)
+        with pytest.raises(ipc._ProtocolError, match="caller differs"):
+            ordinary(replace(request, caller="calendar"))
+
+
+@pytest.mark.parametrize("caller", ["saved-turn", "calendar"])
 @pytest.mark.parametrize("mode", ["restore", "bind", "replay"])
 def test_saved_input_sends_original_once_in_funded_canonical_body(
-    monkeypatch: pytest.MonkeyPatch, mode: str,
+    monkeypatch: pytest.MonkeyPatch, mode: str, caller: ipc.SavedInputCaller,
 ) -> None:
     marked = threading.Event()
-    request = _saved_input_request(_Borrow(), marked.set, bind=mode != "restore")
+    request = replace(
+        _saved_input_request(_Borrow(), marked.set, bind=mode != "restore"),
+        caller=caller,
+    )
     projection = None
     if request.accepted is not None:
         projection = {
@@ -758,6 +790,7 @@ def test_saved_input_sends_original_once_in_funded_canonical_body(
         assert start["saved_input"] == {
             "mode": "restore" if mode == "restore" else "bind",
             "input_bytes": len(body),
+            **({"caller": "calendar"} if caller == "calendar" else {}),
         }
         assert set(start) == {
             "identity", "security_epoch", "runtime_instance", "deadline_ns",
@@ -779,7 +812,7 @@ def test_saved_input_sends_original_once_in_funded_canonical_body(
             assert marked.is_set()
         _send(peer, ipc._PLAN, ipc.canonical_json(result))
 
-    with _served_saved_input(monkeypatch, serve) as writer:
+    with _served_saved_input(monkeypatch, serve, caller) as writer:
         assert writer(request) == result
     assert marked.is_set() is (mode == "bind")
 

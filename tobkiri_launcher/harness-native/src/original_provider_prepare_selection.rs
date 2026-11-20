@@ -283,6 +283,32 @@ static TURN_LIFECYCLE: Route = Route {
     execution: PYTHON_HOST,
 };
 
+const SCHEDULER_CLOCK_CALLER: &str = "rumi_scheduler_runtime_pack.scheduler.clock";
+static SCHEDULER_CONTROL: Route = Route {
+    pack: "rumi_scheduler_runtime_pack",
+    function: "rumi_scheduler_runtime_pack.scheduler.control",
+    contract: "tobkiri.action.scheduler.v1",
+    operation: "rumi_scheduler_runtime_pack.scheduler-control",
+    variant: "rumi_scheduler_runtime_pack.scheduler.control.python",
+    execution: PYTHON_HOST,
+};
+static JOB_ACTION_BROKER: Route = Route {
+    pack: "rumi_job_action_broker_pack",
+    function: "rumi_job_action_broker_pack.job-action.broker",
+    contract: "tobkiri.action.job.v1",
+    operation: "rumi_job_action_broker_pack.job-action-broker",
+    variant: "rumi_job_action_broker_pack.job-action.broker.python",
+    execution: PYTHON_HOST,
+};
+static CHAT_SAVED_JOB_ADAPTER: Route = Route {
+    pack: TURN_RUNTIME_PACK,
+    function: "rumi_turn_runtime_pack.chat-saved-job-adapter",
+    contract: "tobkiri.action.job.adapter.v2",
+    operation: "rumi_turn_runtime_pack.chat-saved-job-adapter",
+    variant: "rumi_turn_runtime_pack.chat-saved-job-adapter.python",
+    execution: PYTHON_HOST,
+};
+
 static SAVED_RECONCILE: Route = Route {
     pack: TURN_RUNTIME_PACK,
     function: SAVED_RECONCILE_CALLER,
@@ -1171,6 +1197,41 @@ pub enum SavedTurnStartCaller {
     SavedTurn,
     /// The selected Shell invokes Saved Turn through the Side Chat service.
     SideChat,
+}
+
+/// The signed entry point behind a Saved Input request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SavedInputCaller {
+    /// The selected Shell invokes ordinary Saved Turn.
+    SavedTurn,
+    /// The Scheduler Clock wakes an automatic Calendar dispatch.
+    Calendar,
+}
+
+/// The signed chain from the Scheduler Clock to Turn Lifecycle for automatic Calendar dispatch.
+pub struct OriginalCalendarSavedInputChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalCalendarSavedInputChoice<'a> {
+    /// Select the four exact grants. Verify every pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Ok(
+            select_calendar_saved_input_records(active.records(), budget)?.map(|pins| Self {
+                _active: active,
+                pins,
+            }),
+        )
+    }
+
+    /// The ordered Scheduler, Job Action Broker, saved job adapter, and Turn Lifecycle grants.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
 }
 
 /// The signed chain from the selected Shell through Saved Turn to Turn Lifecycle.
@@ -2577,6 +2638,27 @@ fn select_saved_turn_start_records(
     Ok(records
         .select_route(turn.function_id(), &TURN_LIFECYCLE)?
         .map(|lifecycle| (side_chat, [turn, lifecycle])))
+}
+
+fn select_calendar_saved_input_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<Option<[OriginalRoutePin; 4]>> {
+    let Some(records) = selected_shell_records(active, budget)? else {
+        return Ok(None);
+    };
+    let Some(scheduler) = records.select_route(SCHEDULER_CLOCK_CALLER, &SCHEDULER_CONTROL)? else {
+        return Ok(None);
+    };
+    let Some(broker) = records.select_route(scheduler.function_id(), &JOB_ACTION_BROKER)? else {
+        return Ok(None);
+    };
+    let Some(adapter) = records.select_route(broker.function_id(), &CHAT_SAVED_JOB_ADAPTER)? else {
+        return Ok(None);
+    };
+    Ok(records
+        .select_route(adapter.function_id(), &TURN_LIFECYCLE)?
+        .map(|lifecycle| [scheduler, broker, adapter, lifecycle]))
 }
 
 fn select_saved_turn_settlement_records(
@@ -5259,9 +5341,11 @@ mod tests {
             no_raw_snapshot["plan"]["bindings"][row]["authority_mode"] = json!("interactive_only");
         }
         for (role, via_side_chat) in roles() {
-            assert!(select(&no_raw_snapshot, role, via_side_chat)
-                .unwrap()
-                .is_some());
+            assert!(
+                select(&no_raw_snapshot, role, via_side_chat)
+                    .unwrap()
+                    .is_some()
+            );
         }
     }
 
@@ -5514,6 +5598,67 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let [profile, lock, plan] = parse_records(records, &budget);
         select_saved_turn_start_records((&profile, &lock, &plan), &budget, caller)
+    }
+
+    #[test]
+    fn calendar_saved_input_requires_a_complete_scheduler_clock_chain() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_calendar_saved_input_records((&profile, &lock, &plan), &budget)
+        };
+        let mut fixture = records();
+        assert!(select(&fixture).unwrap().is_none());
+        let first_row = fixture["plan"]["bindings"].as_array().unwrap().len();
+        let chain = [
+            (SCHEDULER_CLOCK_CALLER, &SCHEDULER_CONTROL),
+            (SCHEDULER_CONTROL.function, &JOB_ACTION_BROKER),
+            (JOB_ACTION_BROKER.function, &CHAT_SAVED_JOB_ADAPTER),
+            (CHAT_SAVED_JOB_ADAPTER.function, &TURN_LIFECYCLE),
+        ];
+        for (caller, route) in chain {
+            add_fixture_grant(&mut fixture, caller, route, &budget);
+        }
+        for (pin, (caller, route)) in select(&fixture).unwrap().unwrap().iter().zip(chain) {
+            assert_eq!(pin.caller_function_id(), caller);
+            assert_eq!(pin.function_id(), route.function);
+            assert_eq!(pin.operation_id(), route.operation);
+        }
+        for row in first_row..(first_row + chain.len()) {
+            let mut interactive = fixture.clone();
+            set_grant_interactive_only(&mut interactive, row);
+            assert!(select(&interactive).unwrap().is_none(), "grant {row}");
+
+            let mut missing = fixture.clone();
+            missing["profile"]["requested_edges"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(matches!(select(&missing), Err(Inconsistent(_))));
+            missing["plan"]["bindings"]
+                .as_array_mut()
+                .unwrap()
+                .remove(row);
+            assert!(select(&missing).unwrap().is_none(), "grant {row}");
+        }
+
+        let mut manual = fixture;
+        manual["profile"]["requested_edges"]
+            .as_array_mut()
+            .unwrap()
+            .remove(first_row);
+        manual["plan"]["bindings"]
+            .as_array_mut()
+            .unwrap()
+            .remove(first_row);
+        add_fixture_grant(
+            &mut manual,
+            "rumi_schedule_store_pack.calendar.manage",
+            &SCHEDULER_CONTROL,
+            &budget,
+        );
+        assert!(select(&manual).unwrap().is_none());
+        assert!(select_saved_turn_start(&manual).unwrap().is_some());
     }
 
     #[test]

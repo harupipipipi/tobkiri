@@ -62,9 +62,10 @@ pub use original_authority::{
 pub use original_provider_prepare_selection::{
     ApplicationPresentationRole, CONVERSATION_COMPLETE_APPLICATION_ID, ConversationAppendCaller,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
-    OriginalConversationCompleteHealthChoice, OriginalConversationConfirmationChoice,
-    OriginalConversationReadSelection, OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
+    OriginalCalendarSavedInputChoice, OriginalConversationAppendChoice,
+    OriginalConversationCompleteChoice, OriginalConversationCompleteHealthChoice,
+    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
+    OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
     OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
     OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
@@ -82,7 +83,8 @@ pub use original_provider_prepare_selection::{
     OriginalSideChatSavedReceiptChoice, OriginalStreamResultSelection, OriginalToolIntentsChoice,
     OriginalUsageCostChoice, OriginalWorkflowHealthCaller,
     OriginalWorkflowProviderSnapshotSelection, OriginalWorkflowSnapshotCaller,
-    OriginalWorkflowSnapshotEntry, SavedTurnStartCaller, select_original_saved_turn_settlement,
+    OriginalWorkflowSnapshotEntry, SavedInputCaller, SavedTurnStartCaller,
+    select_original_saved_turn_settlement,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]

@@ -355,6 +355,18 @@ class _CapturedPlanEdge:
 
 
 @dataclass(frozen=True)
+class _CalendarSavedInputExchange:
+    """One child invocation's input, retained only inside Host dispatch."""
+
+    parent: RequestEnvelope
+    source: Mapping[str, Any]
+    accepted: Mapping[str, Any] | None
+    guard: Callable[[], None]
+    claim: Callable[[], bool]
+    publication_possible: threading.Event
+
+
+@dataclass(frozen=True)
 class _SavedLocalChatRoute:
     role: SavedLocalChatRole
     adapter: _CapturedPlanEdge
@@ -2075,6 +2087,9 @@ def capture_production_dispatch(
         "side-chat": capture_launcher_side_chat_conversation_append_writer(),
     }
     native_saved_input_writer = capture_launcher_saved_input_writer()
+    native_calendar_saved_input_writer = capture_launcher_saved_input_writer(
+        caller="calendar",
+    )
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
     native_presentation = capture_launcher_application_presentation()
@@ -3013,6 +3028,39 @@ def capture_production_dispatch(
         lifecycle = select_turn_lifecycle_edge(side_chat_turn_edge)
         if lifecycle is not None:
             turn_start_routes["side-chat"] = (lifecycle, side_chat_turn_edge, side_chat_edge)
+
+    def select_calendar_saved_input_route() -> tuple[_CapturedPlanEdge, ...]:
+        scheduler = "rumi_scheduler_runtime_pack"
+        job_broker = "rumi_job_action_broker_pack"
+        clock = scheduler + ".scheduler.clock"
+        route: list[_CapturedPlanEdge] = []
+        caller_ids = {
+            edge.caller.principal_id for edge in captured_edges
+            if edge.caller.function_id == clock
+            and pack_by_principal.get(edge.caller.principal_id) == scheduler
+        }
+        adapter = turn_pack + ".chat-saved-job-adapter"
+        for pack_id, contract, operation, function, version in (
+            (scheduler, "tobkiri.action.scheduler.v1", scheduler + ".scheduler-control",
+             scheduler + ".scheduler.control", "1.0.0"),
+            (job_broker, "tobkiri.action.job.v1", job_broker + ".job-action-broker",
+             job_broker + ".job-action.broker", "1.0.0"),
+            (turn_pack, "tobkiri.action.job.adapter.v2", adapter, adapter, "2.0.0"),
+            (turn_pack, "tobkiri.action.turn.lifecycle.v1", turn_pack + ".turn-lifecycle",
+             turn_pack + ".turn-runtime.lifecycle", "1.0.0"),
+        ):
+            edge = select_original_chat_edge(
+                caller_ids, pack_id, contract, operation, function,
+                EffectClass.PRIVILEGED,
+            )
+            if (
+                edge is None
+                or edge.resolved_binding.operation.contract_version != version
+            ):
+                return ()
+            route.append(edge)
+            caller_ids = {edge.target.principal_id}
+        return tuple(reversed(route))
 
     native_saved_execution: NativeWasmBinding | None = None
     native_saved_original_provider: str | None = None
@@ -4011,6 +4059,21 @@ def capture_production_dispatch(
         )
         for binding in plan["bindings"]
     }
+    calendar_saved_input_route = (
+        select_calendar_saved_input_route()
+        if native_calendar_saved_input_writer is not None else ()
+    )
+    saved_input_lifecycle_edges = tuple(
+        route[0] for route in (saved_input_route, calendar_saved_input_route) if route
+    )
+    calendar_saved_input_keys = frozenset(
+        (*edge.binding_key[1:], edge.target.principal_id)
+        for edge in calendar_saved_input_route
+    )
+    calendar_saved_input_exchange: contextvars.ContextVar[
+        _CalendarSavedInputExchange | None
+    ] = contextvars.ContextVar("calendar_saved_input_exchange", default=None)
+
     caller_session_bindings: dict[str, str] = {}
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
     presentation_owner_refcounts: dict[str, int] = {}
@@ -4410,6 +4473,96 @@ def capture_production_dispatch(
                     raise PermissionError("saved tool retained parent scope changed")
                 scope.assert_current()
                 original = scope.parent
+
+        def _calendar_saved_input_guard(self) -> Callable[[], None] | None:
+            """Borrow the exact independently enrolled Calendar adapter, if present."""
+            if not calendar_saved_input_route:
+                return None
+            _lifecycle, adapter, broker, scheduler = calendar_saved_input_route
+            envelope = self._envelope
+            ancestors = match_captured_ancestors(
+                self.parent_invocation, (broker, scheduler),
+            )
+            if (
+                ancestors is None
+                or not matches_captured_edge(envelope, adapter)
+                or envelope.payload.get("operation") != "dispatch"
+            ):
+                return None
+            broker_envelope, scheduler_envelope = ancestors
+            owner = (
+                self.presentation_owner_principal_id, self.presentation_owner_session_id,
+            )
+            wake_payload = {
+                key: value for key, value in scheduler_envelope.payload.items()
+                if key != "_session_id"
+            }
+            if (
+                wake_payload != {"operation": "tick", "limit": 20}
+                or presentation_owner_for(scheduler_envelope) != owner
+            ):
+                return None
+            proof = nested_cancellation_proof_for(envelope, *owner)
+            witness = getattr(proof, "_calendar_execution_witness", None)
+            if not callable(witness) or getattr(proof, "_envelope", None) is not envelope:
+                return None
+            chain = (envelope, broker_envelope, scheduler_envelope)
+            assert_calendar_saved_input_chain(chain, (adapter, broker, scheduler))
+
+            def guard() -> None:
+                self.assert_current()
+                require_retained_ancestors(envelope, ancestors)
+                if nested_cancellation_proof_for(envelope, *owner) is not proof:
+                    raise AuthorityDenied("native Calendar branch proof changed")
+                witness()
+
+            guard()
+            return guard
+
+        def _exchange_calendar_saved_input(
+            self,
+            client: GlobalContractClient,
+            source: Mapping[str, Any],
+            accepted: Mapping[str, Any] | None,
+            guard: Callable[[], None],
+        ) -> Mapping[str, Any]:
+            guard()
+            if (
+                native_provider_runtime is None
+                or calendar_saved_input_exchange.get() is not None
+            ):
+                raise AuthorityDenied("native Calendar input exchange is unavailable")
+            lock = threading.Lock()
+            exchange = _CalendarSavedInputExchange(
+                parent=self._envelope,
+                source=source,
+                accepted=accepted,
+                guard=guard,
+                claim=lambda: lock.acquire(blocking=False),
+                publication_possible=threading.Event(),
+            )
+            token = calendar_saved_input_exchange.set(exchange)
+            try:
+                arguments: dict[str, Any] = {
+                    "profile_id": self._envelope.context.profile_id,
+                }
+                if accepted is None:
+                    arguments["operation"] = "recover_saved_input"
+                else:
+                    arguments["operation"] = "bind_saved_input"
+                    arguments["request"] = accepted["request"]
+                lifecycle = calendar_saved_input_route[0]
+                result = client.invoke(*lifecycle.binding_key[1:], arguments)
+                guard()
+                return result
+            except Exception:
+                if exchange.publication_possible.is_set():
+                    raise HostPublicationUnconfirmed(
+                        "Calendar input capture is unconfirmed",
+                    ) from None
+                raise
+            finally:
+                calendar_saved_input_exchange.reset(token)
 
         @property
         def cancellation(self) -> OwnedCancellationBinding:
@@ -6396,6 +6549,57 @@ def capture_production_dispatch(
 
         return guard
 
+    def assert_calendar_saved_input_chain(
+        chain: tuple[RequestEnvelope, ...], edges: tuple[_CapturedPlanEdge, ...],
+    ) -> None:
+        reservations = {item.resource_reservation_id for item in chain}
+        if (
+            None in reservations
+            or len(reservations) != len(chain)
+            or len({item.lease.token for item in chain}) != len(chain)
+            or any(
+                not matches_captured_edge(item, edge)
+                or item.contract_version != edge.resolved_binding.operation.contract_version
+                or item.context.profile_id != profile_id
+                or item.context.plan_digest != plan["plan_digest"]
+                or item.context.activation_id != active.activation["activation_id"]
+                or item.context.security_epoch != active.activation["security_epoch"]
+                for item, edge in zip(chain, edges, strict=True)
+            )
+            or any(
+                child.deadline_monotonic > parent.deadline_monotonic
+                for child, parent in zip(chain[:-1], chain[1:], strict=True)
+            )
+        ):
+            raise AuthorityDenied("native Calendar input lineage changed")
+
+    def calendar_saved_input_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+        exchange: _CalendarSavedInputExchange,
+    ) -> tuple[RequestEnvelope, ...] | None:
+        lifecycle = calendar_saved_input_route[0]
+        accepted = exchange.accepted
+        expected: dict[str, Any] = {
+            "operation": (
+                "recover_saved_input" if accepted is None else "bind_saved_input"
+            ),
+            "profile_id": exchange.parent.context.profile_id,
+        }
+        if accepted is not None:
+            expected["request"] = accepted["request"]
+        if (
+            parent is None
+            or parent.envelope is not exchange.parent
+            or context.caller_principal.value != lifecycle.caller.principal_id
+            or context.profile_id != expected["profile_id"]
+            or canonical_digest({k: v for k, v in payload.items() if k != "_session_id"})
+            != canonical_digest(expected)
+        ):
+            return None
+        return match_captured_ancestors(parent, calendar_saved_input_route[1:])
+
     def saved_input_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -6422,9 +6626,15 @@ def capture_production_dispatch(
     def is_native_saved_input_route(
         context: RequestContext, payload: Mapping[str, Any],
     ) -> bool:
-        return native_provider_runtime is not None and saved_input_lineage(
-            context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
-        ) is not None
+        if native_provider_runtime is None:
+            return False
+        parent = parent_invocation_scopes.lookup(context.caller_session_id)
+        exchange = calendar_saved_input_exchange.get()
+        if exchange is not None:
+            return calendar_saved_input_lineage(
+                context, payload, parent, exchange,
+            ) is not None
+        return saved_input_lineage(context, payload, parent) is not None
 
     def wrap_native_ordinary_saved_turn(
         contribution: HostProviderContributionV4,
@@ -6522,10 +6732,165 @@ def capture_production_dispatch(
 
         return replace(contribution, invoke=invoke)
 
+    def wrap_native_calendar_saved_job(
+        contribution: HostProviderContributionV4,
+        capture: HostProviderCaptureContextV4,
+    ) -> HostProviderContributionV4:
+        """Adapt only the verified scheduled job's Saved Input owner boundary."""
+        from core_runtime.captured_provider_modules_v4 import CapturedProviderModules
+
+        # Use the already verified contribution's materialized Pack helpers.
+        implementation = getattr(contribution.invoke, "__globals__", {})
+        loader = implementation.get("__loader__")
+        module_name = implementation.get("__name__")
+        if (
+            type(loader) is not CapturedProviderModules
+            or module_name != f"{loader.namespace}.runtime.scheduled_job"
+        ):
+            raise AuthorityDenied("verified Calendar job implementation is unavailable")
+        root = capture.user_data_root
+        if root is None:
+            raise AuthorityDenied("native Calendar input owner is unavailable")
+        turn_store = implementation["DurableTurnRuntime"]
+        source_ledger = implementation["ScheduledSourceLedger"]
+        prepare_destination = implementation["prepare_calendar_destination"]
+        derive_turn_id = implementation["_calendar_turn_id"]
+        saved_execution_client = implementation["_saved_execution_client"]
+        execute_task = implementation["execute_scheduled_task"]
+        occurrence_id = implementation["_ID"]
+        action_id = implementation["ACTION_ID"]
+        consumed_contracts = implementation["CONSUMED_CONTRACTS"]
+        if (
+            source_ledger.__module__ != module_name
+            or turn_store.__module__ != f"{loader.namespace}.runtime.durable"
+            or any(
+                getattr(helper, "__globals__", None) is not implementation
+                for helper in (
+                    prepare_destination, derive_turn_id, saved_execution_client, execute_task,
+                )
+            )
+        ):
+            raise AuthorityDenied("verified Calendar job helper identity changed")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native Calendar input context is unavailable")
+            guard = invocation._calendar_saved_input_guard()
+            if guard is None:
+                return contribution.invoke(operation_id, payload, invocation)
+            envelope = invocation.envelope
+            values = invocation._scope.public_payload()
+            if (
+                operation_id != envelope.operation_id
+                or payload is not envelope.payload
+                or set(values) != {
+                    "profile_id", "operation", "action_id", "payload",
+                    "idempotency_key", "schedule_id", "lease_id",
+                }
+                or values["profile_id"] != capture.profile_id
+                or values["action_id"] != action_id
+                or not isinstance(values["payload"], Mapping)
+                or any(
+                    not isinstance(values[field], str)
+                    or occurrence_id.fullmatch(values[field]) is None
+                    for field in ("idempotency_key", "schedule_id", "lease_id")
+                )
+            ):
+                raise AuthorityDenied("native Calendar occurrence changed")
+
+            key, schedule_id = values["idempotency_key"], values["schedule_id"]
+            turn_id = derive_turn_id(capture.profile_id, schedule_id, key)
+            intent = dict(values["payload"])
+            guard()
+            ledger = source_ledger(Path(root), capture.profile_id)
+            known = ledger.admit(
+                key, {field: value for field, value in values.items() if field != "operation"},
+            )
+            if known is not None and known.get("status") in {
+                "completed", "failed", "cancelled",
+            }:
+                return known
+            client = invocation.contract_client(
+                allowed_contract_ids=consumed_contracts,
+                consumer_pack_id=turn_pack,
+                include_credentials=False,
+            )
+            saved_client = saved_execution_client(client, capture.profile_id)
+
+            def assert_pinned_source(source: Mapping[str, Any]) -> None:
+                pinned = ledger.recover_source(key, turn_id)
+                if pinned is None or canonical_digest(pinned) != canonical_digest(source):
+                    raise AuthorityDenied("native Calendar occurrence source changed")
+
+            class CalendarInputOwner(turn_store):
+                def saved_input(
+                    self, source: Mapping[str, Any],
+                ) -> dict[str, Any] | None:
+                    if source["request"]["turn_id"] != turn_id:
+                        return super().saved_input(source)
+                    response = invocation._exchange_calendar_saved_input(
+                        saved_client, source, None, guard,
+                    )
+                    if response == {"legacy": True}:
+                        return super().saved_input(source)
+                    restored = response["accepted"]
+                    if restored is not None:
+                        assert_pinned_source(source)
+                    return restored
+
+                def bind_saved_input(
+                    self, source: Mapping[str, Any], accepted: Mapping[str, Any],
+                ) -> dict[str, Any]:
+                    if source["request"]["turn_id"] != turn_id:
+                        return super().bind_saved_input(source, accepted)
+                    assert_pinned_source(source)
+                    response = invocation._exchange_calendar_saved_input(
+                        saved_client, source, accepted, guard,
+                    )
+                    if response == {"legacy": True}:
+                        return super().bind_saved_input(source, accepted)
+                    return response["accepted"]
+
+            store = CalendarInputOwner(capture.profile_id, user_data_root=root)
+            try:
+                task = prepare_destination(
+                    intent, key, ledger, client, capture.profile_id, guard, store,
+                    schedule_id,
+                )
+                result = execute_task(
+                    task, schedule_id, key,
+                    client=saved_client,
+                    store=store,
+                    guard=guard,
+                    recover_source=lambda turn: ledger.recover_source(key, turn),
+                    bind_source=lambda source: ledger.bind_source(
+                        key, store.bind_calendar_preparation(
+                            occurrence_key=key, source=intent, payload=source,
+                        ),
+                    ),
+                    track_execution=invocation.cancellation.track,
+                )
+            except HostPublicationUnconfirmed:
+                # Keep the already bound occurrence for reconciliation.
+                raise
+            except BaseException:
+                store.release_calendar_preparation(
+                    turn_id=turn_id, occurrence_key=key, source=intent,
+                )
+                raise
+            guard()
+            if not isinstance(result, Mapping):
+                raise RuntimeError("scheduled saved result is unavailable")
+            return ledger.finish(key, result)
+
+        return replace(contribution, invoke=invoke)
+
     def wrap_native_saved_input(
         contribution: HostProviderContributionV4,
-        edge: _CapturedPlanEdge,
-        writer: Callable[[NativeSavedInputRequest], Mapping[str, Any]],
     ) -> HostProviderContributionV4:
         """Capture and restore input through the original nested Lifecycle edge."""
         def invoke(
@@ -6540,17 +6905,42 @@ def capture_production_dispatch(
             envelope = invocation.envelope
             parent = invocation.parent_invocation
             runtime = native_provider_runtime
-            ancestors = saved_input_lineage(envelope.context, payload, parent)
-            if ancestors is None or parent is None or runtime is None:
+            exchange = calendar_saved_input_exchange.get()
+            if exchange is not None:
+                edge = calendar_saved_input_route[0]
+                writer = native_calendar_saved_input_writer
+                ancestors = calendar_saved_input_lineage(
+                    envelope.context, payload, parent, exchange,
+                )
+                if ancestors is None or not exchange.claim():
+                    raise AuthorityDenied("native Calendar input exchange changed")
+                assert_calendar_saved_input_chain(
+                    (envelope, *ancestors), calendar_saved_input_route,
+                )
+            elif saved_input_route is not None:
+                edge = saved_input_route[0]
+                writer = native_saved_input_writer
+                ancestors = saved_input_lineage(envelope.context, payload, parent)
+            else:
                 raise AuthorityDenied("native saved input lineage is unavailable")
-            guard = saved_owner_lifecycle_guard(
+            if ancestors is None or parent is None or runtime is None or writer is None:
+                raise AuthorityDenied("native saved input lineage is unavailable")
+            lifecycle_guard = saved_owner_lifecycle_guard(
                 invocation, operation_id, payload, edge, ancestors, runtime,
                 minimum_memory=SAVED_INPUT_MINIMUM_MEMORY,
             )
+
+            def guard() -> None:
+                lifecycle_guard()
+                if exchange is not None:
+                    exchange.guard()
+
             if saved_owner_publication_possible(envelope):
                 raise HostPublicationUnconfirmed("saved input capture is unconfirmed")
             guard()
-            source = validate_saved_conversation_input(parent.public_payload())
+            source = validate_saved_conversation_input(
+                exchange.source if exchange is not None else parent.public_payload(),
+            )
             accepted = (
                 validate_saved_conversation_input({"request": payload["request"]})
                 if payload["operation"] == "bind_saved_input" else None
@@ -6560,6 +6950,9 @@ def capture_production_dispatch(
             def mark_publication() -> None:
                 guard()
                 record_saved_owner_publication(envelope)
+                if exchange is not None:
+                    record_saved_owner_publication(exchange.parent)
+                    exchange.publication_possible.set()
 
             try:
                 result = writer(NativeSavedInputRequest(
@@ -6572,6 +6965,7 @@ def capture_production_dispatch(
                     mark_publication_possible=(
                         mark_publication if accepted is not None else None
                     ),
+                    caller="calendar" if exchange is not None else "saved-turn",
                 ))
                 guard()
                 if set(result) != {"accepted"}:
@@ -6583,6 +6977,11 @@ def capture_production_dispatch(
                 else:
                     restored = validate_saved_conversation_input(restored)
                     assert_saved_input_projection(source, restored)
+                    if (
+                        exchange is not None and exchange.publication_possible.is_set()
+                        and canonical_digest(restored) != canonical_digest(accepted)
+                    ):
+                        raise ValueError("native Calendar input publication changed")
                 return {"accepted": restored}
             except Exception as error:
                 if saved_owner_publication_possible(envelope):
@@ -8582,7 +8981,8 @@ def capture_production_dispatch(
     native_saved_turn_read_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
-    native_saved_input_key: tuple[str, str, str] | None = None
+    native_saved_input_bindings: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
+    native_calendar_saved_job_key: tuple[str, str, str] | None = None
     native_saved_turn_start_key: tuple[str, str, str] | None = None
     turn_start_edge = next((route[0] for route in turn_start_routes.values()), None)
     native_saved_append_binding: ResolvedOperationBinding | None = None
@@ -8733,25 +9133,39 @@ def capture_production_dispatch(
                 if item.key == native_saved_turn_start_key else item
                 for item in contributions
             )
-        if saved_input_route is not None and native_saved_input_writer is not None:
-            input_edge, input_turn = saved_input_route
+        if saved_input_route is not None:
+            lifecycle, input_turn = saved_input_route
             if input_turn.resolved_binding in captured_bindings:
                 input_turn_key = (*input_turn.binding_key[1:], input_turn.target.principal_id)
                 contributions = tuple(
                     wrap_native_ordinary_saved_turn(
-                        item, provider_capture, input_edge, input_turn,
+                        item, provider_capture, lifecycle, input_turn,
                     ) if item.key == input_turn_key else item
                     for item in contributions
                 )
-            if input_edge.resolved_binding in captured_bindings:
-                native_saved_input_key = (
-                    *input_edge.binding_key[1:], input_edge.target.principal_id,
+        if calendar_saved_input_route:
+            calendar_job = calendar_saved_input_route[1]
+            if calendar_job.resolved_binding in captured_bindings:
+                native_calendar_saved_job_key = (
+                    *calendar_job.binding_key[1:], calendar_job.target.principal_id,
                 )
                 contributions = tuple(
-                    wrap_native_saved_input(item, input_edge, native_saved_input_writer)
-                    if item.key == native_saved_input_key else item
+                    wrap_native_calendar_saved_job(item, provider_capture)
+                    if item.key == native_calendar_saved_job_key else item
                     for item in contributions
                 )
+        input_bindings = {
+            (*lifecycle.binding_key[1:], lifecycle.target.principal_id):
+                lifecycle.resolved_binding
+            for lifecycle in saved_input_lifecycle_edges
+            if lifecycle.resolved_binding in captured_bindings
+        }
+        if input_bindings:
+            native_saved_input_bindings.update(input_bindings)
+            contributions = tuple(
+                wrap_native_saved_input(item) if item.key in input_bindings else item
+                for item in contributions
+            )
         if native_model_resolve_reader is not None:
             resolve_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
@@ -8943,8 +9357,12 @@ def capture_production_dispatch(
                 ),
                 native_turn_start_publication_possible=(
                     saved_owner_publication_possible
-                    if any(item.key in {native_saved_turn_start_key, native_saved_input_key}
-                           for item in contributions)
+                    if any(
+                        item.key in {
+                            native_saved_turn_start_key, native_calendar_saved_job_key,
+                        } or item.key in native_saved_input_bindings
+                        for item in contributions
+                    )
                     else None
                 ),
                 native_conversation_confirmation_publication_possible=(
@@ -8967,8 +9385,9 @@ def capture_production_dispatch(
                         native_model_save_key,
                         native_saved_append_key,
                         native_saved_turn_start_key,
-                        native_saved_input_key,
-                    } or item.key in native_conversation_get_bindings
+                    } or item.key in native_saved_input_bindings
+                    or item.key in calendar_saved_input_keys
+                    or item.key in native_conversation_get_bindings
                     or item.key in native_provider_snapshot_bindings
                     or item.key in native_saved_receipt_bindings
                     or item.key in native_model_resolve_bindings
@@ -9135,12 +9554,10 @@ def capture_production_dispatch(
         (binding, SAVED_TURN_READ_MINIMUM_MEMORY, is_native_saved_turn_read_route)
         for binding in native_saved_turn_read_bindings.values()
     )
-    if native_saved_input_key is not None and saved_input_route is not None:
-        native_admission_rules.append((
-            saved_input_route[0].resolved_binding,
-            SAVED_INPUT_MINIMUM_MEMORY,
-            is_native_saved_input_route,
-        ))
+    native_admission_rules.extend(
+        (binding, SAVED_INPUT_MINIMUM_MEMORY, is_native_saved_input_route)
+        for binding in native_saved_input_bindings.values()
+    )
     if native_saved_turn_start_key is not None and turn_start_edge is not None:
         native_admission_rules.append((
             turn_start_edge.resolved_binding,
@@ -10032,7 +10449,7 @@ def capture_production_dispatch(
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
-                or native_saved_input_key is not None
+                or native_saved_input_bindings
                 or native_saved_append_key is not None or native_saved_execution is not None
                 or saved_local_chat_routes or native_provider_snapshot_bindings
                 or native_presentation_bindings

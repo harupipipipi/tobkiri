@@ -44,6 +44,7 @@ _SIDE_CHAT_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_INPUT_ENV = "TOBKIRI_NATIVE_SAVED_INPUT"
+_CALENDAR_SAVED_INPUT_ENV = "TOBKIRI_NATIVE_CALENDAR_SAVED_INPUT"
 _SIDE_CHAT_START_ENV = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
@@ -457,9 +458,12 @@ class NativeSavedTurnStartRequest:
     caller: SavedTurnStartCaller = "saved-turn"
 
 
+SavedInputCaller = Literal["saved-turn", "calendar"]
+
+
 @dataclass(frozen=True)
 class NativeSavedInputRequest:
-    """Borrow the signed Saved Turn invocation for input restoration or binding."""
+    """Borrow the signed Turn Lifecycle invocation for input restoration or binding."""
 
     context: RequestContext
     runtime_instance: str
@@ -468,6 +472,7 @@ class NativeSavedInputRequest:
     source: Mapping[str, Any]
     accepted: Mapping[str, Any] | None = None
     mark_publication_possible: Callable[[], None] | None = None
+    caller: SavedInputCaller = "saved-turn"
 
 
 @dataclass(frozen=True)
@@ -1030,16 +1035,28 @@ def capture_launcher_saved_turn_reader() -> (
     return read
 
 
-def capture_launcher_saved_input_writer() -> (
+def capture_launcher_saved_input_writer(caller: SavedInputCaller = "saved-turn") -> (
     Callable[[NativeSavedInputRequest], Mapping[str, Any]] | None
 ):
-    """Capture the managed Launcher's opted-in endpoint for Saved Turn input."""
-    if os.environ.get(_SAVED_INPUT_ENV) != "1":
+    """Capture the managed Launcher's Saved Input endpoint for the signed caller."""
+    if caller == "saved-turn":
+        marker = _SAVED_INPUT_ENV
+    elif caller == "calendar":
+        marker = _CALENDAR_SAVED_INPUT_ENV
+    else:
+        raise _ProtocolError("native Saved Turn input caller is invalid")
+    if os.environ.get(marker) != "1":
         return None
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, operation="saved_input")
+
+    def write(borrow: NativeSavedInputRequest) -> Mapping[str, Any]:
+        if borrow.caller != caller:
+            raise _ProtocolError("native Saved Turn input caller differs from capture")
+        return _invoke(launcher, borrow, operation="saved_input")
+
+    return write
 
 
 def capture_launcher_saved_orchestration_step() -> (
@@ -1403,10 +1420,14 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedInputRequest):
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Turn input size is invalid")
+        if type(borrow.caller) is not str or borrow.caller not in ("saved-turn", "calendar"):
+            raise _ProtocolError("native Saved Turn input caller is invalid")
         frame["saved_input"] = {
             "mode": "restore" if borrow.accepted is None else "bind",
             "input_bytes": body_input_bytes,
         }
+        if borrow.caller == "calendar":
+            frame["saved_input"]["caller"] = borrow.caller
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")

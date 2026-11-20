@@ -16,7 +16,8 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
+    OriginalCalendarSavedInputChoice, OriginalConversationAppendChoice,
+    OriginalConversationCompleteChoice, OriginalFailoverChoice,
     OriginalGatewayProviderHealthChoice, OriginalGatewayProviderSnapshotChoice,
     OriginalModelAccessProviderSnapshotSelection, OriginalModelSaveSelection,
     OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
@@ -65,6 +66,14 @@ pub(crate) struct LockedTurnStartBundle<'pin> {
     bundle_lock_digest: Digest,
     side_chat: Option<LockedRegistryRoute<'pin>>,
     routes: [LockedRegistryRoute<'pin>; 2],
+    budget: Arc<dyn AllocationBudget>,
+}
+
+/// Signed Bundle documents for the automatic Calendar dispatch chain.
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+pub(crate) struct LockedCalendarSavedInputBundle<'pin> {
+    source: VerifiedOrdinarySavedBundle,
+    routes: [LockedRegistryRoute<'pin>; 4],
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -789,6 +798,27 @@ impl NativeApplicationSources {
         })
     }
 
+    /// Capture the signed Bundle documents for the automatic Calendar caller.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn calendar_saved_input_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalCalendarSavedInputChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedCalendarSavedInputBundle<'pin>> {
+        let [scheduler, broker, adapter, lifecycle] = selection.pins();
+        let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
+        Ok(LockedCalendarSavedInputBundle {
+            source: VerifiedOrdinarySavedBundle::new(self)?,
+            routes: [
+                from_lock(scheduler)?,
+                from_lock(broker)?,
+                from_lock(adapter)?,
+                from_lock(lifecycle)?,
+            ],
+            budget: Arc::clone(budget),
+        })
+    }
+
     /// Capture the signed Bundle documents for each settlement caller's chain.
     pub(crate) fn turn_settlement_bundle<'pin>(
         &self,
@@ -1178,6 +1208,22 @@ impl LockedTurnStartBundle<'_> {
             &self.bundle_lock_digest,
             self.side_chat.as_ref(),
             turn,
+        )
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+impl LockedCalendarSavedInputBundle<'_> {
+    /// Verify all four privileged operations against the accepted Bundle.
+    pub(crate) fn verify(
+        self,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<VerifiedOrdinarySavedBundle> {
+        self.source.verify_routes(
+            &[Some(self.routes)],
+            &self.budget,
+            checkpoint,
+            ["privileged"; 4],
         )
     }
 }

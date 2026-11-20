@@ -4006,7 +4006,10 @@ def test_native_saved_input_borrows_ordinary_signed_lifecycle_and_recovers_publi
     monkeypatch.setattr(DurableTurnRuntime, "saved_input", recover_legacy)
     monkeypatch.setattr(DurableTurnRuntime, "bind_saved_input", bind_legacy)
     _publish_native_runtime_fixture(monkeypatch)
-    monkeypatch.setattr(ipc, "capture_launcher_saved_input_writer", lambda: write)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_saved_input_writer",
+        lambda caller="saved-turn": write if caller == "saved-turn" else None,
+    )
 
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
@@ -4766,7 +4769,8 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     )
     if use_native_start:
         monkeypatch.setattr(
-            ipc, "capture_launcher_saved_input_writer", lambda: unexpected_saved_input,
+            ipc, "capture_launcher_saved_input_writer",
+            lambda caller="saved-turn": unexpected_saved_input if caller == "saved-turn" else None,
         )
     monkeypatch.setattr(ipc, "capture_launcher_saved_turn_start_writer", lambda: ordinary_start)
     monkeypatch.setattr(

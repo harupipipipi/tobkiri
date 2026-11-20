@@ -60,11 +60,11 @@ use super::{
         reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
         reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
         reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
-        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
-        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
-        GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
-        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        ConversationAppendCaller, ConversationReadCaller, SavedInputCaller, SavedTurnStartCaller,
+        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
+        FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
+        GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
+        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
         STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
@@ -291,6 +291,7 @@ pub(crate) enum NativeRegistryRequest {
         source_digest: String,
     },
     SavedInput {
+        caller: SavedInputCaller,
         mode: SavedInputMode,
         input_bytes: usize,
         receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
@@ -356,7 +357,7 @@ impl NativeRegistryRequest {
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnStart { caller, .. } => proof.permits_turn_start_for(*caller),
-            Self::SavedInput { .. } => proof.permits_saved_input(),
+            Self::SavedInput { caller, .. } => proof.permits_saved_input_for(*caller),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
             Self::ApplicationPresentation { role, .. } => {
@@ -1530,6 +1531,7 @@ async fn run(
                     });
                 }
                 NativeRegistryRequest::SavedInput {
+                    caller,
                     mode,
                     input_bytes,
                     receive_input,
@@ -1549,6 +1551,7 @@ async fn run(
                     let pack = reacquire_saved_input_pack(
                         &inspection,
                         listener.verified_source(),
+                        caller,
                         checkpoint,
                     )?;
                     revalidate()?;
@@ -3245,24 +3248,37 @@ mod tests {
             SavedTurnStartCaller::SavedTurn,
         );
         let side = VerifiedRegistryLaunch::test_saved_input_proof_for(
-            identity,
+            identity.clone(),
             "catalog",
             SavedTurnStartCaller::SideChat,
         );
+        let calendar_proof =
+            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity, "catalog");
         for mode in [SavedInputMode::Restore, SavedInputMode::Bind] {
             let job = NativeRegistryRequest::SavedInput {
+                caller: SavedInputCaller::SavedTurn,
                 mode,
                 input_bytes: SAVED_INPUT_FRAME_LIMIT,
                 receive_input: Box::new(|_| panic!("admission cannot read the body")),
             };
             assert!(job.has_launch_proof(&ordinary));
             assert!(!job.has_launch_proof(&side));
+            assert!(!job.has_launch_proof(&calendar_proof));
             assert!(job.uses_funded_input());
             assert_eq!(
                 job.requires_publication_permit(),
                 mode == SavedInputMode::Bind
             );
             assert_eq!(job.input_capacity().unwrap(), SAVED_INPUT_FRAME_LIMIT);
+            let calendar = NativeRegistryRequest::SavedInput {
+                caller: SavedInputCaller::Calendar,
+                mode,
+                input_bytes: SAVED_INPUT_FRAME_LIMIT,
+                receive_input: Box::new(|_| panic!("admission cannot read the body")),
+            };
+            assert!(!calendar.has_launch_proof(&ordinary));
+            assert!(!calendar.has_launch_proof(&side));
+            assert!(calendar.has_launch_proof(&calendar_proof));
         }
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let source = r#"{"request":{"turn_id":"turn"}}"#;

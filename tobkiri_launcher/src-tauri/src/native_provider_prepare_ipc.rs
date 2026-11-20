@@ -34,8 +34,8 @@ use crate::{
         ModelAccessProjectionPhase, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
         OriginalModelResolveRole, OriginalSavedReceiptRole, PendingProviderPrepare,
         ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
-        SavedInputMode, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
-        SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
+        SavedInputCaller, SavedInputMode, SavedLocalChatRequiresLegacyRequest,
+        SavedOrchestrationStepError, SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
         TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
         APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
         CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
@@ -633,6 +633,11 @@ struct TurnStart {
 #[derive(Clone, Copy, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedInputStart {
+    #[serde(
+        default = "default_saved_input_caller",
+        deserialize_with = "deserialize_saved_input_caller"
+    )]
+    caller: SavedInputCaller,
     mode: SavedInputMode,
     input_bytes: usize,
 }
@@ -1021,6 +1026,23 @@ fn valid_saved_identifier(value: &str) -> bool {
             .next()
             .is_some_and(|byte| byte.is_ascii_alphanumeric())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+}
+
+fn default_saved_input_caller() -> SavedInputCaller {
+    SavedInputCaller::SavedTurn
+}
+
+fn deserialize_saved_input_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<SavedInputCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "saved-turn" => Ok(SavedInputCaller::SavedTurn),
+        "calendar" => Ok(SavedInputCaller::Calendar),
+        _ => Err(de::Error::custom("unknown saved input caller")),
+    }
 }
 
 fn default_turn_start_caller() -> SavedTurnStartCaller {
@@ -1593,7 +1615,7 @@ pub(crate) fn admit_connection(
     let proof = candidate.verified_source();
     let has_launch_proof = match &request {
         RequestStart::Inline(operation) => operation.has_launch_proof(proof),
-        RequestStart::SavedInput(_) => proof.permits_saved_input(),
+        RequestStart::SavedInput(input) => proof.permits_saved_input_for(input.caller),
         RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
         RequestStart::ApplicationPresentation { role, .. } => {
             proof.permits_application_presentation(*role)
@@ -1665,7 +1687,11 @@ impl AdmittedConnection {
         } = self;
         let operation = match request {
             RequestStart::Inline(operation) => operation,
-            RequestStart::SavedInput(SavedInputStart { mode, input_bytes }) => {
+            RequestStart::SavedInput(SavedInputStart {
+                caller,
+                mode,
+                input_bytes,
+            }) => {
                 let connection = Connection::new(
                     manager,
                     candidate,
@@ -1677,6 +1703,7 @@ impl AdmittedConnection {
                 return connection.run(
                     app,
                     NativeRegistryRequest::SavedInput {
+                        caller,
                         mode,
                         input_bytes,
                         receive_input: Box::new(move |deadline| {
@@ -2798,7 +2825,8 @@ mod tests {
             assert!(descriptor.operation().is_err());
             let request = descriptor.request_start().unwrap();
             assert!(matches!(request, RequestStart::SavedInput(saved)
-                if saved.mode == mode && saved.input_bytes == SAVED_INPUT_FRAME_LIMIT));
+                if saved.caller == SavedInputCaller::SavedTurn
+                    && saved.mode == mode && saved.input_bytes == SAVED_INPUT_FRAME_LIMIT));
             let role = ReplyRole::SavedInput(mode);
             assert!(role.uses_funded_input());
             assert_eq!(role.permits_publication(), mode == SavedInputMode::Bind);
@@ -2827,6 +2855,17 @@ mod tests {
                 "unavailable"
             );
         }
+        let calendar =
+            start_frame(r#","saved_input":{"caller":"calendar","mode":"bind","input_bytes":1}"#);
+        let calendar = serde_json::from_str::<Start<'_>>(&calendar).unwrap();
+        assert!(matches!(
+            calendar.request_start().unwrap(),
+            RequestStart::SavedInput(SavedInputStart {
+                caller: SavedInputCaller::Calendar,
+                mode: SavedInputMode::Bind,
+                input_bytes: 1,
+            })
+        ));
         for invalid in [
             r#","saved_input":null"#.to_owned(),
             r#","saved_input":{"mode":"bind","input_bytes":0}"#.to_owned(),
@@ -2835,6 +2874,8 @@ mod tests {
                 SAVED_INPUT_FRAME_LIMIT + 1
             ),
             r#","saved_input":{"mode":"read","input_bytes":1}"#.to_owned(),
+            r#","saved_input":{"caller":"side-chat","mode":"bind","input_bytes":1}"#.to_owned(),
+            r#","saved_input":{"caller":null,"mode":"bind","input_bytes":1}"#.to_owned(),
             r#","saved_input":{"mode":"restore","input_bytes":1,"publication":true}"#.to_owned(),
             format!(r#","saved_input":{{"mode":"restore","input_bytes":1}}{PROVIDER_REQUEST}"#),
         ] {

@@ -566,6 +566,7 @@ jobs:
             tobkiri_runtime/tests/test_complete_v4_migration_gate.py \
             tobkiri_runtime/tests/test_complete_v4_migration_evidence.py \
             tobkiri_runtime/tests/test_production_frontend_contract_http.py \
+            tobkiri_runtime/tests/test_production_wake_presenter_session.py \
             tobkiri_runtime/tests/test_packaged_runtime_bootstrap.py \
             tobkiri_runtime/tests/test_phase_a_setup_api.py::TestCompleteSetup::test_setup_complete_is_typed_retired_route_without_writes \
             scripts/quality/test_launcher_frontend_routes.py \

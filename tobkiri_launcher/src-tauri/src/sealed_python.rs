@@ -71,6 +71,7 @@ pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
     "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND";
 pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START";
 pub(crate) const SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_SAVED_INPUT";
+pub(crate) const CALENDAR_SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_CALENDAR_SAVED_INPUT";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -129,6 +130,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) conversation_list: bool,
     pub(crate) side_chat_saved_turn_start: bool,
     pub(crate) saved_input: bool,
+    pub(crate) calendar_saved_input: bool,
 }
 
 impl RoleArguments {
@@ -274,6 +276,11 @@ impl RoleArguments {
                 )
             }),
             saved_input: proof.is_some_and(|proof| proof.permits_saved_input()),
+            calendar_saved_input: proof.is_some_and(|proof| {
+                proof.permits_saved_input_for(
+                    crate::native_harness_bootstrap::SavedInputCaller::Calendar,
+                )
+            }),
         };
         self
     }
@@ -433,6 +440,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
             | SIDE_CHAT_SAVED_TURN_START_ENV
             | SAVED_INPUT_ENV
+            | CALENDAR_SAVED_INPUT_ENV
             | crate::native_provider_prepare_service::LINKED_CONVERSATION_READ_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
@@ -5028,7 +5036,7 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
-    fn saved_input_environment_requires_current_ordinary_turn_start_proof() {
+    fn saved_input_environment_requires_the_current_proof_for_each_caller() {
         use crate::{
             host_contract::ExecutionProfileIdentity,
             native_harness_bootstrap::{SavedTurnStartCaller, VerifiedRegistryLaunch},
@@ -5052,15 +5060,17 @@ mod tests {
             SavedTurnStartCaller::SavedTurn,
         );
         let side_chat = VerifiedRegistryLaunch::test_saved_input_proof_for(
-            identity,
+            identity.clone(),
             revision,
             SavedTurnStartCaller::SideChat,
         );
+        let calendar = VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity, revision);
         for (proof, expected) in [
-            (None, (false, false)),
-            (Some(&old), (false, false)),
-            (Some(&ordinary), (true, false)),
-            (Some(&side_chat), (false, true)),
+            (None, (false, false, false)),
+            (Some(&old), (false, false, false)),
+            (Some(&ordinary), (true, false, false)),
+            (Some(&side_chat), (false, true, false)),
+            (Some(&calendar), (false, false, true)),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
@@ -5069,7 +5079,8 @@ mod tests {
             assert_eq!(
                 (
                     environment.saved_input,
-                    environment.side_chat_saved_turn_start
+                    environment.side_chat_saved_turn_start,
+                    environment.calendar_saved_input,
                 ),
                 expected
             );
@@ -5092,6 +5103,7 @@ mod tests {
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
             SIDE_CHAT_SAVED_TURN_START_ENV,
             SAVED_INPUT_ENV,
+            CALENDAR_SAVED_INPUT_ENV,
             LINKED_CONVERSATION_READ_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,
