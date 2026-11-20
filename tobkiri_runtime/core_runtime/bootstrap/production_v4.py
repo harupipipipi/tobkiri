@@ -396,6 +396,17 @@ class _CalendarTurnStart:
     borrow: Callable[[str], tuple[str, str]]
     guard: Callable[[], None]
     publication_pending: threading.Event
+    confirm_native_claim: Callable[[str], None]
+    claimed_input: Callable[[], str | None]
+    claim_orchestration: Callable[[], bool]
+
+
+@dataclass(frozen=True)
+class _CalendarOrchestration:
+    start: _CalendarTurnStart
+    ancestors: tuple[RequestEnvelope, ...]
+    accepted_digest: str
+    proof: NestedCancellationProof
 
 
 @dataclass(frozen=True)
@@ -1325,6 +1336,7 @@ def _commit_plan_authority(
     pack_approval_revision: str | None = None,
     host_extension_binding: ResolvedOperationBinding | None = None,
     execution_provider_label: str | None = None,
+    attach_legacy_provider: bool = False,
 ) -> tuple[Any, Any | None]:
     if authority_mode not in _REQUESTED_EDGE_AUTHORITY_MODES:
         raise AuthorityDenied("Profile edge authority mode is invalid")
@@ -1498,9 +1510,10 @@ def _commit_plan_authority(
             grants=(grant,),
         )
     elif (
-        execution_provider_label is not None
+        (execution_provider_label is not None or attach_legacy_provider)
         and existing == (None, approval, None, grant)
     ):
+        # An alternate physical Provider can already own this logical grant.
         if (
             store.is_revoked("grant", grant.grant_id)
             or store.is_revoked("provider_authority", provider.record_id)
@@ -2059,6 +2072,7 @@ def capture_production_dispatch(
         capture_launcher_ai_tool_intents_normalizer,
         capture_launcher_ai_usage_cost_calculator,
         capture_launcher_application_presentation,
+        capture_launcher_calendar_saved_orchestration_step,
         capture_launcher_calendar_turn_start_writer,
         capture_launcher_calendar_status_turn_start_writer,
         capture_launcher_conversation_append_writer,
@@ -2134,12 +2148,23 @@ def capture_production_dispatch(
     }
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
+    native_calendar_saved_step = capture_launcher_calendar_saved_orchestration_step()
     native_presentation = capture_launcher_application_presentation()
     native_conversation_port = capture_launcher_conversation_complete()
     native_saved_local_chat = capture_launcher_saved_local_chat_executor()
     native_saved_manifest = os.environ.get("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST")
     if native_saved_step is not None and native_saved_manifest is not None:
         require_digest(native_saved_manifest, "admitted Saved Orchestration manifest")
+    native_calendar_saved_manifest = os.environ.get(
+        "TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST",
+    )
+    if (
+        native_calendar_saved_step is not None
+        and native_calendar_saved_manifest is not None
+    ):
+        require_digest(
+            native_calendar_saved_manifest, "admitted Calendar orchestration manifest",
+        )
     native_saved_turn_reader = capture_launcher_saved_turn_reader()
     native_saved_turn_settlement_writer = capture_launcher_saved_turn_settlement_writer()
     native_turn_start_writers: dict[
@@ -2807,6 +2832,12 @@ def capture_production_dispatch(
         if edge.caller.principal_id in shell_principal_ids
         and edge.caller.function_id == "shell.tauri.default"
     }
+    pack_by_principal = {
+        FunctionPrincipal.from_dict(binding["function_principal"]).principal_id: str(
+            binding["pack_id"]
+        )
+        for binding in plan["bindings"]
+    }
 
     def select_original_turn(caller_ids: set[str]) -> _CapturedPlanEdge | None:
         return select_original_chat_edge(
@@ -3123,41 +3154,67 @@ def capture_production_dispatch(
             return None
         return _CalendarSavedJobRoute(caller, tuple(reversed(route)))
 
-    native_saved_execution: NativeWasmBinding | None = None
-    native_saved_original_provider: str | None = None
+    calendar_start_route = select_calendar_saved_job_route("calendar")
+    calendar_orchestration_edge = (
+        select_original_orchestration(calendar_start_route.edges[1])
+        if calendar_start_route is not None else None
+    )
     if (
-        native_saved_step is not None
-        and native_saved_manifest is not None
-        and ordinary_orchestration_edge is not None
+        calendar_orchestration_edge is not None
+        and calendar_orchestration_edge.resolved_binding.operation.contract_version
+        != "1.0.0"
     ):
+        calendar_orchestration_edge = None
+
+    def make_native_saved_execution(
+        edge: _CapturedPlanEdge | None, manifest: str | None,
+        step: Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None,
+        *, calendar: bool = False,
+    ) -> NativeWasmBinding | None:
+        if edge is None or manifest is None or step is None:
+            return None
         from tobkiri_host.native_saved_orchestration import NativeSavedOrchestrationBackend
 
-        edge = ordinary_orchestration_edge
         target_suffix = edge.target.principal_id.removeprefix("sha256:")[:24]
-        manifest_hex = native_saved_manifest.removeprefix("sha256:")
+        manifest_hex = manifest.removeprefix("sha256:")
+        role = "calendar-saved-wasm" if calendar else "saved-wasm"
         native_domain = (
-            f"domain.provider.saved-wasm.{target_suffix}.{activation_suffix}.{manifest_hex}"
+            f"domain.provider.{role}.{target_suffix}.{activation_suffix}.{manifest_hex}"
         )
         wasm_backend = NativeSavedOrchestrationBackend(
             edge.resolved_binding,
             native_domain,
-            native_saved_manifest,
+            manifest,
             execute=lambda invocation, data, guard: execute_native_saved_step(
-                invocation, data, guard,
+                invocation, data, guard, step, calendar=calendar,
             ),
             preflight=lambda invocation, proof: saved_preflight(invocation, proof),
             dispatch=lambda invocation, frame, proof: saved_capability_bridge(
                 invocation, frame, proof,
             ),
-            capture_current=lambda invocation: capture_current_native_saved(invocation),
+            capture_current=lambda invocation: capture_current_native_saved(
+                invocation, calendar=calendar,
+            ),
         )
-        native_saved_execution = NativeWasmBinding(
+        return NativeWasmBinding(
             binding=edge.resolved_binding,
             backend=wasm_backend,
             caller_principal=OpaqueAuthorityRef(edge.caller.principal_id),
             domain_id=native_domain,
-            executable_digest=native_saved_manifest,
+            executable_digest=manifest,
         )
+
+    native_saved_execution = make_native_saved_execution(
+        ordinary_orchestration_edge, native_saved_manifest, native_saved_step,
+    )
+    native_calendar_saved_execution = (
+        make_native_saved_execution(
+            calendar_orchestration_edge, native_calendar_saved_manifest,
+            native_calendar_saved_step, calendar=True,
+        ) if native_turn_start_writers["calendar"] is not None else None
+    )
+    native_saved_original_provider: str | None = None
+    native_calendar_saved_original_provider: str | None = None
 
     native_presentation_bindings: dict[
         tuple[str, str, str, str, str, str], NativeWasmBinding
@@ -3379,8 +3436,20 @@ def capture_production_dispatch(
             return native_conversation
         return native_presentation_bindings.get(edge.key)
 
+    def physical_authority_edges() -> Iterator[
+        tuple[_CapturedPlanEdge, NativeWasmBinding | None]
+    ]:
+        for edge in sorted(captured_edges, key=lambda item: item.key):
+            yield edge, physical_wasm_for_edge(edge)
+            if (
+                edge is calendar_orchestration_edge
+                and native_calendar_saved_execution is not None
+            ):
+                # The same Adapter edge still serves legacy manual and status calls.
+                yield edge, native_calendar_saved_execution
+
     selected_backend_registry = BackendRegistry(registered_backends)
-    for captured_edge in sorted(captured_edges, key=lambda item: item.key):
+    for captured_edge, physical_wasm in physical_authority_edges():
         if captured_edge.resolved_binding.operation.contract_id in _CONTROL_CONTRACTS:
             continue
         resolved_binding = captured_edge.resolved_binding
@@ -3445,7 +3514,6 @@ def capture_production_dispatch(
             ExecutionKind.WASM,
         }:
             continue
-        physical_wasm = physical_wasm_for_edge(captured_edge)
         if physical_wasm is not None:
             backend = physical_wasm.backend
         else:
@@ -3468,6 +3536,8 @@ def capture_production_dispatch(
             native_presentation_bindings.pop(captured_edge.key, None)
             if captured_edge is native_conversation_edge:
                 native_conversation = None
+            if captured_edge is calendar_orchestration_edge:
+                native_calendar_saved_execution = None
             continue
         pack_approval_revision: str | None = None
         if approval_pack_id is not None:
@@ -3481,6 +3551,8 @@ def capture_production_dispatch(
                 native_presentation_bindings.pop(captured_edge.key, None)
                 if captured_edge is native_conversation_edge:
                     native_conversation = None
+                if captured_edge is calendar_orchestration_edge:
+                    native_calendar_saved_execution = None
                 continue
             captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
         execution_kind = backend.status.execution_kind
@@ -3517,7 +3589,7 @@ def capture_production_dispatch(
             ),
             principal=target,
         )
-        profile_edge_authority_records[captured_edge.binding_key] = _commit_plan_authority(
+        records = _commit_plan_authority(
             authority_store,
             authority_control,
             active=active,
@@ -3535,22 +3607,30 @@ def capture_production_dispatch(
                 (
                     "profile-saved-wasm-"
                     if physical_wasm is native_saved_execution
+                    else "profile-calendar-saved-wasm-"
+                    if physical_wasm is native_calendar_saved_execution
                     else "profile-conversation-wasm-"
                     if physical_wasm is native_conversation
                     else "profile-presentation-wasm-"
                 ) + physical_wasm.executable_digest[7:31]
                 if physical_wasm is not None else None
             ),
+            attach_legacy_provider=(
+                physical_wasm is None and captured_edge is calendar_orchestration_edge
+            ),
         )
+        profile_edge_authority_records.setdefault(captured_edge.binding_key, records)
         if physical_wasm is None:
             target_backend_digests[target.principal_id] = backend.status.backend_digest
         else:
-            _, logical_grant = profile_edge_authority_records[captured_edge.binding_key]
+            _, logical_grant = records
             if logical_grant is None:
                 raise AuthorityDenied("native Wasm original Profile Grant is unavailable")
             original_provider = "provider." + logical_grant.grant_id.removeprefix("grant.")
             if physical_wasm is native_saved_execution:
                 native_saved_original_provider = original_provider
+            elif physical_wasm is native_calendar_saved_execution:
+                native_calendar_saved_original_provider = original_provider
             elif physical_wasm is native_conversation:
                 native_conversation_original_provider = original_provider
             else:
@@ -3638,6 +3718,12 @@ def capture_production_dispatch(
         if outer_edge is None or outer_edge.key not in bridge_targets:
             raise AuthorityDenied("PackVM capability bridge outer edge is not selected")
         physical_wasm = physical_wasm_for_edge(outer_edge)
+        if (
+            outer_edge is calendar_orchestration_edge
+            and native_calendar_saved_execution is not None
+            and outer_domain == native_calendar_saved_execution.domain_id
+        ):
+            physical_wasm = native_calendar_saved_execution
         if physical_wasm is None:
             expected_target_domain = authority_target_domain(outer_edge.resolved_binding)
             expected_target_backend_digest = target_backend_digests.get(outer_target)
@@ -4114,19 +4200,16 @@ def capture_production_dispatch(
         for binding in plan["bindings"]
         for principal in (FunctionPrincipal.from_dict(binding["function_principal"]),)
     }
-    pack_by_principal = {
-        FunctionPrincipal.from_dict(binding["function_principal"]).principal_id: str(
-            binding["pack_id"]
-        )
-        for binding in plan["bindings"]
-    }
     calendar_saved_job_routes: list[_CalendarSavedJobRoute] = []
     calendar_input_edges: list[_CapturedPlanEdge] = []
     for caller, input_writer in calendar_saved_input_writers.items():
         start_writer = native_turn_start_writers[caller]
         if input_writer is None and start_writer is None:
             continue
-        route = select_calendar_saved_job_route(caller)
+        route = (
+            calendar_start_route if caller == "calendar"
+            else select_calendar_saved_job_route(caller)
+        )
         if route is None:
             continue
         calendar_saved_job_routes.append(route)
@@ -4257,7 +4340,17 @@ def capture_production_dispatch(
                     native_saved_execution is not None
                     and envelope.context.target_domain_id == native_saved_execution.domain_id
                 ):
-                    assert_original_saved_provider_current()
+                    assert_original_saved_provider_current(
+                        native_saved_original_provider,
+                    )
+                if (
+                    native_calendar_saved_execution is not None
+                    and envelope.context.target_domain_id
+                    == native_calendar_saved_execution.domain_id
+                ):
+                    assert_original_saved_provider_current(
+                        native_calendar_saved_original_provider,
+                    )
                 if uses_native_conversation:
                     if (
                         conversation_runtime is None
@@ -6300,8 +6393,7 @@ def capture_production_dispatch(
             raise AuthorityDenied("native Saved Orchestration parent is unavailable")
         return parent
 
-    def assert_original_saved_provider_current() -> None:
-        provider_id = native_saved_original_provider
+    def assert_original_saved_provider_current(provider_id: str | None) -> None:
         if provider_id is None or authority_store.is_revoked("provider_authority", provider_id):
             raise AuthorityDenied("original Saved Orchestration Provider was revoked")
 
@@ -6394,6 +6486,22 @@ def capture_production_dispatch(
     def selected_native_saved_authority(
         context: RequestContext, target: OpaqueAuthorityRef,
     ) -> NativeWasmBinding | None:
+        calendar_native = native_calendar_saved_execution
+        if calendar_native is not None:
+            if (
+                context.caller_principal == calendar_native.caller_principal
+                and target == calendar_native.binding.principal_ref
+                and selected_calendar_orchestration(context.caller_session_id)
+            ):
+                assert_original_saved_provider_current(
+                    native_calendar_saved_original_provider,
+                )
+                return calendar_native
+            if (
+                context.target_domain_id == calendar_native.domain_id
+                or context.target_backend_digest == calendar_native.backend_digest
+            ):
+                raise AuthorityDenied("native Calendar orchestration authority changed")
         native = native_saved_execution
         if native is None:
             return None
@@ -6402,7 +6510,7 @@ def capture_production_dispatch(
             and target == native.binding.principal_ref
         )
         if exact_edge:
-            assert_original_saved_provider_current()
+            assert_original_saved_provider_current(native_saved_original_provider)
             native_saved_parent(context).assert_current()
             return native
         if (
@@ -6454,15 +6562,67 @@ def capture_production_dispatch(
             raise AuthorityDenied("native Application presentation authority changed")
         return None
 
-    def capture_current_native_saved(envelope: RequestEnvelope) -> Callable[[], None]:
+    def selected_calendar_orchestration(
+        session_id: str,
+    ) -> _CalendarOrchestration | None:
+        """Match a native claim to its live automatic Adapter before dispatch."""
+        start = calendar_turn_start.get()
+        parent = parent_invocation_scopes.lookup(session_id)
+        if (
+            start is None or start.route is not calendar_start_route
+            or parent is None or parent.envelope is not start.parent
+        ):
+            return None
+        accepted_digest = start.claimed_input()
+        if accepted_digest is None:
+            return None
+        ancestors = match_captured_ancestors(parent, start.route.edges[1:])
+        if ancestors is None:
+            raise AuthorityDenied("native Calendar orchestration ancestry changed")
+        owner = presentation_owner_for(start.parent)
+        proof = nested_cancellation_proof_for(start.parent, *owner)
+        if (
+            proof is None or proof._envelope is not start.parent
+            or proof._calendar_execution_parent is None
+        ):
+            raise AuthorityDenied("native Calendar orchestration tracking changed")
+        start.guard()
+        return _CalendarOrchestration(start, ancestors, accepted_digest, proof)
+
+    def capture_current_native_saved(
+        envelope: RequestEnvelope, *, calendar: bool,
+    ) -> Callable[[], None]:
         captured_runtime = native_provider_runtime
         scope = capture_invocation_scope(envelope)
-        parent = native_saved_parent(envelope.context)
+        session_id = envelope.context.caller_session_id
+        if calendar:
+            selection = selected_calendar_orchestration(session_id)
+            edge = calendar_orchestration_edge
+            if selection is None or edge is None or scope.parent is None:
+                raise AuthorityDenied("native Calendar orchestration scope missing")
+            start = selection.start
+            parent = scope.parent
+            if (
+                canonical_digest(scope.public_payload()) != selection.accepted_digest
+                or envelope.cancellation_requested
+                is not start.parent.cancellation_requested
+                or presentation_owner_for(envelope)
+                != presentation_owner_for(parent.envelope)
+                or not start.claim_orchestration()
+            ):
+                raise AuthorityDenied("native Calendar orchestration input changed")
+            assert_calendar_saved_job_chain(
+                (envelope, *selection.ancestors), (edge, *start.route.edges[1:]),
+            )
+        else:
+            selection = None
+            edge = ordinary_orchestration_edge
+            parent = native_saved_parent(envelope.context)
         if (
             captured_runtime is None
             or scope.parent is None
             or scope.parent.envelope is not parent.envelope
-            or resolve_bridge_outer(envelope) is not ordinary_orchestration_edge
+            or resolve_bridge_outer(envelope) is not edge
             or envelope.lease.token == parent.envelope.lease.token
             or envelope.resource_reservation_id == parent.envelope.resource_reservation_id
             or envelope.deadline_monotonic > parent.envelope.deadline_monotonic
@@ -6470,11 +6630,18 @@ def capture_production_dispatch(
             raise AuthorityDenied("native Saved Orchestration captured scope changed")
 
         def guard() -> None:
-            if (
-                native_provider_runtime is not captured_runtime
-                or native_saved_parent(envelope.context).envelope is not parent.envelope
-            ):
+            if native_provider_runtime is not captured_runtime:
                 raise AuthorityDenied("native Saved Orchestration capture changed")
+            if selection is not None:
+                current = selected_calendar_orchestration(session_id)
+                if (
+                    current is None or current.start is not selection.start
+                    or current.proof is not selection.proof
+                ):
+                    raise AuthorityDenied("native Calendar orchestration scope changed")
+                require_retained_ancestors(envelope, selection.ancestors)
+            elif native_saved_parent(envelope.context).envelope is not parent.envelope:
+                raise AuthorityDenied("native Saved Orchestration parent changed")
             scope.assert_current()
             captured_runtime[1]()
             resources = production_admission.native_resources(envelope.resource_reservation_id)
@@ -6487,17 +6654,20 @@ def capture_production_dispatch(
         envelope: RequestEnvelope,
         step_input: Mapping[str, Any],
         guard: Callable[[], None],
+        step: Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]],
+        *, calendar: bool,
     ) -> Mapping[str, Any]:
         launcher_runtime = native_provider_runtime
         guard()
-        if native_saved_step is None or launcher_runtime is None:
+        if launcher_runtime is None:
             raise AuthorityDenied("native Saved Orchestration Launcher is unavailable")
-        return native_saved_step(NativeSavedOrchestrationRequest(
+        return step(NativeSavedOrchestrationRequest(
             context=envelope.context,
             runtime_instance=launcher_runtime[0],
             deadline_monotonic=envelope.deadline_monotonic,
             assert_current=guard,
             input=step_input,
+            caller="calendar" if calendar else "saved-turn",
         ))
 
     @dataclass(frozen=True)
@@ -7018,6 +7188,7 @@ def capture_production_dispatch(
             start_enabled = route.caller in turn_start_routes
             input_enabled = calendar_saved_input_writers[route.caller] is not None
             accepted_input: tuple[str, str] | None = None
+            native_claim_digest: str | None = None
             next_start: str | None = "begin"
             start_lock = threading.Lock()
 
@@ -7057,6 +7228,20 @@ def capture_production_dispatch(
                     source_digest = accepted_input[0]
                 assert_pinned_source(source_digest)
 
+            def confirm_native_claim(digest: str) -> None:
+                nonlocal native_claim_digest
+                with start_lock:
+                    if (
+                        accepted_input is None or accepted_input[1] != digest
+                        or next_start is not None or native_claim_digest is not None
+                    ):
+                        raise AuthorityDenied("native Calendar claim input changed")
+                    native_claim_digest = digest
+
+            def claimed_input() -> str | None:
+                with start_lock:
+                    return native_claim_digest
+
             class CalendarInputOwner(turn_store):
                 def saved_input(
                     self, source: Mapping[str, Any],
@@ -7092,9 +7277,12 @@ def capture_production_dispatch(
                     return retain_start_input(source, bound)
 
             store = CalendarInputOwner(capture.profile_id, user_data_root=root)
+            orchestration_claim = threading.Lock()
             scope = (
                 _CalendarTurnStart(
                     envelope, route, turn_id, borrow_start, guard_start, threading.Event(),
+                    confirm_native_claim, claimed_input,
+                    lambda: orchestration_claim.acquire(blocking=False),
                 )
                 if start_enabled else None
             )
@@ -7431,6 +7619,12 @@ def capture_production_dispatch(
                     )
                 ):
                     raise ValueError("native saved Turn start result is invalid")
+                if (
+                    result["claimed"] and calendar is not None
+                    and calendar.route is calendar_start_route
+                    and native_calendar_saved_execution is not None
+                ):
+                    calendar.confirm_native_claim(accepted_digest)
                 return result["turn"] if action == "begin" else result
             except Exception as error:
                 if saved_owner_publication_possible(envelope):
@@ -9893,12 +10087,17 @@ def capture_production_dispatch(
             CONVERSATION_APPEND_MINIMUM_MEMORY,
             is_native_saved_append_route,
         ))
-    if native_saved_execution is not None:
-        native_admission_rules.append((
-            native_saved_execution.binding,
+    native_admission_rules.extend(
+        (
+            native.binding,
             SAVED_ORCHESTRATION_MINIMUM_MEMORY,
-            lambda context, _: context.target_domain_id == native_saved_execution.domain_id,
-        ))
+            lambda context, _, *, domain_id=native.domain_id: (
+                context.target_domain_id == domain_id
+            ),
+        )
+        for native in (native_saved_execution, native_calendar_saved_execution)
+        if native is not None
+    )
     if native_conversation is not None:
         native_admission_rules.append((
             native_conversation.binding,
@@ -9959,6 +10158,7 @@ def capture_production_dispatch(
     )
     use_native_wasm = (
         native_saved_execution is not None
+        or native_calendar_saved_execution is not None
         or native_conversation is not None
         or bool(native_presentation_bindings)
     )
@@ -10036,6 +10236,12 @@ def capture_production_dispatch(
             session_id,
             caller.principal_id,
         )
+        if (
+            captured_edge is calendar_orchestration_edge
+            and native_calendar_saved_execution is not None
+            and selected_calendar_orchestration(resolved_authority_session_id)
+        ):
+            native = native_calendar_saved_execution
         caller_suffix = canonical_digest(
             {
                 "session_id": resolved_authority_session_id,
@@ -10750,6 +10956,7 @@ def capture_production_dispatch(
                 or native_saved_turn_start_bindings
                 or native_saved_input_bindings
                 or native_saved_append_key is not None or native_saved_execution is not None
+                or native_calendar_saved_execution is not None
                 or saved_local_chat_routes or native_provider_snapshot_bindings
                 or native_presentation_bindings
                 or native_conversation is not None)

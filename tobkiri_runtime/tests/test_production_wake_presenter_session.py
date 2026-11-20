@@ -1,7 +1,7 @@
 """Exercise native presenter journals and scheduled Calendar saved Turns.
 
-The Calendar regression uses the real wake delivery and signed HTTP entrypoints,
-with doubles for Launcher IPC and post-claim orchestration.
+The Calendar regression uses the real wake delivery, signed HTTP entrypoints
+and Wasm Host backend, with doubles for Launcher IPC and inference.
 """
 
 from __future__ import annotations
@@ -152,16 +152,17 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str,
 ) -> None:
     """Exercise fresh dispatch and recovery through the signed Calendar entrypoints."""
-    from contextlib import contextmanager
-    from functools import partial
     import sqlite3
     import sys
     import threading
     import uuid
+    from collections.abc import Callable, Mapping
+    from contextlib import contextmanager
+    from functools import partial
 
     from core_runtime import native_provider_prepare_ipc as ipc
-    from core_runtime.authority.v4 import LeaseState
-    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from core_runtime.authority.v4 import DomainBoundary, LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
     from core_runtime.provider_prepare_native_v4 import (
         NativeProviderRegistryRequiresLegacyRead,
     )
@@ -171,6 +172,9 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
     from ecosystem.rumi_turn_runtime_pack.runtime.scheduled_job import (
         ScheduledSourceLedger,
+    )
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+        saved_conversation,
     )
     from tests.test_production_frontend_contract_http import (
         SAVED_TURN_HTTP_TIMEOUT_SECONDS,
@@ -182,6 +186,10 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         _request,
     )
     from tobkiri_host.backends import BackendRegistry
+    from tobkiri_host.broker import RequestEnvelope
+    from tobkiri_host.effects import ProviderOutcome
+    from tobkiri_host.native_saved_orchestration import NativeSavedOrchestrationBackend
+    from tobkiri_host.runtime import V4DispatchSession
 
     data = tmp_path / "user-data"
     owner = DurableTurnRuntime("defaults", user_data_root=data)
@@ -190,7 +198,12 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     original_bind_input = DurableTurnRuntime.bind_saved_input
     original_recover_input = DurableTurnRuntime.saved_input
     original_release = DurableTurnRuntime.release_calendar_preparation
-    original_invoke = GlobalContractClient.invoke
+    original_invoke = V4DispatchSession.invoke
+    capture_calendar_step = ipc.capture_launcher_calendar_saved_orchestration_step
+    manifest = canonical_digest({"manifest": "fixture-calendar-saved-orchestration"})
+    launcher = ipc._Launcher(b"/fixture/launcher.sock", 2, "darwin:2:1:000000")
+    packvm = _SavedPackVmBackend()
+    original_packvm_invoke = packvm.invoke
     wakes = []
     observed = {}
     errors = []
@@ -201,6 +214,10 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     lifecycle_calls = []
     releases = []
     continuation = []
+    native_steps: dict[str, list[str | None]] = {}
+    native_requests: list[ipc.NativeSavedOrchestrationRequest] = []
+    native_envelopes: dict[str, RequestEnvelope] = {}
+    ai_calls = []
     expired_callbacks = []
     expired_publications = []
 
@@ -210,21 +227,34 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         return driver
 
     def invoke(
-        client: GlobalContractClient,
+        session: V4DispatchSession,
         contract: str,
         operation: str,
         payload: dict[str, Any],
         **kwargs: Any,
     ) -> Any:
-        if (contract, operation) != ("conversation.saved-turn.v1", "saved_complete"):
-            return original_invoke(client, contract, operation, payload, **kwargs)
-        assert client.consumer_pack_id == "rumi_turn_runtime_pack"
-        accepted = payload["request"]
+        target = (contract, operation)
+        if target == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if target == saved_conversation.TARGETS[2]:
+            ai_calls.append(payload)
+            return {
+                "status": "ok", "output": "Calendar fixture", "finish_reason": "stop",
+            }
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def packvm_invoke(envelope: RequestEnvelope) -> ProviderOutcome:
+        accepted = envelope.payload["request"]
         turn_id = accepted["turn_id"]
         target = accepted["conversation_id"]
+        if not turn_id.startswith("calendar:"):
+            return original_packvm_invoke(envelope)
         assert owner.get(turn_id)["status"] == "running"
         continuation.append(target)
-        return {
+        return ProviderOutcome({
             "status": "error",
             "error": {
                 "code": "AI_COMPLETION_UNAVAILABLE",
@@ -241,7 +271,62 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             "user_persistence": "not_written",
             "assistant_persistence": "not_written",
             "reconciliation_required": False,
-        }
+        })
+
+    def launcher_step(
+        captured: ipc._Launcher,
+        request: ipc.NativeSavedOrchestrationRequest,
+        *,
+        operation: str,
+    ) -> dict[str, Any]:
+        assert captured is launcher
+        assert operation == "saved_orchestration"
+        assert request.caller == "calendar"
+        request.assert_current()
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        state = request.input.get("state")
+        step_request = request.input["request"] if state is None else state["request"]
+        target, turn_id = step_request["conversation_id"], step_request["turn_id"]
+        envelope = native_envelopes[target]
+        accepted = envelope.payload["request"]
+        if state is None:
+            assert request.input == {"request": accepted}
+        assert request.context == envelope.context
+        assert request.deadline_monotonic == envelope.deadline_monotonic
+        domain = authority.get_domain(envelope.target_domain.value)
+        assert domain is not None and domain.boundary is DomainBoundary.WASM_COMPONENT
+        adapter = observed["rumi_turn_runtime_pack.chat-saved-job-adapter"]
+        broker = observed["rumi_job_action_broker_pack.job-action-broker"]
+        scheduler = observed["rumi_scheduler_runtime_pack.scheduler-control"]
+        assert adapter.payload["operation"] == broker.payload["operation"] == "dispatch"
+        assert scheduler.payload["operation"] == "tick"
+        claim = observed["rumi_turn_runtime_pack.turn-lifecycle"]
+        assert claim.payload["operation"] == "claim_saved"
+        assert claim.payload["request"] == accepted
+        assert starts[-1] == (target, "claim", "calendar")
+        assert owner.get(turn_id)["status"] == "running"
+        assert owner.get(turn_id)["input_digest"] == canonical_digest(
+            {"request": accepted},
+        )
+        for child, parent in zip(
+            (envelope, adapter, broker), (adapter, broker, scheduler), strict=True,
+        ):
+            assert child.context.caller_principal == parent.target_principal
+            assert child.deadline_monotonic <= parent.deadline_monotonic
+            assert child.resource_reservation_id != parent.resource_reservation_id
+            assert child.lease.token != parent.lease.token
+        for current in (envelope, adapter, broker, scheduler):
+            _, lease_state = authority.inspect_lease_token(
+                current.lease.token.decode("ascii"),
+            )
+            assert lease_state is LeaseState.DISPATCHED
+        native_steps.setdefault(target, []).append(
+            None if state is None else state["stage"],
+        )
+        native_requests.append(request)
+        return saved_conversation.tobkiri_packvm_invoke(
+            "saved_complete", dict(request.input),
+        )
 
     def release(
         store: DurableTurnRuntime, **kwargs: Any,
@@ -443,6 +528,8 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                 raise NativeProviderRegistryRequiresLegacyRead()
             # Calendar preparation already owns the accepted queued record.
             return {"claimed": False, "turn": owner.get(request.turn_id)}
+        if target == "legacy-claim":
+            raise NativeProviderRegistryRequiresLegacyRead()
         request.mark_publication_possible()
         if target == "claim-unconfirmed":
             raise OSError("fixture lost the claim reply before commit")
@@ -450,10 +537,30 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         assert result["claimed"]
         if target == "claim-committed":
             raise OSError("fixture lost the claim reply after commit")
+        if target == "claim-lost":
+            # The first claim belonged to an independent executor.
+            result = owner.claim_saved(accepted)
+            assert not result["claimed"]
         return result
 
+    def capture_step() -> (
+        Callable[[ipc.NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
+    ):
+        # Publish the mock socket only while capturing the Calendar endpoint.
+        with monkeypatch.context() as socket_capture:
+            socket_capture.setattr(ipc, "_capture_launcher", lambda: launcher)
+            return capture_calendar_step()
+
     _publish_native_runtime_fixture(monkeypatch)
-    monkeypatch.setattr(GlobalContractClient, "invoke", invoke)
+    monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", raising=False)
+    monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", raising=False)
+    monkeypatch.setenv("TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST", manifest)
+    monkeypatch.setattr(
+        ipc, "capture_launcher_calendar_saved_orchestration_step", capture_step,
+    )
+    monkeypatch.setattr(ipc, "_invoke", launcher_step)
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setattr(packvm, "invoke", packvm_invoke)
     monkeypatch.setattr(
         ipc, "capture_launcher_calendar_turn_start_writer",
         lambda: partial(write_start, caller="calendar"),
@@ -478,7 +585,7 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         ),
     )
     with contextmanager(_captured_production_server)(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((packvm,)),
     ) as (server, session, authority):
         original_dispatch = session.broker._dispatch
 
@@ -486,6 +593,16 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             observed[envelope.operation_id] = envelope
             if envelope.operation_id == "rumi_turn_runtime_pack.turn-lifecycle":
                 lifecycle_calls.append(envelope.payload["operation"])
+            if envelope.operation_id == "saved_complete":
+                target = envelope.payload["request"]["conversation_id"]
+                if isinstance(backend, NativeSavedOrchestrationBackend):
+                    assert (
+                        backend.status.backend_digest
+                        == envelope.context.target_backend_digest
+                    )
+                    native_envelopes[target] = envelope
+                else:
+                    assert backend is packvm
             try:
                 result = original_dispatch(backend, envelope, *args, **kwargs)
                 if (
@@ -526,16 +643,19 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         } if not manual else {}
         if manual:
             cookie, csrf, origin = _authenticate(server)
+            native = ()
             continued = ("manual-complete",)
             unknown_after_claim = ("manual-claim-broker-ack",)
             destinations = (*continued, *unknown_after_claim)
             skipped_start = ()
         else:
             wakes[0].arm(86400000)
-            continued = ("complete", "legacy", "winner")
-            unknown_after_claim = ("claim-committed", "claim-broker-ack")
+            native = ("complete", "legacy", "winner")
+            continued = ("legacy-claim",)
+            unknown_after_claim = ("claim-committed", "claim-broker-ack", "claim-lost")
             destinations = (
-                *continued, *recovery_inputs, "status-no-source", "claim-unconfirmed",
+                *native, *continued, *recovery_inputs, "status-no-source",
+                "claim-unconfirmed",
                 *unknown_after_claim,
             )
             skipped_start = (*recovery_inputs, "status-no-source")
@@ -647,22 +767,33 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             claimed_events = [
                 event for event in turn["events"] if event["name"] == "turn.running"
             ]
-            assert job["status"] == "reconciliation_required", (job, errors)
+            if destination in native:
+                assert job["status"] == "completed", (job, errors)
+                assert turn["status"] == "completed", (job, errors)
+                assert len(claimed_events) == 1
+                messages = conversations.get(destination)["messages"]
+                assert [(msg["role"], msg["content"]) for msg in messages] == [
+                    ("user", "Hi"), ("assistant", "Calendar fixture"),
+                ]
+                assert conversations.saved_receipt(turn_id)["result_reference"] == (
+                    turn["result_reference"]
+                )
+            else:
+                assert job["status"] == "reconciliation_required", (job, errors)
+                assert conversations.get(destination)["messages"] == []
             if destination in continued:
                 assert turn["status"] == "failed", (job, errors, continuation)
                 assert turn["events"][-1]["details"]["error_code"] == (
                     "AI_COMPLETION_UNAVAILABLE"
                 )
                 assert len(claimed_events) == 1
-            elif destination != "status-no-source":
+            elif destination not in (*native, "status-no-source"):
                 possibly_claimed = destination in unknown_after_claim
                 assert turn["status"] == ("running" if possibly_claimed else "queued")
                 assert len(claimed_events) == int(possibly_claimed)
                 assert owner.recover_calendar_preparation(
                     turn_id=turn_id, occurrence_key=key, source=intent,
                 )["status"] == ("started" if possibly_claimed else "bound")
-            assert conversations.get(destination)["messages"] == []
-
             if not manual and destination in {
                 *recovery_inputs, "status-no-source", "claim-unconfirmed",
             }:
@@ -737,7 +868,12 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                         assert no_source is not previous_adapter
                         assert no_source.payload["operation"] == "status"
         assert legacy == ([] if manual else ["legacy", "claim-unconfirmed"])
-        assert legacy_start == ([] if manual else [("legacy", "begin")])
+        # The legacy claim calls the idempotent begin internally.
+        assert legacy_start == ([] if manual else [
+            ("legacy", "begin"),
+            ("legacy-claim", "claim"),
+            ("legacy-claim", "begin"),
+        ])
         assert starts == [
             (
                 target, action,
@@ -749,6 +885,45 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         ]
         assert len(releases) == (0 if manual else 1)
         assert continuation == [*continued, *recovery_inputs]
+        assert list(native_envelopes) == list(native)
+        assert native_steps == {
+            target: [None, "read", "user", "ai", "assistant"] for target in native
+        }
+        for envelope in native_envelopes.values():
+            lease, lease_state = authority.inspect_lease_token(
+                envelope.lease.token.decode("ascii"),
+            )
+            assert lease_state is LeaseState.COMMITTED
+            assert lease.caller.function_id == (
+                "rumi_turn_runtime_pack.chat-saved-job-adapter"
+            )
+        assert len(ai_calls) == len(native)
+        for request in native_requests:
+            with pytest.raises(ValueError, match="saved guest request is cancelled"):
+                request.assert_current()
+
+        # Calendar's marker alone must leave ordinary saved turns on PackVM.
+        if not manual:
+            conversations.create(
+                {"id": "ordinary", "model_reference": "model-profile-1"},
+                expected_revision=conversations.snapshot()["revision"],
+            )
+            cookie, csrf, origin = _authenticate(server)
+            status, response, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": {
+                    "turn_id": "ordinary-turn", "conversation_id": "ordinary",
+                    "conversation_revision": 1, "content": "Ordinary fixture",
+                }},
+                headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                         "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            assert status == 200 and response["data"]["status"] == "completed", (
+                response, errors,
+            )
+            assert list(native_envelopes) == list(native)
+            assert len(ai_calls) == len(native) + 1
         for guard in (*expired_callbacks, *expired_publications):
             with pytest.raises(PermissionError):
                 guard()
