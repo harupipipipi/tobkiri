@@ -46,6 +46,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [実 CI](https://github.com/harupipipipi/tobkiri/actions/runs/40504211160) で
   source identity は一致。001 と合わせて source 確認の総燃料は約 58% 減少したが、
   full catalog は依然上限超過。コード削減や全体完成率とは別の実測値。
+- [比較CI 44677115897](https://github.com/harupipipipi/tobkiri/actions/runs/44677115897)は
+  LinuxとmacOSの両方で `cold-original-schema-store` の実Wasm呼び出しが燃料を使い切った。
+  この実行は全カタログの比較まで到達していない。2Bの上限と比較条件を維持する。
 
 ## 003: legacy の試作 owner と実 core-host の経路整理
 
@@ -2645,6 +2648,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `afa85d72b` でテストだけに許可済み `notification` の受け口を追加し、実警告の文面と件数も確認する。
   [CI 43377714365](https://github.com/harupipipipi/tobkiri/actions/runs/43377714365)で2件成功。
   helloの実ツール結果、protected-pathsの5判定と3通知を確認した。
+- [CI 44650872304](https://github.com/harupipipipi/tobkiri/actions/runs/44650872304)と
+  [CI 44677739241](https://github.com/harupipipipi/tobkiri/actions/runs/44677739241)では、別々のケースが
+  上流拡張の呼び出し前のSession起動で30秒の期限を超えた。両方がProfileを同時に初回起動していた。
+  `1876a520f` はCIでこの2件を直列に起動する。起動期限、元のケース、固定した上流ソース、実行件数の照合は維持。
+  ワークフローと検証ツールの静的・単体テスト56件が通過。直列化後の実Pi再生は確認待ち。
 
 ## 032: PR #1521の監査再送とLauncherの依存ロック
 
@@ -6676,3 +6684,36 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Workflowは配布ステージングでno-WASIの既存手順を使う。1Bの構造化ツール試験が使うHarness Turnは
   試験の直前に明示的にビルドする。12 PackのWASIビルドとCI契約の静的検査56件が通過した。
   [先行の1B検証](https://github.com/harupipipipi/tobkiri/actions/runs/44677115829)
+- 更新後の1B CIでは、保存済みRegistryで選択したGemma 3 1Bの実推論、認証付きloopback経由の
+  Wasm Flow、ローカル模擬APIとモデルが指示するツールFlowを通過した。
+  [1B・模擬APIの検証結果](https://github.com/harupipipipi/tobkiri/actions/runs/44677739199)
+- `06ad0854c` は新しいWorkflowのHostモジュールを配布用の正規ファイル一覧に追加した。
+  旧実行はLauncherのステージングで一覧との不一致を検出した。一覧・実ファイル・正規Host検証器の
+  照合4件とmacOSの実Launcher CIが通過した。一覧を変更するpushでもmacOSの確認を実行する。
+  [修正後の実Launcher検証](https://github.com/harupipipipi/tobkiri/actions/runs/44678587046)
+
+## 064 Calendar予約チャットの台帳をRustに移す
+
+- `46d75e797` は、自動実行・手動実行・状態照合が使う予約チャットの台帳をRust Launcherへ接続した。
+  現在のProfileディレクトリ、SQLiteファイル、3テーブルを利用し、同じ予約キーへの初回書き込みと
+  再試行時の元データを維持する。各呼び出し元の署名済み経路を照合し、書き込みのコミットには許可を要する。
+- Rustテスト9件で既存DBとの互換性、同時書き込み、取り消し時のロールバック、行サイズ上限を確認した。
+  Python側の847件には、実署名済みProfileを使う自動・手動の応答消失と復旧が含まれる。
+  この結合テストではLauncherとのIPCをfixtureで置き換えた。macOSでは既存のPack Shellと
+  Setup UIを用いた `native-first-setup` のLauncherコンパイルも通過した。
+- 旧経路や互換Profileが使うPythonのwriterは残る。Rust経路でも他のIPC要求の最中に元データを
+  照合するため、読み取り専用のPython observerが1か所残る。この照合を別のIPCへ移すには、
+  待機中の要求に再入せず、同じ期限と永続化前の鮮度確認を維持できることが条件。
+  旧writerの削除は、残りのCalendar経路を移し、配布Launcherで既存DBの再開と復旧を確認してから行う。
+
+## 065 DMGのマウント前後で実バイトを照合する
+
+- [配布検証CI 44667710596](https://github.com/harupipipipi/tobkiri/actions/runs/44667710596)は、
+  マウント前後の `ctime` の差で失敗した。小さいAPFSのDMGで再現し、読み取り専用マウント時に
+  `hdiutil` がチェックサムの拡張属性を追加する一方、DMGのSHA-256、サイズ、`mtime`は同一と確認した。
+- `ad29872c5` はマウントとインストール後起動の前後で、ファイルの同一性と実バイトのSHA-256を照合する。
+  ハッシュ計算中の属性変更は従来通り検出する。属性だけが変わるケースと、同じサイズ・`mtime`のまま
+  実バイトが変わるケースを追加し、DMG検証テスト446件が通過した。
+- [後続の同一成果物CI 44671535425](https://github.com/harupipipipi/tobkiri/actions/runs/44671535425)は、
+  LauncherのIPCテスト64件が通過した後、古い期待件数63との照合で停止した。
+  Calendarを追加した `46d75e797` ではIPCを66件、ジョブを37件に更新しており、配布工程の再検証が必要。
