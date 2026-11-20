@@ -179,8 +179,10 @@ pub fn capture_legacy_saved_input_from_admitted_port(
     profile: &ProfileId,
     identity: &OriginalSavedInputIdentity,
     budget: &Arc<dyn AllocationBudget>,
-    deadline: Instant,
-    mut guard: impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
+    (deadline, mut guard): (
+        Instant,
+        impl FnMut(OriginalSavedTurnCheck) -> Result<()> + Send + 'static,
+    ),
     prepare_projection: impl FnOnce() -> Result<OriginalSavedInputProjection>,
     recover: impl FnOnce(OriginalSavedInputRow<'_>) -> Result<CoreBuffer>,
 ) -> Result<OriginalSavedInputOutcome> {

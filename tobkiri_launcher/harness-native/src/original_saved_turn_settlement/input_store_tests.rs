@@ -87,8 +87,7 @@ impl Store {
             &self.profile,
             &self.identity(SOURCE),
             &self.budget,
-            Instant::now() + Duration::from_secs(5),
-            guard,
+            (Instant::now() + Duration::from_secs(5), guard),
             || {
                 let projection = prepare_saved_input(SOURCE, candidate)?;
                 Ok(OriginalSavedInputProjection {

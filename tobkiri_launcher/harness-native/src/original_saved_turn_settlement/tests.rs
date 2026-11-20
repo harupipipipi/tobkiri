@@ -1274,14 +1274,13 @@ async fn actual_wasm_initializes_the_original_store_and_recovers_saved_input() -
                     &original.profile,
                     &identity,
                     &funded,
-                    deadline,
-                    move |phase| {
+                    (deadline, move |phase| {
                         if phase == OriginalSavedTurnCheck::Publish {
                             assert!(journal.is_file());
                             offered_here.fetch_add(1, Ordering::AcqRel);
                         }
                         Ok(())
-                    },
+                    }),
                     || Ok(projection),
                     recover,
                 )
@@ -1416,13 +1415,12 @@ async fn actual_wasm_binds_context_to_queued_delivery_and_calendar_turns() -> an
                 &original.profile,
                 &identity,
                 &budget,
-                deadline,
-                move |phase| {
+                (deadline, move |phase| {
                     if phase == OriginalSavedTurnCheck::Publish {
                         count.fetch_add(1, Ordering::AcqRel);
                     }
                     Ok(())
-                },
+                }),
                 || Ok(projection),
                 |row| {
                     runtime.block_on(invoke_original_saved_input_recover_port(

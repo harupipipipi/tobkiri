@@ -1598,8 +1598,7 @@ async fn run(
                                 &profile,
                                 &input_identity,
                                 &graph,
-                                execution_deadline,
-                                authorize,
+                                (execution_deadline, authorize),
                                 || Ok(projection),
                                 recover,
                             )
@@ -4159,7 +4158,10 @@ mod tests {
         let callers = [
             SavedTurnStartCaller::SavedTurn,
             SavedTurnStartCaller::SideChat,
+            SavedTurnStartCaller::Calendar,
         ];
+        let calendar_input_only =
+            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity.clone(), "catalog");
         for granted in callers {
             let proof = VerifiedRegistryLaunch::test_turn_start_proof_for(
                 identity.clone(),
@@ -4186,6 +4188,7 @@ mod tests {
                     };
                     assert_eq!(request.has_launch_proof(&proof), caller == granted);
                     assert!(!request.has_launch_proof(&append));
+                    assert!(!request.has_launch_proof(&calendar_input_only));
                     assert!(request.requires_publication_permit());
                     assert_eq!(request.input_capacity().unwrap(), expected_capacity);
                 }
