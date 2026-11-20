@@ -6639,3 +6639,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [失敗した実行](https://github.com/harupipipipi/tobkiri/actions/runs/44672506567/job/136076512367)では、
   確認ボタンを有効にする前の状態を読み取っていた。実キー操作と差し替え済みの候補を拒否する
   検査を使う。ローカルのSetup・確認の試験31件が通過し、[実WebKitの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44673436121)を起動した。
+
+## 062 Launcherの既存Provider接続とモデル保存
+
+- `c4170d92b` はLauncherの接続一覧で、既存の公開契約が任意で返す `catalog_provider_id` を受け取る。
+  以前は7項目に固定しており、Presetから設定した接続の公開情報を拒否した。モデル保存も接続情報と
+  revisionの読み取りで止まった。修正後も必須項目を検査し、非公開フィールドや空のカタログIDを拒否する。
+- Launcherの接続・モデル設定テスト29件、フロントエンドの型・生成契約検査が通過した。署名済みProfile
+  の認証済みHTTPテストでは、実際にRegistryに保存したカタログIDを返し、接続先や鍵の参照を公開せず、
+  保存状態も変更しないことを確認した。DMGから同じ操作を行う検証は別工程。
