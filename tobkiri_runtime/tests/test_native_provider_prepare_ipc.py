@@ -362,6 +362,66 @@ def test_workflow_messages_uses_a_funded_read_only_exchange(
                 invoke(request)
 
 
+@pytest.mark.parametrize(
+    ("operation", "value", "publication", "lose_reply"),
+    [
+        ("admit", None, False, False),
+        ("recover-source", {"request": {"turn_id": "calendar:one"}}, False, False),
+        ("has-source", False, False, False),
+        ("finish", {"status": "completed"}, True, False),
+        ("finish", {"status": "completed"}, True, True),
+    ],
+)
+def test_scheduled_source_ledger_is_funded_and_fences_publication(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: ipc.ScheduledSourceLedgerOperation, value: Any,
+    publication: bool, lose_reply: bool,
+) -> None:
+    borrow = _Borrow()
+    caller = "calendar-manual"
+    request = ipc.NativeScheduledSourceLedgerRequest(
+        context=borrow.context,
+        runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        caller=caller,
+        operation=operation,
+        input={"key": "occurrence"},
+    )
+    body = ipc.canonical_json(dict(request.input))
+
+    def serve(peer: socket.socket) -> None:
+        tag, payload = _receive(peer)
+        assert tag == ipc._START
+        assert json.loads(payload)["scheduled_source_ledger"] == {
+            "caller": caller, "operation": operation, "input_bytes": len(body),
+        }
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, body)
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        if publication:
+            _send(peer, ipc._PUBLISH_CHECK)
+            assert _receive(peer) == (ipc._PUBLISH_PERMIT, b"")
+        if lose_reply:
+            _send(peer, ipc._FAILURE, ipc._PUBLICATION_UNCONFIRMED)
+        else:
+            _send(peer, ipc._PLAN, ipc.canonical_json({"value": value}))
+
+    monkeypatch.setenv(ipc._SCHEDULED_SOURCE_LEDGER_ENV, "1")
+    monkeypatch.setenv(ipc._SCHEDULED_SOURCE_LEDGER_ROLE_MARKERS[caller], "1")
+    monkeypatch.delenv(ipc._SCHEDULED_SOURCE_LEDGER_ROLE_MARKERS["calendar"], raising=False)
+    with _served(monkeypatch, serve):
+        assert ipc.capture_launcher_scheduled_source_ledger("calendar") is None
+        invoke = ipc.capture_launcher_scheduled_source_ledger(caller)
+        assert invoke is not None
+        if lose_reply:
+            with pytest.raises(ipc.HostPublicationUnconfirmed):
+                invoke(request)
+        else:
+            assert invoke(request) == {"value": value}
+
+
 def _model_request(borrow: _Borrow) -> ipc.NativeModelSettingsRequest:
     return ipc.NativeModelSettingsRequest(
         context=borrow.context,

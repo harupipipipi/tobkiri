@@ -221,6 +221,7 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     ai_calls = []
     expired_callbacks = []
     expired_publications = []
+    native_ledger_calls = []
 
     def bind_wake(**arguments: Any) -> Any:
         driver = original_bind_wake(**arguments, adapter_factory=_Adapter)
@@ -583,6 +584,20 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             return capture()
 
     _publish_native_runtime_fixture(monkeypatch)
+    def ledger_exchange(request: ipc.NativeScheduledSourceLedgerRequest, *, caller: str):
+        request.assert_current()
+        assert request.caller == caller
+        assert request.context.profile_id == "defaults"
+        native_ledger_calls.append((caller, request.operation))
+        # Exercise the same durable owner file that the actual Rust job opens.
+        ledger = ScheduledSourceLedger(data, request.context.profile_id)
+        operation = getattr(ledger, request.operation.replace("-", "_"))
+        return {"value": operation(**request.input)}
+
+    monkeypatch.setattr(
+        ipc, "capture_launcher_scheduled_source_ledger",
+        lambda caller: partial(ledger_exchange, caller=caller),
+    )
     monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION", raising=False)
     monkeypatch.delenv("TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST", raising=False)
     for suffix, capture in (
@@ -942,6 +957,10 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             for action in ("begin", "claim")
         ]
         assert len(releases) == (0 if manual else 1)
+        ledger_roles = {"calendar-manual"} if manual else {"calendar", "calendar-status"}
+        assert {caller for caller, _ in native_ledger_calls} == ledger_roles
+        assert all((caller, "admit") in native_ledger_calls for caller in ledger_roles)
+        assert all((caller, "finish") in native_ledger_calls for caller in ledger_roles)
         assert continuation == list(continued)
         assert list(native_envelopes) == list(native_roles)
         assert set(native_identities) == set(native_roles.values())

@@ -476,6 +476,16 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.permits_start(caller))
     }
 
+    /// The ledger is the data owner of the exact admitted Calendar adapter.
+    pub(crate) fn permits_scheduled_source_ledger(&self, caller: SavedTurnStartCaller) -> bool {
+        matches!(
+            caller,
+            SavedTurnStartCaller::Calendar
+                | SavedTurnStartCaller::CalendarManual
+                | SavedTurnStartCaller::CalendarStatus
+        ) && self.permits_turn_start_for(caller)
+    }
+
     /// Require the ordinary signed Turn start chain and the verified Turn input port.
     pub(crate) fn permits_saved_input(&self) -> bool {
         self.permits_saved_input_for(SavedInputCaller::SavedTurn)

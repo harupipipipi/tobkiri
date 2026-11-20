@@ -2052,6 +2052,7 @@ def capture_production_dispatch(
         WorkflowSnapshotEntry,
         NativeSavedInputFailure,
         NativeSavedInputRequest,
+        NativeScheduledSourceLedgerRequest,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
@@ -2069,6 +2070,7 @@ def capture_production_dispatch(
         SavedTurnOrigin,
         SavedTurnStartAction,
         SavedTurnStartCaller,
+        ScheduledSourceLedgerOperation,
         capture_launcher_ai_gateway_policy_projector,
         capture_launcher_ai_gateway_result_projector,
         capture_launcher_ai_pipeline_evaluator,
@@ -2099,6 +2101,7 @@ def capture_production_dispatch(
         capture_launcher_saved_turn_reader,
         capture_launcher_saved_turn_settlement_writer,
         capture_launcher_saved_turn_start_writer,
+        capture_launcher_scheduled_source_ledger,
         capture_launcher_side_chat_conversation_append_writer,
         capture_launcher_side_chat_turn_start_writer,
         capture_launcher_workflow_messages,
@@ -2153,6 +2156,10 @@ def capture_production_dispatch(
         "calendar": capture_launcher_saved_input_writer(caller="calendar"),
         "calendar-manual": capture_launcher_saved_input_writer(caller="calendar-manual"),
         "calendar-status": capture_launcher_saved_input_writer(caller="calendar-status"),
+    }
+    calendar_ledger_ports = {
+        caller: capture_launcher_scheduled_source_ledger(caller)
+        for caller in calendar_saved_input_writers
     }
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
@@ -7312,6 +7319,9 @@ def capture_production_dispatch(
     ) -> HostProviderContributionV4:
         """Connect the verified scheduled job to its retained input and Turn owner."""
         from core_runtime.captured_provider_modules_v4 import CapturedProviderModules
+        from core_runtime.native_scheduled_source_ledger_v4 import (
+            NativeScheduledSourceLedger, observe_scheduled_source_digest,
+        )
 
         # Use the already verified contribution's materialized Pack helpers.
         implementation = getattr(contribution.invoke, "__globals__", {})
@@ -7383,7 +7393,37 @@ def capture_production_dispatch(
             turn_id = derive_turn_id(capture.profile_id, schedule_id, key)
             intent = dict(values["payload"])
             guard()
-            ledger = source_ledger(Path(root), capture.profile_id)
+            ledger_port = calendar_ledger_ports[route.caller]
+            if ledger_port is None:
+                ledger = source_ledger(Path(root), capture.profile_id)
+            else:
+                runtime = native_provider_runtime
+                if runtime is None:
+                    raise AuthorityDenied("native Calendar source ledger is unavailable")
+
+                def ledger_guard() -> None:
+                    guard()
+                    if native_provider_runtime is not runtime:
+                        raise AuthorityDenied("native Calendar source ledger capture changed")
+                    runtime[1]()
+
+                def exchange_ledger(
+                    operation: ScheduledSourceLedgerOperation, arguments: Mapping[str, Any],
+                ) -> dict[str, Any]:
+                    ledger_guard()
+                    if arguments["key"] != key:
+                        raise AuthorityDenied("native Calendar source ledger occurrence changed")
+                    return ledger_port(NativeScheduledSourceLedgerRequest(
+                        context=envelope.context,
+                        runtime_instance=runtime[0],
+                        deadline_monotonic=envelope.deadline_monotonic,
+                        assert_current=ledger_guard,
+                        caller=route.caller,
+                        operation=operation,
+                        input=arguments,
+                    ))
+
+                ledger = NativeScheduledSourceLedger(exchange_ledger)
             known = ledger.admit(
                 key, {field: value for field, value in values.items() if field != "operation"},
             )
@@ -7407,8 +7447,14 @@ def capture_production_dispatch(
             start_lock = threading.Lock()
 
             def assert_pinned_source(source_digest: str) -> None:
-                pinned = ledger.recover_source(key, turn_id)
-                if pinned is None or canonical_digest(pinned) != source_digest:
+                if ledger_port is None:
+                    pinned = ledger.recover_source(key, turn_id)
+                    current = None if pinned is None else canonical_digest(pinned)
+                else:
+                    current = observe_scheduled_source_digest(
+                        Path(root), capture.profile_id, key, turn_id,
+                    )
+                if current != source_digest:
                     raise AuthorityDenied("native Calendar occurrence source changed")
 
             def retain_start_input(

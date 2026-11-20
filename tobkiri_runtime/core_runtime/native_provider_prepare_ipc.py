@@ -69,6 +69,12 @@ _CALENDAR_ORCHESTRATION_MARKERS = {
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
 _WORKFLOW_MESSAGES_ENV = "TOBKIRI_NATIVE_WORKFLOW_MESSAGES"
+_SCHEDULED_SOURCE_LEDGER_ENV = "TOBKIRI_NATIVE_SCHEDULED_SOURCE_LEDGER"
+_SCHEDULED_SOURCE_LEDGER_ROLE_MARKERS = {
+    "calendar": _CALENDAR_START_ENV,
+    "calendar-manual": _CALENDAR_MANUAL_START_ENV,
+    "calendar-status": _CALENDAR_STATUS_START_ENV,
+}
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
 _PROVIDER_SNAPSHOT_ENV = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT"
 _AI_ROUTING_ENV = "TOBKIRI_NATIVE_AI_ROUTING"
@@ -124,6 +130,8 @@ CONVERSATION_COMPLETE_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _CONVERSATION_COMPLETE_INPUT_LIMITS = {"prepare": 1024 * 1024, "finish": 512 * 1024}
 WORKFLOW_MESSAGES_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 _WORKFLOW_MESSAGES_LIMIT = 512 * 1024
+_SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT = 256 * 1024
+_SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT = 128 * 1024 + 128
 SAVED_LOCAL_CHAT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 PROVIDER_SNAPSHOT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_LOCAL_CHAT_MAX_INPUT_BYTES = 1024 * 1024
@@ -554,6 +562,26 @@ class NativeWorkflowMessagesRequest:
     input: Mapping[str, Any]
 
 
+ScheduledSourceLedgerOperation = Literal[
+    "admit", "recover-source", "bind-source", "has-source", "bind-destination", "finish",
+]
+_SCHEDULED_SOURCE_LEDGER_WRITES = frozenset({"admit", "bind-source", "bind-destination", "finish"})
+_SCHEDULED_SOURCE_LEDGER_READS = frozenset({"recover-source", "has-source"})
+
+
+@dataclass(frozen=True)
+class NativeScheduledSourceLedgerRequest:
+    """Borrow the live Calendar adapter for one operation on its source ledger."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    caller: CalendarSavedCaller
+    operation: ScheduledSourceLedgerOperation
+    input: Mapping[str, Any]
+
+
 SavedLocalChatRole = Literal[
     "generate", "stream", "side-chat-generate", "side-chat-stream",
 ]
@@ -771,6 +799,7 @@ _NativeBorrow = (
     | NativeApplicationPresentationRequest
     | NativeConversationCompleteRequest
     | NativeWorkflowMessagesRequest
+    | NativeScheduledSourceLedgerRequest
     | NativeSavedTurnSettlementRequest
     | NativeConversationConfirmationRequest
     | NativeModelResolveRequest
@@ -782,6 +811,7 @@ _NativeOperation = Literal[
     "turn_settlement", "saved_input",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
     "application_presentation", "conversation_complete", "workflow_messages",
+    "scheduled_source_ledger",
 ]
 
 
@@ -1195,6 +1225,25 @@ def capture_launcher_workflow_messages() -> (
     return manifest, partial(_invoke, launcher, operation="workflow_messages")
 
 
+def capture_launcher_scheduled_source_ledger(
+    caller: CalendarSavedCaller,
+) -> Callable[[NativeScheduledSourceLedgerRequest], dict[str, Any]] | None:
+    """Capture this Calendar role's managed ledger transport."""
+    marker = _SCHEDULED_SOURCE_LEDGER_ROLE_MARKERS[caller]
+    if os.environ.get(_SCHEDULED_SOURCE_LEDGER_ENV) != "1" or os.environ.get(marker) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+
+    def invoke(borrow: NativeScheduledSourceLedgerRequest) -> dict[str, Any]:
+        if borrow.caller != caller:
+            raise _ProtocolError("native Calendar source ledger caller differs from capture")
+        return _invoke(launcher, borrow, operation="scheduled_source_ledger")
+
+    return invoke
+
+
 def capture_launcher_ai_routing_evaluator() -> (
     Callable[[NativeAiRoutingRequest], Mapping[str, Any]] | None
 ):
@@ -1587,6 +1636,16 @@ def _start_payload(
         if not 0 < body_input_bytes <= _WORKFLOW_MESSAGES_LIMIT:
             raise _ProtocolError("native Workflow messages input size is invalid")
         frame["workflow_messages"] = {"input_bytes": body_input_bytes}
+    elif isinstance(borrow, NativeScheduledSourceLedgerRequest):
+        if (
+            borrow.caller not in _SCHEDULED_SOURCE_LEDGER_ROLE_MARKERS
+            or borrow.operation not in _SCHEDULED_SOURCE_LEDGER_READS | _SCHEDULED_SOURCE_LEDGER_WRITES
+            or not 0 < body_input_bytes <= _SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT
+        ):
+            raise _ProtocolError("native Calendar source ledger start is invalid")
+        frame["scheduled_source_ledger"] = {
+            "caller": borrow.caller, "operation": borrow.operation, "input_bytes": body_input_bytes,
+        }
     elif isinstance(borrow, NativeAiRoutingRequest):
         if not 0 < body_input_bytes <= _AI_ROUTING_LIMIT:
             raise _ProtocolError("native AI routing input size is invalid")
@@ -2051,6 +2110,26 @@ def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
         raise _ProtocolError("native Provider preparation plan is invalid") from None
     if not isinstance(plan, dict):
         raise _ProtocolError("native Provider preparation plan is invalid")
+    return plan
+
+
+def _decode_scheduled_source_ledger(
+    payload: bytes, operation: ScheduledSourceLedgerOperation,
+) -> dict[str, Any]:
+    plan = _decode_plan(payload, _SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT)
+    if plan.keys() != {"value"} or canonical_json(plan) != payload:
+        raise _ProtocolError("native Calendar source ledger reply is invalid")
+    value = plan["value"]
+    expected = {
+        "admit": (dict, type(None)),
+        "recover-source": (dict, type(None)),
+        "bind-source": (dict,),
+        "has-source": (bool,),
+        "bind-destination": (str,),
+        "finish": (dict,),
+    }
+    if type(value) not in expected[operation]:
+        raise _ProtocolError("native Calendar source ledger result has the wrong type")
     return plan
 
 
@@ -2881,6 +2960,7 @@ class _Exchange:
         model_access_projection: bool = False,
         conversation_complete: bool = False,
         saved_input: bool = False,
+        scheduled_source_ledger: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
@@ -2912,7 +2992,7 @@ class _Exchange:
             not requires_body_ready or ai_routing or model_access_projection or saved_input
         ):
             self.failure_codes |= {self.legacy_failure}
-        if conversation_mutation or (saved_input and permits_publication):
+        if conversation_mutation or ((saved_input or scheduled_source_ledger) and permits_publication):
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
         self.failure_limit = max(map(len, self.failure_codes))
         self.frame_header = bytearray(_FRAME.size)
@@ -3102,6 +3182,7 @@ class _Exchange:
         body_input: bytes | None = None,
     ) -> dict[str, Any] | None:
         conversation_append = isinstance(borrow, NativeConversationAppendRequest)
+        scheduled_source_ledger = isinstance(borrow, NativeScheduledSourceLedgerRequest)
         saved_input_digest = None
         proposed_saved_input_digest = None
         if isinstance(borrow, NativeSavedOrchestrationRequest):
@@ -3154,6 +3235,12 @@ class _Exchange:
                         raise NativeConversationCompleteFailure(
                             borrow.phase, payload.decode("ascii"),
                         )
+                    if scheduled_source_ledger:
+                        wait_seconds()
+                        if payload in (b"invalid", b"limit-exceeded"):
+                            raise ValueError("native Calendar source ledger input or result is invalid")
+                        if payload == b"denied":
+                            raise PermissionError("native Calendar source ledger operation denied")
                     if isinstance(borrow, NativeSavedOrchestrationRequest):
                         wait_seconds()
                         raise NativeSavedOrchestrationFailure(payload.decode("ascii"))
@@ -3207,7 +3294,7 @@ class _Exchange:
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
             if (
-                (self.read_only_body or saved_input_digest is not None)
+                (self.read_only_body or saved_input_digest is not None or scheduled_source_ledger)
                 and tag == _PLAN and self.entered_live_phase
             ):
                 # The Launcher sends PLAN only after the funded worker drains.
@@ -3232,14 +3319,16 @@ class _Exchange:
                     NativeSavedTurnSettlementRequest,
                     NativeConversationConfirmationRequest, NativeConversationAppendRequest,
                     NativeSavedInputRequest,
+                    NativeScheduledSourceLedgerRequest,
                 ))
                 and not self.publication_possible
             ):
                 # The marker can record uncertainty even if its callback raises.
                 self.publication_possible = True
-                mark_publication_possible = borrow.mark_publication_possible
-                assert mark_publication_possible is not None
-                mark_publication_possible()
+                if not isinstance(borrow, NativeScheduledSourceLedgerRequest):
+                    mark_publication_possible = borrow.mark_publication_possible
+                    assert mark_publication_possible is not None
+                    mark_publication_possible()
                 # send() checks the current guard again before offering any byte.
                 self.send(_PUBLISH_PERMIT, b"", wait_seconds)
             elif tag == _PLAN and self.entered_live_phase:
@@ -3269,6 +3358,8 @@ class _Exchange:
                     )
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
                     plan = _decode_turn_settlement(payload, borrow)
+                elif isinstance(borrow, NativeScheduledSourceLedgerRequest):
+                    plan = _decode_scheduled_source_ledger(payload, borrow.operation)
                 elif isinstance(borrow, NativeConversationConfirmationRequest):
                     plan = _decode_conversation_confirmation(
                         payload, borrow, publication_possible=self.publication_possible,
@@ -3323,6 +3414,7 @@ class _Exchange:
                 and not isinstance(borrow, (
                     NativeConversationCompleteRequest, NativeSavedInputRequest,
                     NativeWorkflowMessagesRequest,
+                    NativeScheduledSourceLedgerRequest,
                 ))
                 and not self.entered_live_phase
                 and (not self.requires_body_ready or body_input is not None)
@@ -3490,6 +3582,8 @@ def _invoke(
     application_presentation = isinstance(borrow, NativeApplicationPresentationRequest)
     conversation_complete = isinstance(borrow, NativeConversationCompleteRequest)
     workflow_messages = isinstance(borrow, NativeWorkflowMessagesRequest)
+    scheduled_source_ledger = isinstance(borrow, NativeScheduledSourceLedgerRequest)
+    ledger_write = scheduled_source_ledger and borrow.operation in _SCHEDULED_SOURCE_LEDGER_WRITES
     turn_settlement = isinstance(borrow, NativeSavedTurnSettlementRequest)
     conversation_confirmation = isinstance(borrow, NativeConversationConfirmationRequest)
     model_resolve = isinstance(borrow, NativeModelResolveRequest)
@@ -3509,6 +3603,7 @@ def _invoke(
         or application_presentation != (operation == "application_presentation")
         or conversation_complete != (operation == "conversation_complete")
         or workflow_messages != (operation == "workflow_messages")
+        or scheduled_source_ledger != (operation == "scheduled_source_ledger")
         or turn_settlement != (operation == "turn_settlement")
         or conversation_confirmation != (operation == "conversation_confirmation")
         or model_resolve != (operation == "model_resolve")
@@ -3541,11 +3636,18 @@ def _invoke(
         body_input = canonical_json(dict(borrow.input))
         if len(body_input) > _WORKFLOW_MESSAGES_LIMIT:
             raise _ProtocolError("native Workflow messages input exceeds IPC limit")
+    elif isinstance(borrow, NativeScheduledSourceLedgerRequest):
+        wait_seconds()
+        body_input = canonical_json(dict(borrow.input))
+        if len(body_input) > _SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT:
+            raise ValueError("native Calendar source ledger input exceeds IPC limit")
     with _connect_launcher(launcher, wait_seconds) as connection:
         if saved_orchestration or conversation_complete or saved_input:
             plan_limit = MAX_CANONICAL_JSON_BYTES
         elif workflow_messages:
             plan_limit = _WORKFLOW_MESSAGES_LIMIT
+        elif scheduled_source_ledger:
+            plan_limit = _SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT
         elif turn_start:
             plan_limit = _TURN_START_RESULT_LIMIT
         elif ai_routing:
@@ -3563,13 +3665,13 @@ def _invoke(
             plan_limit,
             permits_publication=(
                 model_save or turn_start or turn_settlement or conversation_confirmation
-                or conversation_append or saved_input_bind
+                or conversation_append or saved_input_bind or ledger_write
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
             requires_body_ready=(
                 saved_orchestration or ai_routing or application_presentation
                 or conversation_complete or workflow_messages
-                or model_access_projection or saved_input
+                or model_access_projection or saved_input or scheduled_source_ledger
             ),
             ai_routing=ai_routing,
             read_only_body=(
@@ -3580,6 +3682,7 @@ def _invoke(
             model_access_projection=model_access_projection,
             conversation_complete=conversation_complete,
             saved_input=saved_input,
+            scheduled_source_ledger=scheduled_source_ledger,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds, body_input=body_input)
@@ -3606,6 +3709,10 @@ def _invoke(
                 if saved_input:
                     raise HostPublicationUnconfirmed(
                         "native Saved Turn input publication could not be confirmed",
+                    ) from None
+                if scheduled_source_ledger:
+                    raise HostPublicationUnconfirmed(
+                        "native Calendar source ledger publication could not be confirmed",
                     ) from None
                 if turn_settlement:
                     raise NativeSavedTurnSettlementPublicationUnconfirmed(

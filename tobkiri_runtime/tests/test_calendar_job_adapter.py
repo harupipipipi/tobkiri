@@ -3,10 +3,14 @@
 from contextlib import nullcontext
 import importlib.util
 from pathlib import Path
+import sqlite3
 import sys
 from types import SimpleNamespace as NS
 
 import pytest
+
+from core_runtime.native_scheduled_source_ledger_v4 import observe_scheduled_source_digest
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 PATH = (
     Path(__file__).resolve().parents[1]
@@ -75,6 +79,44 @@ def envelope(**changes):
         },
         **changes,
     }
+
+
+def test_native_source_observer_is_read_only_and_rechecks_existing_rows(tmp_path):
+    root = tmp_path / "user-data"
+    root.mkdir()
+    with pytest.raises(PermissionError):
+        observe_scheduled_source_digest(root, "profile", "key", "calendar:one")
+    assert list(root.iterdir()) == []
+    ledger = job.ScheduledSourceLedger(root, "profile")
+    ledger.admit("key", {"message": "hello"})
+    source = {"request": {"turn_id": "calendar:one", "content": "日本語"}}
+    ledger.bind_source("key", source)
+    stamp = ledger.path.stat().st_mtime_ns
+    assert observe_scheduled_source_digest(root, "profile", "other", "calendar:one") is None
+    assert observe_scheduled_source_digest(root, "profile", "key", "calendar:one") == canonical_digest(source)
+    assert ledger.path.stat().st_mtime_ns == stamp
+
+    changed = {"request": {"turn_id": "calendar:one", "content": "changed"}}
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute("UPDATE sources SET source=?", (canonical_json(changed).decode(),))
+    assert observe_scheduled_source_digest(root, "profile", "key", "calendar:one") == canonical_digest(changed)
+
+    redirected = tmp_path / "redirected.sqlite3"
+    ledger.path.rename(redirected)
+    ledger.path.symlink_to(redirected)
+    with pytest.raises(PermissionError):
+        observe_scheduled_source_digest(root, "profile", "key", "calendar:one")
+
+
+def test_native_source_observer_refuses_wal_without_creating_sidecars(tmp_path):
+    ledger = job.ScheduledSourceLedger(tmp_path, "profile")
+    with sqlite3.connect(ledger.path) as db:
+        assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+    db.close()
+    assert not ledger.path.with_name(ledger.path.name + "-shm").exists()
+    with pytest.raises(PermissionError):
+        observe_scheduled_source_digest(tmp_path, "profile", "key", "calendar:one")
+    assert not ledger.path.with_name(ledger.path.name + "-shm").exists()
 
 
 def test_original_source_revision_and_envelope_are_immutable(tmp_path):

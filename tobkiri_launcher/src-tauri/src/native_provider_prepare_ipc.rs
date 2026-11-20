@@ -16,7 +16,8 @@ use tobkiri_core::{Digest, NativeArtifactError};
 use tobkiri_harness_native::{
     LegacyLocalChatSourceError, LegacySavedTurnSettlementError, OriginalLocalChatError,
     OriginalLocalChatPolicyError, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
-    OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+    OriginalScheduledLedgerError, OriginalScheduledLedgerOperation, OriginalWorkflowSnapshotCaller,
+    OriginalWorkflowSnapshotEntry,
 };
 use tobkiri_wasm::{
     LegacyLocalChatHttpError, NativeDataIoError, LEGACY_LOCAL_CHAT_REQUEST_LIMIT,
@@ -36,12 +37,14 @@ use crate::{
         ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
         SavedInputCaller, SavedInputMode, SavedLocalChatRequiresLegacyRequest,
         SavedOrchestrationCaller, SavedOrchestrationStepError, SavedTurnStartAction,
-        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, VerifiedRegistryLaunch, AI_GATEWAY_DATA_LIMIT,
-        APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
-        CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
-        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
-        PROVIDER_SNAPSHOT_REPLY_LIMIT, SAVED_INPUT_FRAME_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        SavedTurnStartCaller, ScheduledSourceLedgerCaller, SettlementCaller,
+        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, VerifiedRegistryLaunch,
+        AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
+        APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
+        CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
+        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, PROVIDER_SNAPSHOT_REPLY_LIMIT,
+        SAVED_INPUT_FRAME_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT, SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT,
         TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT, WORKFLOW_MESSAGES_FRAME_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
@@ -107,6 +110,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     saved_input: Option<SavedInputStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    scheduled_source_ledger: Option<ScheduledSourceLedgerStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_settlement: Option<TurnSettlement>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_append: Option<ConversationAppend<'a>>,
@@ -131,6 +136,7 @@ struct Start<'a> {
 enum RequestStart {
     Inline(NativeRegistryRequest),
     SavedInput(SavedInputStart),
+    ScheduledSourceLedger(ScheduledSourceLedgerStart),
     SavedOrchestration {
         caller: SavedOrchestrationCaller,
         input_bytes: usize,
@@ -162,6 +168,9 @@ impl RequestStart {
         match self {
             Self::Inline(operation) => operation.has_launch_proof(proof),
             Self::SavedInput(input) => proof.permits_saved_input_for(input.caller),
+            Self::ScheduledSourceLedger(start) => {
+                proof.permits_scheduled_source_ledger(start.caller.turn_start_caller())
+            }
             Self::SavedOrchestration { caller, .. } => proof.permits_saved_orchestration(*caller),
             Self::ApplicationPresentation { role, .. } => {
                 proof.permits_application_presentation(*role)
@@ -192,7 +201,8 @@ impl RequestStart {
                     | SavedOrchestrationCaller::CalendarStatus,
                 ..
             }
-            | Self::SavedInput(_) => (FAILURE, b"denied"),
+            | Self::SavedInput(_)
+            | Self::ScheduledSourceLedger(_) => (FAILURE, b"denied"),
             Self::ApplicationPresentation { .. } => (FAILURE, b"unavailable"),
             _ => (INAPPLICABLE, &[]),
         };
@@ -202,6 +212,7 @@ impl RequestStart {
 
 enum BodyStart<'a> {
     SavedInput(&'a SavedInputStart),
+    ScheduledSourceLedger(&'a ScheduledSourceLedgerStart),
     SavedOrchestration(&'a SavedOrchestrationStart),
     ApplicationPresentation(&'a ApplicationPresentationStart),
     ConversationComplete(&'a ConversationCompleteStart),
@@ -251,31 +262,35 @@ impl Start<'_> {
             &self.ai_route,
             &self.saved_input,
             &self.workflow_messages,
+            &self.scheduled_source_ledger,
         ) {
-            (None, None, None, None, None, None, None, None) => None,
-            (Some(saved), None, None, None, None, None, None, None) => {
+            (None, None, None, None, None, None, None, None, None) => None,
+            (Some(saved), None, None, None, None, None, None, None, None) => {
                 Some(BodyStart::SavedOrchestration(saved))
             }
-            (None, Some(presentation), None, None, None, None, None, None) => {
+            (None, Some(presentation), None, None, None, None, None, None, None) => {
                 Some(BodyStart::ApplicationPresentation(presentation))
             }
-            (None, None, Some(complete), None, None, None, None, None) => {
+            (None, None, Some(complete), None, None, None, None, None, None) => {
                 Some(BodyStart::ConversationComplete(complete))
             }
-            (None, None, None, Some(projection), None, None, None, None) => {
+            (None, None, None, Some(projection), None, None, None, None, None) => {
                 Some(BodyStart::ModelAccessProjection(projection))
             }
-            (None, None, None, None, Some(chat), None, None, None) => {
+            (None, None, None, None, Some(chat), None, None, None, None) => {
                 Some(BodyStart::SavedLocalChat(chat))
             }
-            (None, None, None, None, None, Some(routing), None, None) => {
+            (None, None, None, None, None, Some(routing), None, None, None) => {
                 Some(BodyStart::AiRouting(routing))
             }
-            (None, None, None, None, None, None, Some(input), None) => {
+            (None, None, None, None, None, None, Some(input), None, None) => {
                 Some(BodyStart::SavedInput(input))
             }
-            (None, None, None, None, None, None, None, Some(messages)) => {
+            (None, None, None, None, None, None, None, Some(messages), None) => {
                 Some(BodyStart::WorkflowMessages(messages))
+            }
+            (None, None, None, None, None, None, None, None, Some(ledger)) => {
+                Some(BodyStart::ScheduledSourceLedger(ledger))
             }
             _ => bail!("native Registry start must name exactly one operation"),
         };
@@ -383,6 +398,28 @@ impl Start<'_> {
                     "invalid saved input size"
                 );
                 return Ok(RequestStart::SavedInput(*input));
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(BodyStart::ScheduledSourceLedger(ledger)),
+                None,
+            ) => {
+                if ledger.input_bytes == 0 {
+                    return Err(OriginalScheduledLedgerError::Invalid.into());
+                }
+                if ledger.input_bytes > SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT {
+                    return Err(OriginalScheduledLedgerError::Capacity.into());
+                }
+                return Ok(RequestStart::ScheduledSourceLedger(*ledger));
             }
             (
                 None,
@@ -708,6 +745,22 @@ struct SavedInputStart {
 struct SavedInputReply<'a> {
     #[serde(borrow)]
     accepted: &'a RawValue,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScheduledSourceLedgerStart {
+    caller: ScheduledSourceLedgerCaller,
+    #[serde(deserialize_with = "deserialize_scheduled_source_ledger_operation")]
+    operation: OriginalScheduledLedgerOperation,
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScheduledSourceLedgerReply<'a> {
+    #[serde(borrow)]
+    value: &'a RawValue,
 }
 
 #[derive(Deserialize)]
@@ -1149,6 +1202,26 @@ where
     }
 }
 
+fn deserialize_scheduled_source_ledger_operation<'de, D>(
+    deserializer: D,
+) -> std::result::Result<OriginalScheduledLedgerOperation, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use OriginalScheduledLedgerOperation::*;
+    match String::deserialize(deserializer)?.as_str() {
+        "admit" => Ok(Admit),
+        "recover-source" => Ok(RecoverSource),
+        "bind-source" => Ok(BindSource),
+        "has-source" => Ok(HasSource),
+        "bind-destination" => Ok(BindDestination),
+        "finish" => Ok(Finish),
+        _ => Err(de::Error::custom(
+            "unknown scheduled source ledger operation",
+        )),
+    }
+}
+
 fn deserialize_turn_start_id<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -1566,7 +1639,8 @@ fn parse_start(tag: u8, bytes: &[u8]) -> Result<Start<'_>> {
             && start.provider_snapshot.is_none()
             && start.application_presentation.is_none()
             && start.workflow_messages.is_none()
-            && start.conversation_complete.is_none())
+            && start.conversation_complete.is_none()
+            && start.scheduled_source_ledger.is_none())
             || bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{'),
         "native Registry start requires a named operation"
     );
@@ -1603,6 +1677,15 @@ pub(crate) fn admit_connection(
     let deadline = host_deadline(start.deadline_ns)?;
     let request = match start.request_start() {
         Ok(request) => request,
+        Err(error) if error.is::<OriginalScheduledLedgerError>() => {
+            send_frame(
+                &mut stream,
+                FAILURE,
+                scheduled_source_ledger_failure(WireAuthority::AwaitingLive, &error).as_bytes(),
+                deadline.min(Instant::now() + FRAME_TIMEOUT),
+            )?;
+            return Ok(None);
+        }
         Err(error)
             if (start.conversation_complete.is_some()
                 || start.model_access_projection.is_some()
@@ -1632,6 +1715,7 @@ pub(crate) fn admit_connection(
         &request,
         RequestStart::SavedOrchestration { .. }
             | RequestStart::SavedInput(_)
+            | RequestStart::ScheduledSourceLedger(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
             | RequestStart::WorkflowMessages { .. }
@@ -1790,6 +1874,31 @@ impl AdmittedConnection {
                     },
                 );
             }
+            RequestStart::ScheduledSourceLedger(ScheduledSourceLedgerStart {
+                caller,
+                operation,
+                input_bytes,
+            }) => {
+                let connection = Connection::new(
+                    manager,
+                    candidate,
+                    stream,
+                    deadline,
+                    ReplyRole::ScheduledSourceLedger(operation),
+                );
+                let input_connection = Arc::clone(&connection);
+                return connection.run(
+                    app,
+                    NativeRegistryRequest::ScheduledSourceLedger {
+                        caller,
+                        operation,
+                        input_bytes,
+                        receive_input: Box::new(move |deadline| {
+                            input_connection.receive_funded_input(input_bytes, deadline)
+                        }),
+                    },
+                );
+            }
             RequestStart::SavedOrchestration {
                 caller,
                 input_bytes,
@@ -1930,6 +2039,9 @@ impl AdmittedConnection {
             NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
             NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
             NativeRegistryRequest::SavedInput { mode, .. } => ReplyRole::SavedInput(*mode),
+            NativeRegistryRequest::ScheduledSourceLedger { operation, .. } => {
+                ReplyRole::ScheduledSourceLedger(*operation)
+            }
             NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
             NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
             NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
@@ -1959,6 +2071,7 @@ enum ReplyRole {
     TurnRead,
     TurnStart(SavedTurnStartAction),
     SavedInput(SavedInputMode),
+    ScheduledSourceLedger(OriginalScheduledLedgerOperation),
     TurnSettlement,
     SavedOrchestration,
     ApplicationPresentation,
@@ -1977,6 +2090,7 @@ impl ReplyRole {
                 | Self::WorkflowMessages
                 | Self::ModelAccessProjection
                 | Self::SavedInput(_)
+                | Self::ScheduledSourceLedger(_)
         )
     }
 
@@ -1991,6 +2105,9 @@ impl ReplyRole {
     }
 
     fn permits_publication(self) -> bool {
+        if let Self::ScheduledSourceLedger(operation) = self {
+            return operation.permits_write();
+        }
         self.uses_conversation_publication()
             || matches!(
                 self,
@@ -2006,6 +2123,10 @@ impl ReplyRole {
             self,
             Self::ConversationConfirmation | Self::ConversationAppend
         )
+    }
+
+    fn reports_uncertain_publication(self) -> bool {
+        self.uses_conversation_publication() || matches!(self, Self::ScheduledSourceLedger(_))
     }
 
     fn result_limit(self, authority: WireAuthority) -> (usize, &'static str) {
@@ -2029,6 +2150,14 @@ impl ReplyRole {
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
             Self::SavedInput(_) => (SAVED_INPUT_FRAME_LIMIT, "limit-exceeded"),
+            Self::ScheduledSourceLedger(_) => (
+                SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT,
+                if authority == WireAuthority::PublicationPermitted {
+                    "publication-unconfirmed"
+                } else {
+                    "limit-exceeded"
+                },
+            ),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
             Self::ApplicationPresentation => {
                 (APPLICATION_PRESENTATION_RESULT_LIMIT, "limit-exceeded")
@@ -2049,6 +2178,9 @@ impl ReplyRole {
     }
 
     fn failure_code(self, authority: WireAuthority, error: &anyhow::Error) -> &'static str {
+        if matches!(self, Self::ScheduledSourceLedger(_)) {
+            return scheduled_source_ledger_failure(authority, error);
+        }
         if matches!(self, Self::ProviderSnapshot | Self::ModelAccessProjection) {
             return if error.is::<ProviderSnapshotRequiresLegacyRead>() {
                 provider_snapshot_fallback(authority)
@@ -2264,6 +2396,40 @@ impl ReplyRole {
                 return Err("internal");
             }
         }
+        if let Self::ScheduledSourceLedger(operation) = self {
+            match authority {
+                WireAuthority::AwaitingLive => return Err("unavailable"),
+                WireAuthority::PublicationPermitted if !operation.permits_write() => {
+                    return Err("unavailable");
+                }
+                _ => {}
+            }
+            let malformed = if authority == WireAuthority::PublicationPermitted {
+                "publication-unconfirmed"
+            } else {
+                "internal"
+            };
+            let text = std::str::from_utf8(output).map_err(|_| malformed)?;
+            if !text.trim_start().starts_with('{') {
+                return Err(malformed);
+            }
+            let reply: ScheduledSourceLedgerReply<'_> =
+                serde_json::from_str(text).map_err(|_| malformed)?;
+            let value = reply.value.get();
+            if value.len() > SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT - 128 {
+                return Err(overflow_code);
+            }
+            use OriginalScheduledLedgerOperation::*;
+            let valid = match operation {
+                Admit | RecoverSource => value.starts_with('{') || value == "null",
+                BindSource | Finish => value.starts_with('{'),
+                HasSource => matches!(value, "true" | "false"),
+                BindDestination => value.starts_with('"'),
+            };
+            if !valid {
+                return Err(malformed);
+            }
+        }
         if matches!(
             self,
             Self::TurnRead
@@ -2283,6 +2449,24 @@ impl ReplyRole {
             }
         }
         Ok(())
+    }
+}
+
+fn scheduled_source_ledger_failure(
+    authority: WireAuthority,
+    error: &anyhow::Error,
+) -> &'static str {
+    if authority == WireAuthority::PublicationPermitted {
+        return "publication-unconfirmed";
+    }
+    match error.downcast_ref::<OriginalScheduledLedgerError>() {
+        Some(OriginalScheduledLedgerError::Invalid) => "invalid",
+        Some(OriginalScheduledLedgerError::Denied) => "denied",
+        Some(OriginalScheduledLedgerError::Capacity) => "limit-exceeded",
+        _ => match failure_code(error) {
+            code @ ("cancelled" | "denied" | "limit-exceeded") => code,
+            _ => "unavailable",
+        },
     }
 }
 
@@ -2413,8 +2597,8 @@ impl Connection {
             ensure!(
                 wire.funded_input_received
                     && (check == AuthorityCheck::Live
-                        || (self.reply == ReplyRole::SavedInput(SavedInputMode::Bind)
-                            && check == AuthorityCheck::Publication)),
+                        || (check == AuthorityCheck::Publication
+                            && self.reply.permits_publication())),
                 "native Registry DATA request is outside its live phase"
             );
         }
@@ -2525,7 +2709,7 @@ impl Connection {
 
     fn send_failure(&self, code: &str, deadline: Instant) -> Result<()> {
         let mut wire = self.lock_wire()?;
-        let code = if self.reply.uses_conversation_publication()
+        let code = if self.reply.reports_uncertain_publication()
             && wire.authority == WireAuthority::PublicationPermitted
         {
             "publication-unconfirmed"
@@ -2916,6 +3100,134 @@ mod tests {
         format!(
             r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1{operation}}}"#
         )
+    }
+
+    #[test]
+    fn calendar_source_ledger_start_is_exact_and_funded() {
+        use OriginalScheduledLedgerOperation::*;
+        for (caller_name, expected_caller) in [
+            ("calendar", ScheduledSourceLedgerCaller::Calendar),
+            (
+                "calendar-manual",
+                ScheduledSourceLedgerCaller::CalendarManual,
+            ),
+            (
+                "calendar-status",
+                ScheduledSourceLedgerCaller::CalendarStatus,
+            ),
+        ] {
+            for (operation_name, expected_operation) in [
+                ("admit", Admit),
+                ("recover-source", RecoverSource),
+                ("bind-source", BindSource),
+                ("has-source", HasSource),
+                ("bind-destination", BindDestination),
+                ("finish", Finish),
+            ] {
+                let frame = start_frame(&format!(
+                    r#","scheduled_source_ledger":{{"caller":"{caller_name}","operation":"{operation_name}","input_bytes":{SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT}}}"#
+                ));
+                let start = parse_start(START, frame.as_bytes()).unwrap();
+                assert!(matches!(
+                    start.request_start().unwrap(),
+                    RequestStart::ScheduledSourceLedger(ScheduledSourceLedgerStart {
+                        caller, operation, input_bytes: SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT,
+                    }) if caller == expected_caller && operation == expected_operation
+                ));
+            }
+        }
+
+        let valid = r#","scheduled_source_ledger":{"caller":"calendar","operation":"admit","input_bytes":1}"#;
+        for invalid in [
+            r#","scheduled_source_ledger":null"#.to_owned(),
+            valid.replace(r#""caller":"calendar","#, ""),
+            valid.replace("calendar", "saved-turn"),
+            valid.replace("calendar", "side-chat"),
+            valid.replace("admit", "get"),
+            valid.replace(r#""input_bytes":1"#, r#""input_bytes":0"#),
+            valid.replace(
+                r#""input_bytes":1"#,
+                &format!(
+                    r#""input_bytes":{}"#,
+                    SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT + 1
+                ),
+            ),
+            valid.replace(
+                r#""input_bytes":1"#,
+                r#""input_bytes":1,"publication":true"#,
+            ),
+            format!("{valid}{valid}"),
+            format!("{valid}{PROVIDER_REQUEST}"),
+        ] {
+            let frame = start_frame(&invalid);
+            assert!(parse_start(START, frame.as_bytes())
+                .ok()
+                .and_then(|start| start.request_start().ok())
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn calendar_source_ledger_allows_live_replay_without_publication_permit() {
+        use OriginalScheduledLedgerOperation::*;
+        for (operation, expected_write, output) in [
+            (Admit, true, r#"{"value":null}"#),
+            (RecoverSource, false, r#"{"value":{"request":{}}}"#),
+            (BindSource, true, r#"{"value":{"request":{}}}"#),
+            (HasSource, false, r#"{"value":true}"#),
+            (BindDestination, true, r#"{"value":"existing"}"#),
+            (Finish, true, r#"{"value":{"status":"completed"}}"#),
+        ] {
+            let reply = ReplyRole::ScheduledSourceLedger(operation);
+            assert!(reply.uses_funded_input());
+            assert_eq!(reply.permits_publication(), expected_write);
+            assert!(reply
+                .validate_result(WireAuthority::AwaitingLive, output.as_bytes())
+                .is_err());
+            assert_eq!(
+                reply.validate_result(WireAuthority::Live, output.as_bytes()),
+                Ok(())
+            );
+            assert_eq!(
+                reply
+                    .validate_result(WireAuthority::PublicationPermitted, output.as_bytes())
+                    .is_ok(),
+                expected_write
+            );
+        }
+
+        let reply = ReplyRole::ScheduledSourceLedger(Admit);
+        for malformed in [
+            br#"{"value":17}"#.as_slice(),
+            br#"[null]"#,
+            br#"{"value":null,"extra":true}"#,
+            br#"{"value":{},"value":null}"#,
+        ] {
+            assert_eq!(
+                reply.validate_result(WireAuthority::Live, malformed),
+                Err("internal")
+            );
+            assert_eq!(
+                reply.validate_result(WireAuthority::PublicationPermitted, malformed),
+                Err("publication-unconfirmed")
+            );
+        }
+        for (error, expected) in [
+            (OriginalScheduledLedgerError::Invalid, "invalid"),
+            (OriginalScheduledLedgerError::Denied, "denied"),
+            (OriginalScheduledLedgerError::Capacity, "limit-exceeded"),
+        ] {
+            let error = error.into();
+            assert_eq!(reply.failure_code(WireAuthority::Live, &error), expected);
+            assert_eq!(
+                reply.failure_code(WireAuthority::PublicationPermitted, &error),
+                "publication-unconfirmed"
+            );
+        }
+        assert_eq!(
+            reply.failure_code(WireAuthority::Live, &TurnStartRequiresLegacyCodec.into()),
+            "unavailable"
+        );
     }
 
     #[test]
@@ -4536,6 +4848,7 @@ mod tests {
             APPLICATION_PRESENTATION_INPUT_LIMIT,
             ConversationCompletePhase::Prepare.input_limit(),
             ConversationCompletePhase::Finish.input_limit(),
+            SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT,
         ] {
             let (mut client, server) = UnixStream::pair().unwrap();
             client.set_nonblocking(true).unwrap();

@@ -373,6 +373,7 @@ where
         command.env_remove(crate::sealed_python::CALENDAR_SAVED_TURN_START_ENV);
         command.env_remove(crate::sealed_python::CALENDAR_MANUAL_SAVED_TURN_START_ENV);
         command.env_remove(crate::sealed_python::CALENDAR_STATUS_SAVED_TURN_START_ENV);
+        command.env_remove(crate::sealed_python::SCHEDULED_SOURCE_LEDGER_ENV);
         command.env_remove(crate::sealed_python::SAVED_INPUT_ENV);
         command.env_remove(crate::sealed_python::CALENDAR_SAVED_INPUT_ENV);
         command.env_remove(crate::sealed_python::CALENDAR_MANUAL_SAVED_INPUT_ENV);
@@ -500,6 +501,13 @@ where
                             crate::sealed_python::CALENDAR_STATUS_SAVED_TURN_START_ENV,
                             "1",
                         );
+                    }
+                    if !config.is_dev_workspace()
+                        && (native_registry.calendar_saved_turn_start
+                            || native_registry.calendar_manual_saved_turn_start
+                            || native_registry.calendar_status_saved_turn_start)
+                    {
+                        command.env(crate::sealed_python::SCHEDULED_SOURCE_LEDGER_ENV, "1");
                     }
                 }
             }

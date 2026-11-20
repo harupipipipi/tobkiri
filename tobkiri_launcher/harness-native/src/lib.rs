@@ -48,6 +48,13 @@ pub use original_saved_turn_settlement::{
     read_legacy_saved_input_from_admitted_port, read_legacy_saved_turn, settle_legacy_saved_turn,
     settle_legacy_saved_turn_from_admitted_port,
 };
+#[cfg(unix)]
+mod original_scheduled_source_ledger;
+#[cfg(unix)]
+pub use original_scheduled_source_ledger::{
+    OriginalScheduledLedgerError, OriginalScheduledLedgerOperation,
+    execute_original_scheduled_source_ledger,
+};
 mod preparation;
 #[cfg(unix)]
 pub use original_authority::{OriginalActivationInspection, OriginalActiveProfile};

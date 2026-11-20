@@ -26,10 +26,11 @@ pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
 use tobkiri_harness_native::{
     begin_legacy_saved_turn_from_admitted_port, capture_legacy_saved_input_from_admitted_port,
     claim_legacy_saved_turn_from_admitted_port, compile_original_local_chat,
-    invoke_original_saved_input_recover_port, invoke_original_saved_orchestration_port,
-    invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
-    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
-    observe_original_local_chat_policy, post_original_local_chat, project_original_local_chat,
+    execute_original_scheduled_source_ledger, invoke_original_saved_input_recover_port,
+    invoke_original_saved_orchestration_port, invoke_original_saved_turn_begin_port,
+    invoke_original_saved_turn_claim_port, invoke_original_saved_turn_port,
+    invoke_original_saved_turn_read_port, observe_original_local_chat_policy,
+    post_original_local_chat, project_original_local_chat,
     read_legacy_saved_input_from_admitted_port, read_legacy_saved_turn,
     settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
@@ -37,7 +38,7 @@ use tobkiri_harness_native::{
     OriginalLocalChatRequest, OriginalProviderSnapshotRole, OriginalSavedInputIdentity,
     OriginalSavedInputOutcome, OriginalSavedInputProjection, OriginalSavedInputRow,
     OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
-    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
+    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep, OriginalScheduledLedgerOperation,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::{
@@ -99,6 +100,10 @@ pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
 /// Maximum authenticated input or reply bytes for the Saved Turn projection.
 pub(crate) const SAVED_INPUT_FRAME_LIMIT: usize = MAX_BYTES;
+/// Maximum funded JSON body for the original Calendar source ledger.
+pub(crate) const SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT: usize = 256 * 1024;
+/// Maximum Calendar source ledger result, including the Host wire envelope.
+pub(crate) const SCHEDULED_SOURCE_LEDGER_REPLY_LIMIT: usize = 128 * 1024 + 128;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
 /// Maximum UTF-8 bytes funded before reading an application presentation input.
@@ -223,6 +228,25 @@ pub(crate) enum SavedTurnStartAction {
     Claim,
 }
 
+/// The managed Calendar roles that may address the original source ledger.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ScheduledSourceLedgerCaller {
+    Calendar,
+    CalendarManual,
+    CalendarStatus,
+}
+
+impl ScheduledSourceLedgerCaller {
+    pub(crate) fn turn_start_caller(self) -> SavedTurnStartCaller {
+        match self {
+            Self::Calendar => SavedTurnStartCaller::Calendar,
+            Self::CalendarManual => SavedTurnStartCaller::CalendarManual,
+            Self::CalendarStatus => SavedTurnStartCaller::CalendarStatus,
+        }
+    }
+}
+
 /// Host-selected phase of a separately authorized Conversation GET.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -309,6 +333,12 @@ pub(crate) enum NativeRegistryRequest {
         input_bytes: usize,
         receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
     },
+    ScheduledSourceLedger {
+        caller: ScheduledSourceLedgerCaller,
+        operation: OriginalScheduledLedgerOperation,
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     TurnSettlement {
         caller: SettlementCaller,
         turn_id: String,
@@ -376,6 +406,9 @@ impl NativeRegistryRequest {
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnStart { caller, .. } => proof.permits_turn_start_for(*caller),
             Self::SavedInput { caller, .. } => proof.permits_saved_input_for(*caller),
+            Self::ScheduledSourceLedger { caller, .. } => {
+                proof.permits_scheduled_source_ledger(caller.turn_start_caller())
+            }
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { caller, .. } => proof.permits_saved_orchestration(*caller),
             Self::ApplicationPresentation { role, .. } => {
@@ -389,6 +422,9 @@ impl NativeRegistryRequest {
     }
 
     pub(crate) fn requires_publication_permit(&self) -> bool {
+        if let Self::ScheduledSourceLedger { operation, .. } = self {
+            return operation.permits_write();
+        }
         matches!(
             self,
             Self::ModelSave { .. }
@@ -412,6 +448,7 @@ impl NativeRegistryRequest {
                 | Self::WorkflowMessages { .. }
                 | Self::ModelAccessProjection { .. }
                 | Self::SavedInput { .. }
+                | Self::ScheduledSourceLedger { .. }
         )
     }
 
@@ -429,6 +466,13 @@ impl NativeRegistryRequest {
                 ensure!(
                     (1..=SAVED_INPUT_FRAME_LIMIT).contains(input_bytes),
                     "invalid saved input body size"
+                );
+                return Ok(*input_bytes);
+            }
+            Self::ScheduledSourceLedger { input_bytes, .. } => {
+                ensure!(
+                    (1..=SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT).contains(input_bytes),
+                    "invalid scheduled source ledger body size"
                 );
                 return Ok(*input_bytes);
             }
@@ -1655,6 +1699,58 @@ async fn run(
                     };
                     return Ok(PreparedReply {
                         wire: encode_saved_input_reply(reply.as_ref(), &graph)?,
+                        document: None,
+                        projected_local_chat: false,
+                    });
+                }
+                NativeRegistryRequest::ScheduledSourceLedger {
+                    caller,
+                    operation,
+                    input_bytes,
+                    receive_input,
+                } => {
+                    checkpoint()?;
+                    let _funding = input_funding
+                        .take()
+                        .context("scheduled source ledger input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    ensure!(
+                        input.len() == input_bytes && input.capacity() <= input_bytes,
+                        "scheduled source ledger input differs from its funded length"
+                    );
+                    revalidate()?;
+                    reacquire_turn_start_pack_for(
+                        &inspection,
+                        listener.verified_source(),
+                        caller.turn_start_caller(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let data = DataRoot::open_existing(&config.user_data_dir)?;
+                    let wire = tokio::task::block_in_place(|| {
+                        execute_original_scheduled_source_ledger(
+                            &data,
+                            &profile,
+                            operation,
+                            &input,
+                            &graph,
+                            execution_deadline,
+                            |phase| match phase {
+                                OriginalSavedTurnCheck::Live => revalidate(),
+                                OriginalSavedTurnCheck::Publish => {
+                                    require_current_source()?;
+                                    let permit = publish_permit
+                                        .as_ref()
+                                        .context("scheduled source ledger permit is missing")?;
+                                    permit()?;
+                                    require_current_source()
+                                }
+                            },
+                        )
+                    })?;
+                    return Ok(PreparedReply {
+                        wire,
                         document: None,
                         projected_local_chat: false,
                     });
@@ -3314,6 +3410,70 @@ mod tests {
                 .unwrap(),
             SavedOrchestrationStepError::Invalid
         );
+    }
+
+    #[test]
+    fn calendar_source_ledger_jobs_use_only_the_matching_calendar_chain() {
+        use crate::host_contract::ExecutionProfileIdentity;
+        use OriginalScheduledLedgerOperation::*;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        for granted in [
+            SavedTurnStartCaller::SavedTurn,
+            SavedTurnStartCaller::SideChat,
+            SavedTurnStartCaller::Calendar,
+            SavedTurnStartCaller::CalendarManual,
+        ] {
+            let proof = VerifiedRegistryLaunch::test_turn_start_proof_for(
+                identity.clone(),
+                "catalog",
+                granted,
+            );
+            for caller in [
+                ScheduledSourceLedgerCaller::Calendar,
+                ScheduledSourceLedgerCaller::CalendarManual,
+                ScheduledSourceLedgerCaller::CalendarStatus,
+            ] {
+                for (operation, write) in [
+                    (Admit, true),
+                    (RecoverSource, false),
+                    (BindSource, true),
+                    (HasSource, false),
+                    (BindDestination, true),
+                    (Finish, true),
+                ] {
+                    let request = NativeRegistryRequest::ScheduledSourceLedger {
+                        caller,
+                        operation,
+                        input_bytes: SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT,
+                        receive_input: Box::new(|_| panic!("admission cannot read the body")),
+                    };
+                    let expected = matches!(
+                        (granted, caller),
+                        (
+                            SavedTurnStartCaller::Calendar,
+                            ScheduledSourceLedgerCaller::Calendar
+                                | ScheduledSourceLedgerCaller::CalendarStatus,
+                        ) | (
+                            SavedTurnStartCaller::CalendarManual,
+                            ScheduledSourceLedgerCaller::CalendarManual,
+                        )
+                    );
+                    assert_eq!(request.has_launch_proof(&proof), expected);
+                    assert!(request.uses_funded_input());
+                    assert_eq!(request.requires_publication_permit(), write);
+                    assert_eq!(
+                        request.input_capacity().unwrap(),
+                        SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT
+                    );
+                }
+            }
+        }
     }
 
     #[test]

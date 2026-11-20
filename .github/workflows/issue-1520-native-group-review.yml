@@ -29,6 +29,7 @@ on:
       - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat/**'
       - 'tobkiri_launcher/harness-native/src/original_provider_prepare_selection.rs'
+      - 'tobkiri_launcher/harness-native/src/original_scheduled_source_ledger*.rs'
       - 'tobkiri_launcher/harness-native/src/original_saved_turn_settlement/**'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_commands.rs'
@@ -93,6 +94,8 @@ jobs:
         run: cargo test --locked -p tobkiri-harness-native --lib original_local_chat::tests
       - name: Verify atomic saved input in the original SQLite owner
         run: cargo test --locked -p tobkiri-harness-native --lib original_saved_turn_settlement::input_store::tests
+      - name: Verify the Calendar ledger in the original SQLite owner
+        run: cargo test --locked -p tobkiri-harness-native --lib original_scheduled_source_ledger::tests
       - name: Verify the signed Calendar saved routes
         run: >-
           cargo test --locked -p tobkiri-harness-native --lib --
@@ -174,6 +177,7 @@ jobs:
           saved_orchestration_uses_its_own_proof_and_funds_transport_capacity
           saved_orchestration_admission_carries_the_exact_manifest_for_defaultspack
           workflow_messages_
+          calendar_source_ledger_
           calendar_status_orchestration_also_requires_the_turn_start_port
           saved_request_markers_are_allowed_for_defaultspack_only
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
