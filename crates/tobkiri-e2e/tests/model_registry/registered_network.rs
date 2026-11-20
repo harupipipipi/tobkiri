@@ -1,5 +1,8 @@
 //! Authenticated streaming uses the saved route at each invocation.
 
+#[path = "registered_network/structured_flow.rs"]
+mod structured_flow;
+
 use super::*;
 use std::{
     collections::BTreeMap,
@@ -27,6 +30,11 @@ use tobkiri_manifest::{
 
 const LLM: &str = "local.harness-chat.llm-provider@1.0";
 const STRUCTURED_LLM: &str = "local.harness-chat.llm-provider@2.0";
+const USER_INPUT: &str = "local.harness-chat.user-input@1.0";
+const TURN_FLOW: &str = "local.harness-chat.turn-flow@1.0";
+const ASSISTANT_OUTPUT: &str = "local.harness-chat.assistant-output@2.0";
+const MODEL_RESPONSE: &str = "local.harness-chat.model-response@2.0";
+const TYPED_TOOL: &str = "local.acceptance-typed-tool.transform@1.0";
 const MODEL_ROUTE: &str = "local.model-registry.routing@1.0";
 const PROVIDER_ROUTE: &str = "local.provider-registry.routing@1.0";
 const SAVED_PACK: &str = "local.saved-conversation";
@@ -34,6 +42,15 @@ const SAVED_MODEL: &str = "local.saved-conversation.model@1.0";
 const SAVED_DATA: &str = "local.saved-conversation.data@1.0";
 const CONVERSATION_FIXTURE: &str = include_str!("../../fixtures/saved-conversation-owner.json");
 const UI: &str = "local.harness-chat";
+const CHAT_WIT: &str = "wit/harness-chat.wit";
+const STRUCTURED_CHAT_WIT: &str = "wit/harness-chat-v2.wit";
+const SINGLE_PORT: &[u8] = br#"{"cardinality":"one","streams":{},"callbacks":{}}"#;
+
+enum RegisteredChat {
+    Legacy,
+    Structured,
+    StructuredFlow,
+}
 
 fn ports(shape: &str) -> Result<PortDeclaration> {
     let value = tobkiri_canon::ids::ShapeRef::parse(shape)?;
@@ -66,12 +83,41 @@ fn manifest(id: &str, runtime: RuntimeSpec, wall_ms: u64) -> Result<PackManifest
     })
 }
 
+fn wasm(config: Option<&str>) -> RuntimeSpec {
+    RuntimeSpec::Wasm {
+        component: "component.wasm".into(),
+        toolchain: "rust/1.94.0".into(),
+        core_modules: BTreeMap::new(),
+        config: config.map(|path| RuntimeConfig {
+            path: path.into(),
+            shape: None,
+        }),
+    }
+}
+
+fn define_shape(
+    manifest: &mut PackManifest,
+    reference: &str,
+    kind: ShapeKind,
+    wit: &str,
+) -> Result<()> {
+    let port = ports(reference)?;
+    manifest.shapes.push(ShapeDefinition {
+        name: port.shape,
+        version: port.version,
+        kind,
+        wit: wit.into(),
+    });
+    Ok(())
+}
+
 fn streaming_packs(
     root: &Path,
     origins: &[String],
     wall_ms: u64,
-    structured: bool,
+    chat: &RegisteredChat,
 ) -> Result<[RegistryPack; 2]> {
+    let structured = !matches!(chat, RegisteredChat::Legacy);
     let (artifact_var, provider_wit, ui_port) = if structured {
         (
             "TOBKIRI_TEST_REGISTERED_OPENAI_STRUCTURED_COMPONENT",
@@ -108,25 +154,68 @@ fn streaming_packs(
     ]);
     let mut provides = Vec::new();
     for (shape, path, wit) in [
-        (LLM, "wit/harness-chat.wit", Some(&chat_wit)),
-        (
-            STRUCTURED_LLM,
-            "wit/harness-chat-v2.wit",
-            structured_wit.as_ref(),
-        ),
+        (LLM, CHAT_WIT, Some(&chat_wit)),
+        (STRUCTURED_LLM, STRUCTURED_CHAT_WIT, structured_wit.as_ref()),
     ] {
         if let Some(wit) = wit {
-            let port = ports(shape)?;
-            ui.shapes.push(ShapeDefinition {
-                name: port.shape.clone(),
-                version: port.version,
-                kind: ShapeKind::Port,
-                wit: path.into(),
-            });
+            define_shape(&mut ui, shape, ShapeKind::Port, path)?;
             ui_files.insert(path.into(), wit.clone());
-            provides.push(port);
+            provides.push(ports(shape)?);
         }
     }
+    let ui_port = if matches!(chat, RegisteredChat::StructuredFlow) {
+        define_shape(&mut ui, USER_INPUT, ShapeKind::Port, CHAT_WIT)?;
+        define_shape(&mut ui, TURN_FLOW, ShapeKind::Flow, CHAT_WIT)?;
+        define_shape(
+            &mut ui,
+            MODEL_RESPONSE,
+            ShapeKind::Port,
+            STRUCTURED_CHAT_WIT,
+        )?;
+        define_shape(
+            &mut ui,
+            ASSISTANT_OUTPUT,
+            ShapeKind::Port,
+            STRUCTURED_CHAT_WIT,
+        )?;
+        ui.permissions.storage.private = false;
+        let flow = "flows/turn.flow.json";
+        ui.flows.push(flow.into());
+        ui_files.extend([
+            (
+                flow.into(),
+                include_bytes!("../../fixtures/harness-structured-tool.flow.json").to_vec(),
+            ),
+            (
+                "wit/user-input.shape.json".into(),
+                fs::read(repository.join("packs/local.harness-chat/wit/user-input.shape.json"))?,
+            ),
+            ("wit/turn-flow.shape.json".into(), SINGLE_PORT.to_vec()),
+            (
+                "wit/model-response.shape.json".into(),
+                fs::read(
+                    repository.join("packs/shapes/harness-chat-v2/model-response.shape.json"),
+                )?,
+            ),
+            (
+                "wit/assistant-output.shape.json".into(),
+                SINGLE_PORT.to_vec(),
+            ),
+        ]);
+        for target in [
+            STRUCTURED_LLM,
+            ASSISTANT_OUTPUT,
+            MODEL_RESPONSE,
+            TYPED_TOOL,
+            SAVED_MODEL,
+        ] {
+            ui.ports.consumes.push(ports(target)?);
+            ui.permissions.ports.insert(target.into());
+        }
+        USER_INPUT
+    } else {
+        ui_port
+    };
     ui.ports.consumes.push(ports(ui_port)?);
     ui.permissions.ports.insert(ui_port.into());
     ui.ui = Some(UiDefinition {
@@ -136,15 +225,7 @@ fn streaming_packs(
     let ui = registry::materialize(root, ui, ui_files)?;
     let mut openai = manifest(
         "local.openai-compat-provider",
-        RuntimeSpec::Wasm {
-            component: "component.wasm".into(),
-            toolchain: "rust/1.94.0".into(),
-            core_modules: BTreeMap::new(),
-            config: Some(RuntimeConfig {
-                path: "config.json".into(),
-                shape: None,
-            }),
-        },
+        wasm(Some("config.json")),
         wall_ms,
     )?;
     openai.ports.provides = provides;
@@ -188,6 +269,72 @@ fn streaming_packs(
     }
     let openai = registry::materialize(root, openai, provider_files)?;
     Ok([ui, openai])
+}
+
+fn structured_flow_packs(root: &Path, wall_ms: u64) -> Result<[RegistryPack; 3]> {
+    let repository = support::repo();
+    let core_wit = fs::read(repository.join("crates/tobkiri-wit/wit/core/core.wit"))?;
+    let component_files = |variable, wit| -> Result<BTreeMap<String, Vec<u8>>> {
+        let component = std::env::var_os(variable)
+            .with_context(|| format!("set {variable} to the source-built component"))?;
+        Ok(BTreeMap::from([
+            ("component.wasm".into(), fs::read(component)?),
+            ("wit/pack.wit".into(), fs::read(repository.join(wit))?),
+            ("wit/deps/core.wit".into(), core_wit.clone()),
+        ]))
+    };
+
+    let mut helper = manifest("local.harness-turn", wasm(None), wall_ms)?;
+    helper.permissions.storage.private = false;
+    helper.ports.provides = vec![ports(MODEL_RESPONSE)?, ports(ASSISTANT_OUTPUT)?];
+    let mut helper_files = component_files(
+        "TOBKIRI_TEST_HARNESS_TURN_COMPONENT",
+        "packs/local.harness-turn/wit/pack.wit",
+    )?;
+    helper_files.extend([(
+        "wit/deps/harness-chat-v2.wit".into(),
+        fs::read(repository.join("packs/shapes/harness-chat-v2/harness-chat.wit"))?,
+    )]);
+    let helper = registry::materialize(root, helper, helper_files)?;
+
+    let mut terminal = manifest("local.terminal-input", wasm(Some("config.json")), wall_ms)?;
+    terminal.permissions.storage.private = false;
+    terminal.ports.provides.push(ports(USER_INPUT)?);
+    terminal.ports.consumes.push(ports(TURN_FLOW)?);
+    terminal.permissions.ports.insert(TURN_FLOW.into());
+    terminal
+        .permissions
+        .host_io
+        .insert("terminal-read-line".into());
+    let mut terminal_files = component_files(
+        "TOBKIRI_TEST_STRUCTURED_TERMINAL_INPUT_COMPONENT",
+        "packs/local.terminal-input/wit/pack.wit",
+    )?;
+    terminal_files.extend([
+        (
+            "config.json".into(),
+            fs::read(repository.join("packs/local.terminal-input/config.json"))?,
+        ),
+        (
+            "wit/deps/shape.wit".into(),
+            fs::read(repository.join("packs/shapes/harness-chat.wit"))?,
+        ),
+    ]);
+    let terminal = registry::materialize(root, terminal, terminal_files)?;
+
+    let mut tool = manifest("local.acceptance-typed-tool", wasm(None), wall_ms)?;
+    tool.permissions.storage.private = false;
+    tool.permissions.audit_append = true;
+    define_shape(&mut tool, TYPED_TOOL, ShapeKind::Port, "wit/pack.wit")?;
+    tool.ports.provides.push(ports(TYPED_TOOL)?);
+    let mut tool_files = component_files(
+        "TOBKIRI_TEST_STRUCTURED_TYPED_TOOL_COMPONENT",
+        "crates/test-guests/typed-tool/wit/typed-tool.wit",
+    )?;
+    tool_files.insert("wit/transform.shape.json".into(), SINGLE_PORT.to_vec());
+    let tool = registry::materialize(root, tool, tool_files)?;
+
+    Ok([helper, terminal, tool])
 }
 
 fn api(listener: &TcpListener, sse: &str) -> Result<(String, Value)> {
@@ -253,13 +400,40 @@ async fn registered_core(
     wall_ms: u64,
     structured: bool,
 ) -> Result<(Core, ProfileStartBinding)> {
+    let chat = if structured {
+        RegisteredChat::Structured
+    } else {
+        RegisteredChat::Legacy
+    };
+    registered_fixture_core(root, origins, wall_ms, chat).await
+}
+
+async fn structured_flow_core(
+    root: &Path,
+    origins: &[String],
+    wall_ms: u64,
+) -> Result<(Core, ProfileStartBinding)> {
+    registered_fixture_core(root, origins, wall_ms, RegisteredChat::StructuredFlow).await
+}
+
+async fn registered_fixture_core(
+    root: &Path,
+    origins: &[String],
+    wall_ms: u64,
+    chat: RegisteredChat,
+) -> Result<(Core, ProfileStartBinding)> {
     let [model, provider] = packs()?;
-    let [ui, openai] = streaming_packs(root, origins, wall_ms, structured)?;
+    let [ui, openai] = streaming_packs(root, origins, wall_ms, &chat)?;
     let saved = registry::pack(SAVED_PACK)?;
     let owner = saved.pin.clone();
+    let mut staged = vec![model, provider, ui, openai, saved];
+    let structured_flow = matches!(chat, RegisteredChat::StructuredFlow);
+    if structured_flow {
+        staged.extend(structured_flow_packs(root, wall_ms)?);
+    }
     let mut profile = registry::profile(
         "prof_registered_conversation",
-        &[model, provider, ui, openai, saved],
+        &staged,
         &[
             SETTINGS,
             PROVIDER_CONFIGURATION,
@@ -275,6 +449,10 @@ async fn registered_core(
         .extend(origins.iter().cloned());
     profile.ceiling.wasm.wall_ms = wall_ms;
     profile.ceiling.loops.max_wall_ms = wall_ms;
+    profile.ceiling.audit_append = structured_flow;
+    if structured_flow {
+        profile.ceiling.host_io.insert("terminal-read-line".into());
+    }
     let user = profile
         .user_permissions
         .as_mut()

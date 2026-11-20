@@ -5,11 +5,14 @@ on:
     branches: [codex/issue-1520-native-shared-state]
     paths:
       - '.github/workflows/issue-1520-actual-1b.yml'
+      - 'crates/tobkiri-core/src/execution_frames.rs'
       - 'crates/tobkiri-e2e/tests/llama.rs'
       - 'crates/tobkiri-e2e/tests/model_registry/**'
       - 'crates/tobkiri-e2e/tests/model_registry.rs'
       - 'crates/tobkiri-e2e/tests/provider_registry.rs'
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
+      - 'crates/tobkiri-e2e/fixtures/harness-structured-tool.flow.json'
+      - 'crates/test-guests/typed-tool/**'
       - 'packs/local.model-registry-rust/**'
       - 'packs/local.saved-conversation-rust/**'
       - 'packs/local.openai-compat-provider/**'
@@ -17,6 +20,8 @@ on:
       - 'packs/local.provider-registry-rust/**'
       - 'packs/stage_registry_packs.py'
       - 'packs/local.harness-prompt/**'
+      - 'packs/local.harness-turn/**'
+      - 'packs/local.terminal-input/**'
       - 'packs/local.harness-conversation-store/**'
       - 'tools/quality/issue_1520_llama_cancel_probe.py'
   workflow_dispatch:
@@ -320,6 +325,18 @@ jobs:
             --log "$RUNNER_TEMP/registered-structured.log" --expected-passed 1 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
               registered_network::structured_provider_round_trips_two_model_requests --ignored --exact
+      - name: Verify model-directed typed tool Flow through Harness submit
+        run: |
+          cargo build --locked --target wasm32-wasip2 \
+            --manifest-path crates/test-guests/Cargo.toml -p tobkiri-test-typed-tool
+          export TOBKIRI_TEST_REGISTERED_OPENAI_STRUCTURED_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
+          export TOBKIRI_TEST_HARNESS_TURN_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_pack_harness_turn.wasm"
+          export TOBKIRI_TEST_STRUCTURED_TERMINAL_INPUT_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_pack_terminal_input.wasm"
+          export TOBKIRI_TEST_STRUCTURED_TYPED_TOOL_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_test_typed_tool.wasm"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/registered-structured-tool.log" --expected-passed 2 -- \
+            cargo test --locked -p tobkiri-e2e --test model_registry -- \
+              registered_network::structured_flow --ignored --test-threads=1
       - name: Retain test receipt
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -335,6 +352,8 @@ jobs:
             ${{ runner.temp }}/registered-1b.receipt.json
             ${{ runner.temp }}/registered-structured.log
             ${{ runner.temp }}/registered-structured.receipt.json
+            ${{ runner.temp }}/registered-structured-tool.log
+            ${{ runner.temp }}/registered-structured-tool.receipt.json
             ${{ runner.temp }}/registered-provider.log
             ${{ runner.temp }}/registered-provider.receipt.json
             ${{ runner.temp }}/original-model-resolve.log

@@ -1,0 +1,13 @@
+[package]
+name = "tobkiri-pack-harness-turn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde_json = { workspace = true, features = ["raw_value"] }
+wit-bindgen.workspace = true

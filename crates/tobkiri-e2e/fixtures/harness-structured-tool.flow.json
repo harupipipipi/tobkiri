@@ -1,0 +1,148 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "turn",
+  "implements": "local.harness-chat.turn-flow@1.0",
+  "trigger": { "input": "local.harness-chat.user-input@1.0" },
+  "loop_limits": "profile-default",
+  "steps": [
+    {
+      "id": "select-model",
+      "call": {
+        "shape": "local.saved-conversation.model@1.0",
+        "op": "select",
+        "args": { "conversation-id": "$input.conversation", "conversation-revision": 2 }
+      },
+      "out": "model"
+    },
+    {
+      "id": "initial-prompt",
+      "call": {
+        "shape": "local.harness-chat.model-response@2.0",
+        "op": "start",
+        "args": {
+          "ctx": { "conversation": "$input.conversation", "messages": [] },
+          "model": "$model",
+          "max-tokens": 512,
+          "input": {
+            "conversation": "$input.conversation",
+            "parts": [{ "tag": "text", "val": "$input.text" }],
+            "tools": [
+              {
+                "name": "rewrite",
+                "description": "Rewrite a string",
+                "parameters": {
+                  "type": "object",
+                  "properties": { "text": { "type": "string" } },
+                  "required": ["text"],
+                  "additionalProperties": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "out": "prompt"
+    },
+    {
+      "id": "initial-model",
+      "call": {
+        "shape": "local.harness-chat.llm-provider@2.0",
+        "op": "chat",
+        "args": { "prompt": "$prompt" }
+      },
+      "stream": { "collect": "events", "emit": "local.harness-chat.assistant-output@2.0" }
+    },
+    {
+      "id": "assemble-initial",
+      "call": {
+        "shape": "local.harness-chat.model-response@2.0",
+        "op": "assemble",
+        "args": { "events": "$events" }
+      },
+      "out": "response"
+    },
+    {
+      "id": "tool-loop",
+      "loop": {
+        "while": { "eq": ["$response.message.response.finish.tag", "tool-calls"] },
+        "limits": { "max_iterations": 2, "max_wall_ms": 10000, "max_cost_units": 1000 },
+        "body": [
+          {
+            "id": "tool-results",
+            "parallel": {
+              "for_each": "$response.calls",
+              "as": "call",
+              "max": 1,
+              "body": [
+                {
+                  "id": "select-tool",
+                  "branch": {
+                    "if": { "eq": ["$call.name", "rewrite"] },
+                    "then": [
+                      {
+                        "id": "rewrite",
+                        "call": {
+                          "shape": "local.acceptance-typed-tool.transform@1.0",
+                          "provider": "local.acceptance-typed-tool",
+                          "op": "rewrite",
+                          "args": "$call.arguments"
+                        },
+                        "out": "rewritten"
+                      },
+                      {
+                        "id": "bind-tool-result",
+                        "call": {
+                          "shape": "local.harness-chat.model-response@2.0",
+                          "op": "bind-result",
+                          "args": { "call-id": "$call.id", "content": "$rewritten", "is-error": false }
+                        }
+                      }
+                    ],
+                    "else": [
+                      {
+                        "id": "bind-unavailable-result",
+                        "call": {
+                          "shape": "local.harness-chat.model-response@2.0",
+                          "op": "bind-result",
+                          "args": { "call-id": "$call.id", "content": "Tool is unavailable.", "is-error": true }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "out": "results"
+          },
+          {
+            "id": "follow-up-prompt",
+            "call": {
+              "shape": "local.harness-chat.model-response@2.0",
+              "op": "follow-up",
+              "args": { "previous": "$prompt", "assistant": "$response.message", "results": "$results" }
+            },
+            "out": "prompt"
+          },
+          {
+            "id": "follow-up-model",
+            "call": {
+              "shape": "local.harness-chat.llm-provider@2.0",
+              "op": "chat",
+              "args": { "prompt": "$prompt" }
+            },
+            "stream": { "collect": "events", "emit": "local.harness-chat.assistant-output@2.0" }
+          },
+          {
+            "id": "assemble-follow-up",
+            "call": {
+              "shape": "local.harness-chat.model-response@2.0",
+              "op": "assemble",
+              "args": { "events": "$events" }
+            },
+            "out": "response"
+          }
+        ]
+      }
+    }
+  ]
+}

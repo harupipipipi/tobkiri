@@ -20,6 +20,12 @@ A finish event is terminal; a stream that errors or ends without one is not a
 successful completed turn. Runtime implementations must define bounds, handle
 cancellation and enforce the existing authority and approval paths.
 
+The `model-response` port starts the prompt with loaded history, assembles
+fragments only after the provider finishes, and joins results to matching call
+IDs. `local.harness-turn` provides these operations. A Flow binds an explicit
+tool provider and controls dispatch and iteration limits. Tool names and
+arguments from the model remain data throughout the response operations.
+
 Adoption requires implementing and declaring version 2 ports and sidecars,
 wiring a version 2 Flow, translating provider-specific streams, and updating
 prompt, output, input and durable storage. The conversation store appends the

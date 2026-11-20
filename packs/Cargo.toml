@@ -23,6 +23,7 @@ members = [
   "local.mock-llm",
   "local.harness-conversation-store",
   "local.harness-prompt",
+  "local.harness-turn",
   "local.harness-capability-input",
   "local.harness-catalog-input",
   "local.terminal-input",

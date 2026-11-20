@@ -1848,7 +1848,8 @@ impl CoreProviderAuthority {
                     .ok_or_else(|| step(GateError::Unavailable))?;
                 let state = &reached.node;
                 if !ControlHandle::ptr_eq(&self.auth, &state.auth)
-                    || !same_context_pair(frame.context(), request.caller)
+                    || check_same_context(frame.context(), request.caller).is_err()
+                    || !same_context_pair(&state.context, request.caller)
                     || frame.identity() != state.frame
                     || !matches!(state.origin, ReachedOrigin::Flow)
                     || !matches!(
@@ -4380,8 +4381,9 @@ impl ActiveCodeFrame for ActiveFlowFrame {
             PreparedReachedState {
                 auth: self.auth.clone(),
                 provider: self.provider.clone(),
-                context: self
-                    .context
+                // A reached call may be inside a loop with stricter limits
+                // than its enclosing Flow frame. Dispatch must keep that budget.
+                context: cx
                     .try_clone_precharged()
                     .map_err(|_| step(GateError::Unavailable))?,
                 entry_context: self
@@ -4499,6 +4501,7 @@ impl ActiveCodeFrame for ActiveFlowFrame {
             .ok_or_else(|| step(GateError::Unavailable))?;
         let state = &reached.node;
         if !ControlHandle::ptr_eq(&self.auth, &state.auth)
+            || !same_context_pair(&state.context, cx)
             || state.frame != self.frame
             || !matches!(
                 state.kind,
