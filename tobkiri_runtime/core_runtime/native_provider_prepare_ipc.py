@@ -52,6 +52,9 @@ _CALENDAR_START_ENV = "TOBKIRI_NATIVE_CALENDAR_SAVED_TURN_START"
 _CALENDAR_MANUAL_START_ENV = "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_TURN_START"
 _CALENDAR_STATUS_START_ENV = "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
+_CALENDAR_SAVED_ORCHESTRATION_ENV = (
+    "TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST"
+)
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
@@ -490,6 +493,7 @@ class NativeSavedOrchestrationRequest:
     deadline_monotonic: float
     assert_current: Callable[[], None]
     input: Mapping[str, Any]
+    caller: Literal["saved-turn", "calendar"] = "saved-turn"
 
 
 ApplicationPresentationRole = Literal["settings", "catalog", "commands"]
@@ -1075,10 +1079,32 @@ def capture_launcher_saved_orchestration_step() -> (
     """Capture the managed Launcher's opted-in endpoint for pure saved steps."""
     if os.environ.get(_SAVED_ORCHESTRATION_ENV) != "1":
         return None
+    return _capture_saved_orchestration_step("saved-turn")
+
+
+def capture_launcher_calendar_saved_orchestration_step() -> (
+    Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
+):
+    """Capture the launcher-attested pure step for automatic Calendar dispatch."""
+    manifest = os.environ.get(_CALENDAR_SAVED_ORCHESTRATION_ENV)
+    if manifest is None or _TURN_INPUT_DIGEST.fullmatch(manifest) is None:
+        return None
+    return _capture_saved_orchestration_step("calendar")
+
+
+def _capture_saved_orchestration_step(
+    caller: Literal["saved-turn", "calendar"],
+) -> Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None:
     launcher = _capture_launcher()
     if launcher is None:
         return None
-    return partial(_invoke, launcher, operation="saved_orchestration")
+
+    def step(borrow: NativeSavedOrchestrationRequest) -> Mapping[str, Any]:
+        if type(borrow.caller) is not str or borrow.caller != caller:
+            raise _ProtocolError("native Saved Orchestration caller differs from capture")
+        return _invoke(launcher, borrow, operation="saved_orchestration")
+
+    return step
 
 
 def capture_launcher_application_presentation() -> (
@@ -1470,7 +1496,13 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
+        if type(borrow.caller) is not str or borrow.caller not in (
+            "saved-turn", "calendar",
+        ):
+            raise _ProtocolError("native Saved Orchestration caller is invalid")
         frame["saved_orchestration"] = {"input_bytes": body_input_bytes}
+        if borrow.caller == "calendar":
+            frame["saved_orchestration"]["caller"] = borrow.caller
     elif isinstance(borrow, NativeApplicationPresentationRequest):
         if (
             borrow.role not in ("settings", "catalog", "commands")

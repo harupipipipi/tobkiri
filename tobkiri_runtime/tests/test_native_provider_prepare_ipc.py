@@ -3776,10 +3776,16 @@ def _saved_orchestration_request(
 @contextmanager
 def _served_saved_orchestration(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+    *, calendar: bool = False,
 ) -> Iterator[Callable[[ipc.NativeSavedOrchestrationRequest], Mapping[str, Any]]]:
-    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    if calendar:
+        monkeypatch.setenv(ipc._CALENDAR_SAVED_ORCHESTRATION_ENV, "sha256:" + "a" * 64)
+        capture = ipc.capture_launcher_calendar_saved_orchestration_step
+    else:
+        monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+        capture = ipc.capture_launcher_saved_orchestration_step
     with _served(monkeypatch, serve):
-        step = ipc.capture_launcher_saved_orchestration_step()
+        step = capture()
         assert step is not None
         yield step
 
@@ -4403,9 +4409,54 @@ def test_saved_orchestration_capture_requires_managed_opt_in(
     assert ipc.capture_launcher_saved_orchestration_step() is not None
 
 
-@pytest.mark.parametrize("at_limit", [False, True])
+def test_calendar_saved_orchestration_capture_requires_its_manifest_and_socket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = ipc._CALENDAR_SAVED_ORCHESTRATION_ENV
+    manifest = "sha256:" + "a" * 64
+    capture = ipc.capture_launcher_calendar_saved_orchestration_step
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    monkeypatch.setenv(marker, manifest)
+    assert capture() is None
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    monkeypatch.delenv(marker)
+    assert capture() is None
+    monkeypatch.setenv(marker, "1")
+    assert capture() is None
+    monkeypatch.setenv(marker, manifest)
+    assert capture() is not None
+
+
+def test_saved_orchestration_capture_rejects_other_callers_before_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
+    monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    monkeypatch.setenv(ipc._CALENDAR_SAVED_ORCHESTRATION_ENV, "sha256:" + "a" * 64)
+    ordinary = ipc.capture_launcher_saved_orchestration_step()
+    calendar = ipc.capture_launcher_calendar_saved_orchestration_step()
+    assert ordinary is not None and calendar is not None
+
+    def unexpected_invocation(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("a different caller reached the Launcher transport")
+
+    monkeypatch.setattr(ipc, "_invoke", unexpected_invocation)
+    request = _saved_orchestration_request(_Borrow(), {"request": {}})
+    with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
+        ordinary(replace(request, caller="calendar"))
+    with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
+        calendar(request)
+
+
+@pytest.mark.parametrize(
+    ("at_limit", "calendar"), [(False, False), (True, False), (False, True)],
+)
 def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
-    monkeypatch: pytest.MonkeyPatch, at_limit: bool,
+    monkeypatch: pytest.MonkeyPatch, at_limit: bool, calendar: bool,
 ) -> None:
     borrow = _Borrow()
     limit = 4 * 1024 * 1024
@@ -4429,6 +4480,9 @@ def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
         tag, payload = _receive(peer)
         numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
         assert tag == 1
+        descriptor = {"input_bytes": len(expected_input)}
+        if calendar:
+            descriptor["caller"] = "calendar"
         assert json.loads(payload) == {
             "identity": {
                 key: value for key, value in vars(borrow.context).items()
@@ -4437,7 +4491,7 @@ def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
             "security_epoch": 3,
             "runtime_instance": borrow.runtime_instance,
             "deadline_ns": numerator * 1_000_000_000 // denominator,
-            "saved_orchestration": {"input_bytes": len(expected_input)},
+            "saved_orchestration": descriptor,
         }
         peer.settimeout(0.02)
         with pytest.raises(TimeoutError):
@@ -4451,11 +4505,18 @@ def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
         _send(peer, 7, response)
         assert peer.recv(1) == b""
 
-    with _served_saved_orchestration(monkeypatch, serve) as step:
-        monkeypatch.delenv(ipc._SAVED_ORCHESTRATION_ENV)
+    with _served_saved_orchestration(monkeypatch, serve, calendar=calendar) as step:
+        marker = (
+            ipc._CALENDAR_SAVED_ORCHESTRATION_ENV if calendar
+            else ipc._SAVED_ORCHESTRATION_ENV
+        )
+        monkeypatch.delenv(marker)
         monkeypatch.delenv(ipc._SOCKET_ENV)
         monkeypatch.delenv(ipc._OWNER_ENV)
-        assert step(_saved_orchestration_request(borrow, step_input)) == result
+        request = _saved_orchestration_request(borrow, step_input)
+        if calendar:
+            request = replace(request, caller="calendar")
+        assert step(request) == result
 
 
 @pytest.mark.parametrize(
