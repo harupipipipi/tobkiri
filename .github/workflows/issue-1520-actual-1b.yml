@@ -9,6 +9,7 @@ on:
       - 'crates/tobkiri-e2e/tests/llama.rs'
       - 'crates/tobkiri-e2e/tests/model_registry/**'
       - 'crates/tobkiri-e2e/tests/model_registry.rs'
+      - 'crates/tobkiri-e2e/tests/support/mod.rs'
       - 'crates/tobkiri-e2e/tests/provider_registry.rs'
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
       - 'crates/tobkiri-e2e/fixtures/harness-structured-tool.flow.json'
@@ -343,7 +344,7 @@ jobs:
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
               registered_network::structured_flow --ignored --test-threads=1
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/structured-conversation-store.log" --expected-passed 2 -- \
+            --log "$RUNNER_TEMP/structured-conversation-store.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
               registered_network::structured_store:: --ignored --test-threads=1
       - name: Retain test receipt

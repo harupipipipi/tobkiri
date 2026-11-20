@@ -32,6 +32,7 @@
           "ctx": "$ctx",
           "model": "$model",
           "max-tokens": 512,
+          "max-history-bytes": 2048,
           "input": {
             "conversation": "$input.conversation",
             "parts": [{ "tag": "text", "val": "$input.text" }],

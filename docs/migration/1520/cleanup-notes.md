@@ -3627,8 +3627,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   2.0への再更新、別会話と別Profileの分離、保持したIDを含む次のHTTP要求を実Wasmで照合した。
   同じ `data_shape` と旧 `messages` を維持する。2.0側の読込みは補助テーブルが無い旧DBも扱い、
   作成は初回追記の中で行うため、旧DBの読込みでは補助テーブルの領域を確保しない。配布Profileへの接続は残る。
-  2.0の読込みは現在1,000行までで、ツールの中間メッセージも行数に数える。長い実履歴を配布版に
-  接続する際は完全なターン単位での読込みと既存の64 MiB上限を照合する。
+  2.0は会話ごとの最大 `seq` を読込み開始時に固定し、`(seq, ordinal)` の順に最大128行ずつ読む。
+  同じ `seq` のツール呼出しと結果が別ページでも保持される。走査中の追記は次の読込みで扱う。
+  既存Coreの上限に加えて、保持する行のエンコード量を4 MiB以内に制限する。v2のプロンプトは
+  本文、reasoning、ツール呼出しと結果をUTF-8で計量し、古いターンを全体で省く。履歴の保存内容は維持する。
+  Coreの型付き結果を組み立てる際、`owned_values::graph_error` は内側の予算拒否もJSONエラーに変換する。
+  長い結果の停止理由を診断できるよう、型エラーと期限・容量エラーの区別を保つ余地がある。
 - B-2 と B-3 は構造化チャット2.0、ツール・コマンド一覧1.1を別の変更で定義した。
   既存のプロンプト、OpenAI互換プロバイダー、会話保存、Flow、UIは1.0のテキスト契約を使う。
   ツール呼出しと結果のID、reasoning、終了理由、キャッシュ使用量を同じ実ターンで照合してから、
@@ -5931,6 +5935,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   はPythonのCI証明生成と実際のmacOS署名検証を通過し、誤った証明書とリンクを拒否した。
   DMG作成28件、署名・マウント検証435件、sealed環境185件が成功。Tauri全体のDMG検証と通常配布、
   製品Pythonランタイムの廃止は残る。
+- 通常チャットの `api.startSavedTurn` は署名済み `defaults.conversations.send` を通る。
+  `rumi_turn_runtime_pack/runtime/host.py` の `execute_with_input_context` は、本文だけの初回送信でも
+  `DurableTurnRuntime.bind_saved_input` を通じて `turns.sqlite3` の `saved_inputs` に書く。
+  `begin_saved` と `claim_saved` の既存Wasm経路はその後に呼ばれる。元DBと旧入力projectionを保ち、
+  同一キーの再送、入力digest不一致、配信・カレンダーの既存キュー、commit後に応答を失った場合の再開を
+  署名済みHTTPとLauncherソケットで照合してからこの書込みを移す。2.0の検証用private DBとは別の所有者である。
 
 ## 050: Side Chatのターン開始と実行権の取得
 

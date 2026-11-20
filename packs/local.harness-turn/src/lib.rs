@@ -45,6 +45,7 @@ impl model_response::Guest for Pack {
         input: Input,
         model: String,
         max_tokens: u32,
+        max_history_bytes: u32,
     ) -> Result<TurnPrompt, Error> {
         if ctx.conversation != input.conversation || ctx.conversation.is_empty() {
             return Err(invalid(
@@ -59,7 +60,9 @@ impl model_response::Guest for Pack {
         {
             return Err(invalid("user input requires text parts"));
         }
+        let start = history_start(&ctx.messages, max_history_bytes as usize);
         let mut messages = ctx.messages;
+        messages.drain(..start);
         let prior_messages = u32::try_from(messages.len())
             .map_err(|_| invalid("conversation history is too long"))?;
         messages.push(Message {
@@ -105,6 +108,42 @@ impl model_response::Guest for Pack {
     fn finish_turn(turn: TurnPrompt, assistant: Message) -> Result<Vec<Message>, Error> {
         finish_turn(turn, assistant)
     }
+}
+
+fn history_start(history: &[Message], mut remaining: usize) -> usize {
+    if remaining == 0 {
+        return history.len();
+    }
+    // The boundary moves only at a user message, keeping each saved tool
+    // call with its results in the next model request.
+    let mut start = history.len();
+    for (index, message) in history.iter().enumerate().rev() {
+        let bytes = message
+            .parts
+            .iter()
+            .fold(message.role.len(), |bytes, part| {
+                let part_bytes = match part {
+                    MessagePart::Text(text) | MessagePart::Reasoning(text) => text.len(),
+                    MessagePart::ToolCall(call) => call
+                        .id
+                        .len()
+                        .saturating_add(call.name.len())
+                        .saturating_add(call.arguments.len()),
+                    MessagePart::ToolResult(result) => {
+                        result.call_id.len().saturating_add(result.content.len())
+                    }
+                };
+                bytes.saturating_add(part_bytes)
+            });
+        let Some(next) = remaining.checked_sub(bytes) else {
+            return start;
+        };
+        remaining = next;
+        if message.role == "user" {
+            start = index;
+        }
+    }
+    0
 }
 
 fn follow_up(
@@ -290,8 +329,8 @@ mod tests {
             parts: vec![MessagePart::Text("next user".into())],
             tools: vec![],
         };
-        let turn =
-            <Pack as model_response::Guest>::start(context, input, "model".into(), 32).unwrap();
+        let turn = <Pack as model_response::Guest>::start(context, input, "model".into(), 32, 2048)
+            .unwrap();
         let turn = <Pack as model_response::Guest>::follow_up(
             turn,
             assistant(&["a"]),
@@ -315,5 +354,31 @@ mod tests {
         assert!(
             matches!(saved[2].parts.as_slice(), [MessagePart::Text(text)] if text == "finished")
         );
+    }
+
+    #[test]
+    fn history_budget_keeps_whole_tool_turns_and_counts_utf8() {
+        let text = |role: &str, text: &str| Message {
+            role: role.into(),
+            parts: vec![MessagePart::Text(text.into())],
+            response: None,
+        };
+        let history = [
+            text("user", "古い質問"),
+            text("assistant", "古い回答"),
+            text("user", "猫"),
+            assistant(&["a"]),
+            Message {
+                role: "tool".into(),
+                parts: vec![MessagePart::ToolResult(result("a", false))],
+                response: None,
+            },
+            text("assistant", "完了"),
+        ];
+        // Role and part lengths: 7 user, 19 calling assistant, 11 result, 15 reply.
+        assert_eq!(history_start(&history, 52), 2);
+        assert_eq!(history_start(&history, 51), history.len());
+        assert_eq!(history_start(&history, 0), history.len());
+        assert_eq!(history_start(&history, 2048), 0);
     }
 }

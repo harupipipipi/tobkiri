@@ -33,6 +33,9 @@ input and the ordered assistant and tool messages atomically after a successful
 turn. The `structured-chat` build of `local.harness-conversation-store` uses the
 same private SQLite store and writes the structured history and 1.0 text view in
 one Core transaction. Both versions read older text rows. The opt-in Flow test
-reopens the store and uses the structured history in the next prompt. The
-shipped 1.0 UI continues to render its text stream and history. A 2.0 UI route
+reopens the store and uses the structured history in the next prompt.
+Version 2.0 loads bounded pages against the sequence visible at its start and
+rejects histories beyond its encoded size limit. Model requests apply the
+UTF-8 history budget at whole-turn boundaries. The store retains all turns.
+The 1.0 UI renders its text stream and history. A 2.0 UI route
 must handle the additional structured events and the final completion status.

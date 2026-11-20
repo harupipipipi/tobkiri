@@ -62,7 +62,7 @@ interface model-response {
   record turn-prompt { prompt: prompt, prior-messages: u32 }
   record completed-response { message: message, calls: list<tool-call> }
 
-  start: func(ctx: context, input: input, model: string, max-tokens: u32) -> result<turn-prompt, error>;
+  start: func(ctx: context, input: input, model: string, max-tokens: u32, max-history-bytes: u32) -> result<turn-prompt, error>;
   assemble: func(events: list<chat-event>) -> result<completed-response, error>;
   bind-result: func(call-id: string, content: string, is-error: bool) -> result<tool-result, error>;
   follow-up: func(previous: turn-prompt, assistant: message, results: list<tool-result>) -> result<turn-prompt, error>;

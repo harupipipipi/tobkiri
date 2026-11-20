@@ -214,8 +214,17 @@ fn progress_events(events: &[RunEvent]) -> Vec<String> {
 /// Bound one actual Session operation. On timeout, retain its pinned future
 /// while requesting close on that same Session; never replay the operation.
 pub async fn within_session<F: Future>(session: &Session, stage: &str, future: F) -> F::Output {
+    within_session_timeout(session, stage, Duration::from_secs(30), future).await
+}
+
+pub async fn within_session_timeout<F: Future>(
+    session: &Session,
+    stage: &str,
+    limit: Duration,
+    future: F,
+) -> F::Output {
     let mut future = std::pin::pin!(future);
-    match tokio::time::timeout(Duration::from_secs(30), &mut future).await {
+    match tokio::time::timeout(limit, &mut future).await {
         Ok(output) => output,
         Err(_) => {
             let close = tokio::time::timeout(Duration::from_secs(5), session.close()).await;
@@ -225,7 +234,7 @@ pub async fn within_session<F: Future>(session: &Session, stage: &str, future: F
                 Err(_) => "close still pending after 5s",
             };
             panic!(
-                "{stage}: timed out after 30s; same Session close requested; {observation}; physical cleanup observation=unknown (not established by this close observation)"
+                "{stage}: timed out after {limit:?}; same Session close requested; {observation}; physical cleanup observation=unknown (not established by this close observation)"
             );
         }
     }

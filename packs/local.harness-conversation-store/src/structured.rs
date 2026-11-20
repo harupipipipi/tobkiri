@@ -6,7 +6,7 @@ use crate::tobkiri::core1_1_0::{
     storage::{self, SqlResultPolicy, SqlTransaction, Store, TypedSqlResult},
     types as storage_types,
 };
-use crate::{Error, ErrorCode, MAX_LOAD_ROWS, Pack, STORE_NAME};
+use crate::{Error, ErrorCode, Pack, STORE_NAME};
 
 const FIND_SIDECAR: &str =
     "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'structured_messages'";
@@ -14,11 +14,22 @@ const CREATE_SIDECAR: &str = "CREATE TABLE IF NOT EXISTS structured_messages (
     seq INTEGER NOT NULL, ordinal INTEGER NOT NULL, payload TEXT NOT NULL,
     PRIMARY KEY (seq, ordinal)
 )";
-const LOAD_LEGACY: &str = "SELECT role, content FROM messages WHERE conversation = ? ORDER BY seq";
-const LOAD_JOINED: &str =
-    "SELECT CASE WHEN s.seq IS NULL THEN m.role END, coalesce(s.payload, m.content)
+const HIGH_WATER: &str = "SELECT MAX(seq) FROM messages WHERE conversation = ?";
+const LOAD_LEGACY: &str = "SELECT seq, -1 AS ordinal, role, content FROM messages
+    WHERE conversation = ?1 AND seq BETWEEN ?3 AND ?2 AND (seq, -1) > (?3, ?4)
+    ORDER BY seq LIMIT ?5";
+const LOAD_JOINED: &str = "SELECT m.seq AS seq, coalesce(s.ordinal, -1) AS ordinal,
+    CASE WHEN s.seq IS NULL THEN m.role END AS role, coalesce(s.payload, m.content) AS content
     FROM messages AS m LEFT JOIN structured_messages AS s ON s.seq = m.seq
-    WHERE m.conversation = ? ORDER BY m.seq, s.ordinal";
+    WHERE m.conversation = ?1 AND m.seq BETWEEN ?3 AND ?2
+        AND (m.seq, coalesce(s.ordinal, -1)) > (?3, ?4)
+    ORDER BY m.seq, s.ordinal LIMIT ?5";
+const LOAD_PAGE_ROWS: u32 = 128;
+// The Core canonical value ceiling also bounds the encoded history retained across pages.
+const HISTORY_BYTES: usize = 4 * 1024 * 1024;
+// These allowances cover the typed SQL result envelope and per-row cell metadata.
+const PAGE_ENVELOPE_BYTES: usize = 256;
+const PAGE_ROW_OVERHEAD: usize = 256;
 const INSERT_LEGACY: &str = "INSERT INTO messages (conversation, role, content) VALUES (?, ?, ?)";
 const INSERT_STRUCTURED: &str =
     "INSERT INTO structured_messages (seq, ordinal, payload) VALUES (?, ?, ?)";
@@ -26,28 +37,7 @@ const INSERT_STRUCTURED: &str =
 impl Guest for Pack {
     fn load(conversation: String) -> Result<Context, Error> {
         let store = storage::open(STORE_NAME).map_err(storage_error)?;
-        let params = [text_cell(&conversation)];
-        let rows = if has_sidecar(&store)? {
-            store.sql_query_typed(LOAD_JOINED, &params, MAX_LOAD_ROWS)
-        } else {
-            let legacy = store
-                .sql_query_typed(LOAD_LEGACY, &params, MAX_LOAD_ROWS)
-                .map_err(storage_error)?;
-            // The table is only created as part of a v2 commit. If it appeared
-            // while loading legacy rows, read both tables in one new snapshot.
-            if has_sidecar(&store)? {
-                drop(legacy);
-                store.sql_query_typed(LOAD_JOINED, &params, MAX_LOAD_ROWS)
-            } else {
-                Ok(legacy)
-            }
-        }
-        .map_err(storage_error)?
-        .rows;
-        let messages = rows
-            .iter()
-            .map(|row| decode_message(row))
-            .collect::<Result<_, _>>()?;
+        let messages = load_history(&store, text_cell(&conversation))?;
         Ok(Context {
             conversation,
             messages,
@@ -94,6 +84,116 @@ impl Guest for Pack {
         // the resource drop clean up only transactions that remain active.
         transaction.commit().map_err(storage_error)
     }
+}
+
+fn load_history(store: &Store, conversation: String) -> Result<Vec<Message>, Error> {
+    let high_water = store
+        .sql_query_typed(HIGH_WATER, std::slice::from_ref(&conversation), 1)
+        .map_err(storage_error)?;
+    let [row] = high_water.rows.as_slice() else {
+        return Err(internal("invalid conversation high-water row"));
+    };
+    let [high_water] = row.as_slice() else {
+        return Err(internal("invalid conversation high-water row"));
+    };
+    let Some(high_water) = decode_loaded_integer(high_water)? else {
+        return Ok(Vec::new());
+    };
+    // Appends create fresh sequence numbers and commit projections and sidecar rows together.
+    // If the sidecar appears after this probe, its sequence numbers exceed the high-water mark.
+    let load_page = if has_sidecar(store)? {
+        LOAD_JOINED
+    } else {
+        LOAD_LEGACY
+    };
+    // Keep the size scan inside SQLite and return only counts. A control byte can
+    // need six JSON bytes. Casting to BLOB counts UTF-8 bytes even after a NUL.
+    let page_sizes = format!(
+        "WITH ranked AS (
+            SELECT SUM(6 * (coalesce(length(CAST(role AS BLOB)), 0)
+                       + length(CAST(content AS BLOB))) + {PAGE_ROW_OVERHEAD})
+                   OVER (ORDER BY seq, ordinal ROWS UNBOUNDED PRECEDING) AS bytes
+            FROM ({load_page})
+        )
+        SELECT COUNT(*), COUNT(CASE WHEN bytes <= ?6 THEN 1 END) FROM ranked"
+    );
+    let mut remaining = charge_history_bytes(HISTORY_BYTES, conversation.len())?;
+    let mut params = [
+        conversation,
+        integer_cell(high_water),
+        integer_cell(i64::MIN),
+        integer_cell(i64::MIN),
+        integer_cell(LOAD_PAGE_ROWS),
+        integer_cell(HISTORY_BYTES - PAGE_ENVELOPE_BYTES),
+    ];
+    let mut messages = Vec::new();
+    loop {
+        params[4] = integer_cell(LOAD_PAGE_ROWS);
+        let sizes = store
+            .sql_query_typed(&page_sizes, &params, 1)
+            .map_err(storage_error)?;
+        let (total_rows, page_rows) = bounded_page_rows(&sizes.rows)?;
+        if total_rows == 0 {
+            return Ok(messages);
+        }
+        params[4] = integer_cell(page_rows);
+        let page = store
+            .sql_query_typed(load_page, &params[..5], page_rows)
+            .map_err(storage_error)?;
+        if page.rows.len() != page_rows as usize {
+            return Err(internal("conversation history changed during load"));
+        }
+        for row in &page.rows {
+            let [_, _, message @ ..] = row.as_slice() else {
+                return Err(internal("invalid stored history row"));
+            };
+            remaining = charge_message(remaining, message)?;
+            messages.push(decode_message(message)?);
+        }
+        let Some([seq, ordinal, ..]) = page.rows.last().map(Vec::as_slice) else {
+            return Err(internal("invalid conversation page cursor"));
+        };
+        params[2].clone_from(seq);
+        params[3].clone_from(ordinal);
+        if page_rows == total_rows && total_rows < LOAD_PAGE_ROWS {
+            return Ok(messages);
+        }
+    }
+}
+
+fn bounded_page_rows(sizes: &[Vec<String>]) -> Result<(u32, u32), Error> {
+    let invalid_sizes = || internal("invalid stored history page counts");
+    let [row] = sizes else {
+        return Err(invalid_sizes());
+    };
+    let [total, fitting] = row.as_slice() else {
+        return Err(invalid_sizes());
+    };
+    let parse = |cell: &str| {
+        decode_loaded_integer(cell)?
+            .and_then(|size| u32::try_from(size).ok())
+            .ok_or_else(invalid_sizes)
+    };
+    let (total, fitting) = (parse(total)?, parse(fitting)?);
+    if fitting > total || total > LOAD_PAGE_ROWS {
+        return Err(invalid_sizes());
+    }
+    // Core checks the exact result bytes. Let it assess an individually large row.
+    Ok((total, fitting.max(1).min(total)))
+}
+
+fn charge_message(remaining: usize, row: &[String]) -> Result<usize, Error> {
+    // Each row pays for the encoded role and content cells, brackets and separators.
+    // The cell envelopes also bound the number of tiny messages the guest retains.
+    let bytes = row.iter().map(String::len).sum::<usize>() + 4;
+    charge_history_bytes(remaining, bytes)
+}
+
+fn charge_history_bytes(remaining: usize, bytes: usize) -> Result<usize, Error> {
+    remaining.checked_sub(bytes).ok_or_else(|| Error {
+        code: ErrorCode::LimitExceeded,
+        message: "conversation history exceeds its encoded byte limit".into(),
+    })
 }
 
 fn completed_assistant(messages: &[Message]) -> Result<&Message, Error> {
@@ -280,6 +380,16 @@ fn execute(
 enum LoadedCell {
     Null(()),
     Text(String),
+    Integer(String),
+}
+
+fn decode_loaded_integer(cell: &str) -> Result<Option<i64>, Error> {
+    let invalid_cell = || internal("invalid stored integer cell");
+    match serde_json::from_str(cell).map_err(|_| invalid_cell())? {
+        LoadedCell::Null(()) => Ok(None),
+        LoadedCell::Integer(value) => value.parse().map(Some).map_err(|_| invalid_cell()),
+        LoadedCell::Text(_) => Err(invalid_cell()),
+    }
 }
 
 fn decode_message(row: &[String]) -> Result<Message, Error> {
@@ -300,6 +410,7 @@ fn decode_message(row: &[String]) -> Result<Message, Error> {
             parts: vec![MessagePart::Text(content)],
             response: None,
         }),
+        LoadedCell::Integer(_) => Err(internal("stored message role is not text")),
     }
 }
 
@@ -348,6 +459,33 @@ fn storage_error(error: storage_types::Error) -> Error {
 mod tests {
     use super::*;
     use crate::local::harness_chat2_0_0::messages::{ResponseSummary, ToolCall, ToolResult, Usage};
+
+    #[test]
+    fn page_size_bounds_sql_results_and_keeps_large_single_rows() {
+        let counts = |total, fitting| vec![vec![integer_cell(total), integer_cell(fitting)]];
+        assert_eq!(bounded_page_rows(&counts(0, 0)).unwrap(), (0, 0));
+        assert_eq!(bounded_page_rows(&counts(128, 128)).unwrap(), (128, 128));
+        assert_eq!(bounded_page_rows(&counts(128, 2)).unwrap(), (128, 2));
+        assert_eq!(bounded_page_rows(&counts(2, 0)).unwrap(), (2, 1));
+        assert!(bounded_page_rows(&counts(128, 129)).is_err());
+    }
+
+    #[test]
+    fn history_budget_counts_each_message_even_when_its_text_is_empty() {
+        let row = [text_cell("user"), text_cell("")];
+        let encoded_bytes = row.iter().map(String::len).sum::<usize>() + 4;
+        let remaining = charge_message(2 * encoded_bytes, &row).unwrap();
+        assert_eq!(remaining, encoded_bytes);
+        let remaining = charge_message(remaining, &row).unwrap();
+        assert_eq!(remaining, 0);
+        assert!(matches!(
+            charge_message(remaining, &row),
+            Err(Error {
+                code: ErrorCode::LimitExceeded,
+                ..
+            })
+        ));
+    }
 
     #[test]
     fn decodes_legacy_text_without_synthesizing_a_response() {

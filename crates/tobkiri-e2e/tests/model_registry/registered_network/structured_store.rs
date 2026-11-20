@@ -1,6 +1,7 @@
 //! The legacy and structured Wasm components share one history across Profile revisions.
 
 use super::*;
+use std::time::Duration;
 use tobkiri_manifest::{StoreDefinition, StoreTier as ManifestStoreTier};
 use tobkiri_profile::Profile;
 
@@ -75,10 +76,10 @@ pub(super) fn stage_conversation_store(
     registry::materialize(root, pack, files)
 }
 
-fn store_profile(root: &Path, structured: bool) -> Result<Profile> {
+fn store_profile(root: &Path, structured: bool, wall_ms: u64) -> Result<Profile> {
     let repository = support::repo();
     let legacy_wit = repository.join("packs/local.harness-chat/wit");
-    let mut shapes = manifest(UI, RuntimeSpec::Data, WALL_MS)?;
+    let mut shapes = manifest(UI, RuntimeSpec::Data, wall_ms)?;
     shapes.permissions.storage.private = false;
     define_shape(&mut shapes, CHAT_STORE, ShapeKind::Port, CHAT_WIT)?;
     define_shape(&mut shapes, CHAT_MESSAGE_DATA, ShapeKind::Data, CHAT_WIT)?;
@@ -119,8 +120,17 @@ fn store_profile(root: &Path, structured: bool) -> Result<Profile> {
         utility.push(STRUCTURED_CHAT_STORE);
     }
     let shapes = registry::materialize(root, shapes, files)?;
-    let store = stage_conversation_store(root, WALL_MS, structured)?;
-    registry::profile("prof_store_compatibility", &[shapes, store], &utility)
+    let store = stage_conversation_store(root, wall_ms, structured)?;
+    let mut profile = registry::profile("prof_store_compatibility", &[shapes, store], &utility)?;
+    profile.ceiling.wasm.wall_ms = wall_ms;
+    profile.ceiling.loops.max_wall_ms = wall_ms;
+    let user = profile
+        .user_permissions
+        .as_mut()
+        .context("missing User permissions")?;
+    user.wasm.wall_ms = wall_ms;
+    user.loops.max_wall_ms = wall_ms;
+    Ok(profile)
 }
 
 async fn save_and_start(core: &Core, host: &Host, profile: &Profile) -> Result<Session> {
@@ -248,12 +258,98 @@ async fn assert_history(
     Ok(())
 }
 
+fn seed_legacy_turns(
+    store: &Path,
+    turns: std::ops::Range<usize>,
+    structured: &mut Vec<Value>,
+) -> Result<()> {
+    let mut database =
+        rusqlite::Connection::open_with_flags(store, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    let transaction = database.transaction()?;
+    for turn in turns {
+        for (role, suffix) in [("user", "入力"), ("assistant", "応答")] {
+            let content = format!("{turn} {suffix}");
+            transaction.execute(
+                "INSERT INTO messages (conversation, role, content) VALUES (?1, ?2, ?3)",
+                rusqlite::params![FIRST, role, content],
+            )?;
+            structured.push(text_message(role, &content));
+        }
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires the source-built structured Harness conversation-store component"]
+async fn structured_store_reads_all_pages_including_a_split_tool_round() -> Result<()> {
+    let root = physical_temp()?;
+    // This fixture lifts over a thousand structured records in one export.
+    let profile = store_profile(&root.path().join("dual"), true, 60_000)?;
+    let host = Arc::new(Host::default());
+    let data = root.path().join("data");
+    let core = Core::from_runtime_owner(RuntimeOwner::open(&data)?, host.clone())?;
+    let private_store = data.join(DataRoot::profile_relative(
+        &profile.id,
+        &format!("data/{STORE_PACK}/private.sqlite"),
+    )?);
+
+    let session = save_and_start(&core, &host, &profile).await?;
+    append_legacy(&session, SECOND, OTHER_INPUT, OTHER_REPLY).await?;
+    session.close().await?;
+    drop(session);
+
+    // Populate the physical v1 table with the rows the old append writes.
+    // At 126 rows, the following assistant call and tool result straddle
+    // the first 128-row page. They share one projected assistant row ID.
+    let mut structured = Vec::new();
+    seed_legacy_turns(&private_store, 0..63, &mut structured)?;
+    let replies = structured_replies();
+    let session = core.start(&profile.id).await?;
+    append_structured(&session, STRUCTURED_INPUT, &replies).await?;
+    session.close().await?;
+    drop(session);
+    structured.push(text_message("user", STRUCTURED_INPUT));
+    structured.extend(replies.iter().cloned());
+
+    seed_legacy_turns(&private_store, 63..498, &mut structured)?;
+    let session = core.start(&profile.id).await?;
+    append_structured(&session, DOWNGRADE_INPUT, &replies).await?;
+    structured.push(text_message("user", DOWNGRADE_INPUT));
+    structured.extend(replies);
+    assert_eq!(structured.len(), 1004);
+    let arguments = canon(&json!({"conversation": FIRST}))?;
+    let output = support::within_session_timeout(
+        &session,
+        "load the full structured history",
+        Duration::from_secs(65),
+        session.call_user_port(STRUCTURED_CHAT_STORE.parse()?, "load".parse()?, &arguments),
+    )
+    .await?;
+    assert_eq!(
+        serde_json::from_slice::<Value>(output.as_bytes())?,
+        json!({"conversation": FIRST, "messages": structured})
+    );
+    assert_history(
+        &session,
+        STRUCTURED_CHAT_STORE,
+        SECOND,
+        &[
+            text_message("user", OTHER_INPUT),
+            text_message("assistant", OTHER_REPLY),
+        ],
+    )
+    .await?;
+    session.close().await?;
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires the source-built legacy and structured Harness conversation-store components"]
 async fn structured_store_preserves_history_through_upgrade_and_downgrade() -> Result<()> {
     let root = physical_temp()?;
-    let legacy = store_profile(&root.path().join("legacy"), false)?;
-    let dual = store_profile(&root.path().join("dual"), true)?;
+    let legacy = store_profile(&root.path().join("legacy"), false, WALL_MS)?;
+    let dual = store_profile(&root.path().join("dual"), true, WALL_MS)?;
     let host = Arc::new(Host::default());
     let data = root.path().join("data");
     let core = Core::from_runtime_owner(RuntimeOwner::open(&data)?, host.clone())?;
@@ -333,7 +429,7 @@ async fn structured_store_preserves_history_through_upgrade_and_downgrade() -> R
 #[ignore = "requires the source-built structured Harness conversation-store component"]
 async fn structured_store_rolls_back_on_a_late_sql_constraint() -> Result<()> {
     let root = physical_temp()?;
-    let profile = store_profile(&root.path().join("dual"), true)?;
+    let profile = store_profile(&root.path().join("dual"), true, WALL_MS)?;
     let host = Arc::new(Host::default());
     let data = root.path().join("data");
     let core = Core::from_runtime_owner(RuntimeOwner::open(&data)?, host.clone())?;
