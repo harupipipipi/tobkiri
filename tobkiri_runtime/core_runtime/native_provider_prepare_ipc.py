@@ -30,9 +30,11 @@ from tobkiri_host.models import RequestContext
 from tobkiri_protocol.canonical import (
     MAX_CANONICAL_JSON_BYTES,
     MAX_SAFE_INTEGER,
+    canonical_digest,
     canonical_json,
     strict_loads,
 )
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 _SOCKET_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_SOCKET"
 _OWNER_ENV = "TOBKIRI_NATIVE_PROVIDER_PREPARE_OWNER"
@@ -41,6 +43,7 @@ _APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_APPEND"
 _SIDE_CHAT_APPEND_ENV = "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND"
 _SAVED_TURN_READ_ENV = "TOBKIRI_NATIVE_SAVED_TURN_READ"
 _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
+_SAVED_INPUT_ENV = "TOBKIRI_NATIVE_SAVED_INPUT"
 _SIDE_CHAT_START_ENV = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
@@ -59,6 +62,7 @@ _INSTANCE = re.compile(r"[0-9a-f]{32}")
 _MODEL_RESOLVE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 _TURN_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}")
 _TURN_INPUT_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+_SAVED_INPUT_PROJECTED_FIELDS = ("task_context", "resolved_chat_references")
 _TURN_REFERENCE_LIMIT = 2 * 1024
 _SAVED_TURN_REQUEST_ID = re.compile(r"saved-turn\.[0-9a-f]{64}")
 _SAVED_MESSAGE_ID = re.compile(r"message:[0-9a-f]{64}")
@@ -90,6 +94,7 @@ AI_ROUTING_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_RECEIPT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_READ_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_START_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
+SAVED_INPUT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_TURN_SETTLEMENT_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 SAVED_ORCHESTRATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
 APPLICATION_PRESENTATION_MINIMUM_MEMORY = MINIMUM_PREPARE_MEMORY
@@ -255,6 +260,14 @@ class NativeSavedTurnStartFailure(RuntimeError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"native saved Turn start failed ({code})")
+        self.code = code
+
+
+class NativeSavedInputFailure(RuntimeError):
+    """The Launcher rejected a Saved Turn input before publication permission."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"native Saved Turn input failed ({code})")
         self.code = code
 
 
@@ -442,6 +455,19 @@ class NativeSavedTurnStartRequest:
     source_digest: str
     mark_publication_possible: Callable[[], None]
     caller: SavedTurnStartCaller = "saved-turn"
+
+
+@dataclass(frozen=True)
+class NativeSavedInputRequest:
+    """Borrow the signed Saved Turn invocation for input restoration or binding."""
+
+    context: RequestContext
+    runtime_instance: str
+    deadline_monotonic: float
+    assert_current: Callable[[], None]
+    source: Mapping[str, Any]
+    accepted: Mapping[str, Any] | None = None
+    mark_publication_possible: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -697,6 +723,7 @@ _NativeBorrow = (
     | NativeSavedReceiptRequest
     | NativeSavedTurnReadRequest
     | NativeSavedTurnStartRequest
+    | NativeSavedInputRequest
     | NativeSavedOrchestrationRequest
     | NativeApplicationPresentationRequest
     | NativeConversationCompleteRequest
@@ -708,7 +735,7 @@ _NativeBorrow = (
 _NativeOperation = Literal[
     "provider_prepare", "provider_snapshot", "model_list", "model_save", "conversation_get",
     "conversation_list", "conversation_receipt", "model_resolve", "turn_start",
-    "turn_settlement",
+    "turn_settlement", "saved_input",
     "conversation_confirmation", "conversation_append", "saved_orchestration", "ai_route",
     "application_presentation", "conversation_complete",
 ]
@@ -1001,6 +1028,18 @@ def capture_launcher_saved_turn_reader() -> (
         return _invoke(launcher, borrow, operation="turn_read")
 
     return read
+
+
+def capture_launcher_saved_input_writer() -> (
+    Callable[[NativeSavedInputRequest], Mapping[str, Any]] | None
+):
+    """Capture the managed Launcher's opted-in endpoint for Saved Turn input."""
+    if os.environ.get(_SAVED_INPUT_ENV) != "1":
+        return None
+    launcher = _capture_launcher()
+    if launcher is None:
+        return None
+    return partial(_invoke, launcher, operation="saved_input")
 
 
 def capture_launcher_saved_orchestration_step() -> (
@@ -1361,6 +1400,13 @@ def _start_payload(
         frame["turn_read"] = {"caller": borrow.caller, "turn_id": borrow.turn_id}
     elif isinstance(borrow, NativeSavedTurnStartRequest):
         frame["turn_start"] = _turn_start_payload(borrow)
+    elif isinstance(borrow, NativeSavedInputRequest):
+        if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
+            raise _ProtocolError("native Saved Turn input size is invalid")
+        frame["saved_input"] = {
+            "mode": "restore" if borrow.accepted is None else "bind",
+            "input_bytes": body_input_bytes,
+        }
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
@@ -1490,6 +1536,50 @@ def _saved_orchestration_input(borrow: NativeSavedOrchestrationRequest) -> bytes
         return canonical_json(step_input)
     except (ValueError, RecursionError):
         raise _ProtocolError(invalid) from None
+
+
+def _saved_input_immutable_digest(request: Mapping[str, Any]) -> str:
+    return canonical_digest({
+        key: value for key, value in request.items()
+        if key not in _SAVED_INPUT_PROJECTED_FIELDS
+    })
+
+
+def _saved_input_body(borrow: NativeSavedInputRequest) -> tuple[bytes, str, str | None]:
+    try:
+        source = validate_saved_conversation_input(borrow.source)
+        source_request = source["request"]
+        immutable_digest = _saved_input_immutable_digest(source_request)
+        projection = None
+        accepted_digest = None
+        if borrow.accepted is not None:
+            if not callable(borrow.mark_publication_possible):
+                raise ValueError
+            accepted = validate_saved_conversation_input(borrow.accepted)
+            accepted_request = accepted["request"]
+            if (
+                "resolved_chat_references" in source_request
+                or _saved_input_immutable_digest(accepted_request) != immutable_digest
+            ):
+                raise NativeSavedInputFailure("conflict")
+            accepted_digest = canonical_digest(accepted)
+            projection = {
+                "accepted_digest": accepted_digest,
+                "context": {
+                    "kind": "tobkiri.saved.input-projection.v1",
+                    "task_context": accepted_request.get("task_context"),
+                    "resolved_chat_references": accepted_request.get(
+                        "resolved_chat_references",
+                    ),
+                    "target_settings": {key: source_request[key] for key in (
+                        "tool_selection",
+                    ) if key in source_request},
+                },
+            }
+        body = canonical_json({"source": source, "projection": projection})
+        return body, immutable_digest, accepted_digest
+    except (ValueError, RecursionError):
+        raise _ProtocolError("native Saved Turn input is invalid") from None
 
 
 def _check_lossless_json(value: Any) -> None:
@@ -1801,6 +1891,26 @@ def _decode_plan(payload: bytes, limit: int) -> dict[str, Any]:
     if not isinstance(plan, dict):
         raise _ProtocolError("native Provider preparation plan is invalid")
     return plan
+
+
+def _decode_saved_input(
+    payload: bytes, immutable_digest: str, *,
+    proposed_digest: str | None, publication_possible: bool,
+) -> dict[str, Any]:
+    try:
+        result = _decode_plan(payload, MAX_CANONICAL_JSON_BYTES)
+        if result.keys() != {"accepted"} or canonical_json(result) != payload:
+            raise ValueError
+        if result["accepted"] is None and proposed_digest is None:
+            return result
+        accepted = validate_saved_conversation_input(result["accepted"])
+        if _saved_input_immutable_digest(accepted["request"]) != immutable_digest:
+            raise ValueError
+        if publication_possible and canonical_digest(accepted) != proposed_digest:
+            raise ValueError
+        return result
+    except (ValueError, RecursionError, _ProtocolError):
+        raise _ProtocolError("native Saved Turn input result is invalid") from None
 
 
 def _decode_owner_result(payload: bytes, invalid: str) -> Any:
@@ -2609,6 +2719,7 @@ class _Exchange:
         read_only_body: bool = False,
         model_access_projection: bool = False,
         conversation_complete: bool = False,
+        saved_input: bool = False,
         permits_dispatch: bool = False,
         accepts_projected_local_chat: bool = False,
         compiles_local_chat_request: bool = False,
@@ -2636,9 +2747,11 @@ class _Exchange:
             self.failure_codes |= _LOCAL_CHAT_POLICY_FAILURES
         if conversation_complete:
             self.failure_codes = _CONVERSATION_COMPLETE_FAILURES
-        if not requires_body_ready or ai_routing or model_access_projection:
+        if (
+            not requires_body_ready or ai_routing or model_access_projection or saved_input
+        ):
             self.failure_codes |= {self.legacy_failure}
-        if conversation_mutation:
+        if conversation_mutation or (saved_input and permits_publication):
             self.failure_codes |= {_PUBLICATION_UNCONFIRMED}
         self.failure_limit = max(map(len, self.failure_codes))
         self.frame_header = bytearray(_FRAME.size)
@@ -2828,8 +2941,15 @@ class _Exchange:
         body_input: bytes | None = None,
     ) -> dict[str, Any] | None:
         conversation_append = isinstance(borrow, NativeConversationAppendRequest)
+        saved_input_digest = None
+        proposed_saved_input_digest = None
         if isinstance(borrow, NativeSavedOrchestrationRequest):
             body_input = _saved_orchestration_input(borrow)
+        elif isinstance(borrow, NativeSavedInputRequest):
+            wait_seconds()
+            body_input, saved_input_digest, proposed_saved_input_digest = (
+                _saved_input_body(borrow)
+            )
         try:
             start = _start_payload(
                 borrow, deadline_ns,
@@ -2860,6 +2980,14 @@ class _Exchange:
                         "owner requires a legacy read outside the native envelope",
                     )
                 if payload != self.legacy_failure:
+                    if (
+                        isinstance(borrow, NativeSavedInputRequest)
+                        and self.entered_live_phase
+                        and not self.publication_possible
+                        and payload != _PUBLICATION_UNCONFIRMED
+                    ):
+                        wait_seconds()
+                        raise NativeSavedInputFailure(payload.decode("ascii"))
                     if isinstance(borrow, NativeConversationCompleteRequest):
                         wait_seconds()
                         raise NativeConversationCompleteFailure(
@@ -2917,8 +3045,11 @@ class _Exchange:
                 raise _ProtocolError(
                     f"native Provider preparation failed ({payload.decode('ascii')})"
                 )
-            if self.read_only_body and tag == _PLAN and self.entered_live_phase:
-                # The Launcher sends PLAN only after the pure worker drains.
+            if (
+                (self.read_only_body or saved_input_digest is not None)
+                and tag == _PLAN and self.entered_live_phase
+            ):
+                # The Launcher sends PLAN only after the funded worker drains.
                 self.terminal = True
             # Sending a frame checks the guard before its first byte and on
             # every retry. These replies do no local work before that check.
@@ -2934,16 +3065,20 @@ class _Exchange:
             if (
                 tag == _PUBLISH_CHECK
                 and self.entered_live_phase
+                and self.permits_publication
                 and isinstance(borrow, (
                     NativeModelSaveRequest, NativeSavedTurnStartRequest,
                     NativeSavedTurnSettlementRequest,
                     NativeConversationConfirmationRequest, NativeConversationAppendRequest,
+                    NativeSavedInputRequest,
                 ))
                 and not self.publication_possible
             ):
                 # The marker can record uncertainty even if its callback raises.
                 self.publication_possible = True
-                borrow.mark_publication_possible()
+                mark_publication_possible = borrow.mark_publication_possible
+                assert mark_publication_possible is not None
+                mark_publication_possible()
                 # send() checks the current guard again before offering any byte.
                 self.send(_PUBLISH_PERMIT, b"", wait_seconds)
             elif tag == _PLAN and self.entered_live_phase:
@@ -2963,6 +3098,13 @@ class _Exchange:
                 elif isinstance(borrow, NativeSavedTurnStartRequest):
                     plan = _decode_turn_start(
                         payload, borrow, publication_possible=self.publication_possible,
+                    )
+                elif isinstance(borrow, NativeSavedInputRequest):
+                    assert saved_input_digest is not None
+                    plan = _decode_saved_input(
+                        payload, saved_input_digest,
+                        proposed_digest=proposed_saved_input_digest,
+                        publication_possible=self.publication_possible,
                     )
                 elif isinstance(borrow, NativeSavedTurnSettlementRequest):
                     plan = _decode_turn_settlement(payload, borrow)
@@ -3011,7 +3153,9 @@ class _Exchange:
                 return plan
             elif (
                 tag == _INAPPLICABLE
-                and not isinstance(borrow, NativeConversationCompleteRequest)
+                and not isinstance(borrow, (
+                    NativeConversationCompleteRequest, NativeSavedInputRequest,
+                ))
                 and not self.entered_live_phase
                 and (not self.requires_body_ready or body_input is not None)
             ):
@@ -3172,6 +3316,8 @@ def _invoke(
     saved_receipt = isinstance(borrow, NativeSavedReceiptRequest)
     turn_read = isinstance(borrow, NativeSavedTurnReadRequest)
     turn_start = isinstance(borrow, NativeSavedTurnStartRequest)
+    saved_input = isinstance(borrow, NativeSavedInputRequest)
+    saved_input_bind = saved_input and borrow.accepted is not None
     saved_orchestration = isinstance(borrow, NativeSavedOrchestrationRequest)
     application_presentation = isinstance(borrow, NativeApplicationPresentationRequest)
     conversation_complete = isinstance(borrow, NativeConversationCompleteRequest)
@@ -3189,6 +3335,7 @@ def _invoke(
         or saved_receipt != (operation == "conversation_receipt")
         or turn_read != (operation == "turn_read")
         or turn_start != (operation == "turn_start")
+        or saved_input != (operation == "saved_input")
         or saved_orchestration != (operation == "saved_orchestration")
         or application_presentation != (operation == "application_presentation")
         or conversation_complete != (operation == "conversation_complete")
@@ -3220,7 +3367,7 @@ def _invoke(
         if len(body_input) > _CONVERSATION_COMPLETE_INPUT_LIMITS.get(borrow.phase, 0):
             raise _ProtocolError("native Conversation phase or input size is invalid")
     with _connect_launcher(launcher, wait_seconds) as connection:
-        if saved_orchestration or conversation_complete:
+        if saved_orchestration or conversation_complete or saved_input:
             plan_limit = MAX_CANONICAL_JSON_BYTES
         elif turn_start:
             plan_limit = _TURN_START_RESULT_LIMIT
@@ -3239,17 +3386,22 @@ def _invoke(
             plan_limit,
             permits_publication=(
                 model_save or turn_start or turn_settlement or conversation_confirmation
-                or conversation_append
+                or conversation_append or saved_input_bind
             ),
             conversation_mutation=conversation_confirmation or conversation_append,
             requires_body_ready=(
                 saved_orchestration or ai_routing or application_presentation
-                or conversation_complete or model_access_projection
+                or conversation_complete or model_access_projection or saved_input
             ),
             ai_routing=ai_routing,
-            read_only_body=application_presentation or conversation_complete or model_access_projection,
+            read_only_body=(
+                application_presentation or conversation_complete
+                or model_access_projection
+                or (saved_input and not saved_input_bind)
+            ),
             model_access_projection=model_access_projection,
             conversation_complete=conversation_complete,
+            saved_input=saved_input,
         )
         try:
             return exchange.run(borrow, deadline_ns, wait_seconds, body_input=body_input)
@@ -3272,6 +3424,10 @@ def _invoke(
                 if turn_start:
                     raise HostPublicationUnconfirmed(
                         "native saved Turn start publication could not be confirmed",
+                    ) from None
+                if saved_input:
+                    raise HostPublicationUnconfirmed(
+                        "native Saved Turn input publication could not be confirmed",
                     ) from None
                 if turn_settlement:
                     raise NativeSavedTurnSettlementPublicationUnconfirmed(

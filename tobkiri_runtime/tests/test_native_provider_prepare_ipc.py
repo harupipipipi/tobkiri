@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -673,6 +674,267 @@ def test_turn_start_capture_requires_managed_endpoint_and_exact_opt_in(
         for invalid_value in ("0", "true", " 1"):
             monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, invalid_value)
             assert ipc.capture_launcher_saved_turn_start_writer() is None
+
+
+def _saved_input_request(
+    borrow: _Borrow, marker: Callable[[], None] | None = None,
+    *, bind: bool = False,
+) -> ipc.NativeSavedInputRequest:
+    source = {"request": {
+        "turn_id": "turn-1", "conversation_id": "conv-1", "conversation_revision": 42,
+        "content": "保存する内容 🧪",
+        "tool_selection": {"mode": "manual", "scope": "conversation", "include": []},
+    }}
+    accepted = {"request": {**source["request"], "task_context": {
+        "version": "tobkiri.saved-task-context.v1",
+        "source_id": "source-1", "conversation_id": "conv-1",
+        "recipient_id": "conversation:conv-1", "input_id": "turn-1",
+        "source_revision": 3, "generation": 8,
+        "items": [{"id": "first", "kind": "todo", "body": "確認する"}],
+    }}} if bind else None
+    return ipc.NativeSavedInputRequest(
+        context=borrow.context, runtime_instance=borrow.runtime_instance,
+        deadline_monotonic=borrow.deadline_monotonic,
+        assert_current=borrow.assert_current,
+        source=source, accepted=accepted, mark_publication_possible=marker,
+    )
+
+
+@contextmanager
+def _served_saved_input(
+    monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+) -> Iterator[Callable[[ipc.NativeSavedInputRequest], Mapping[str, Any]]]:
+    monkeypatch.setenv(ipc._SAVED_INPUT_ENV, "1")
+    with _served(monkeypatch, serve):
+        writer = ipc.capture_launcher_saved_input_writer()
+        assert writer is not None
+        yield writer
+
+
+def test_saved_input_capture_requires_exact_managed_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
+    monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_INPUT_ENV, "1")
+    assert ipc.capture_launcher_saved_input_writer() is None
+    with _listener() as (_, address):
+        monkeypatch.setenv(ipc._SOCKET_ENV, address)
+        monkeypatch.setenv(ipc._OWNER_ENV, _owner())
+        monkeypatch.setattr(ipc.os, "getppid", os.getpid)
+        assert ipc.capture_launcher_saved_input_writer() is not None
+        for value in ("0", "true", " 1"):
+            monkeypatch.setenv(ipc._SAVED_INPUT_ENV, value)
+            assert ipc.capture_launcher_saved_input_writer() is None
+
+
+@pytest.mark.parametrize("mode", ["restore", "bind", "replay"])
+def test_saved_input_sends_original_once_in_funded_canonical_body(
+    monkeypatch: pytest.MonkeyPatch, mode: str,
+) -> None:
+    marked = threading.Event()
+    request = _saved_input_request(_Borrow(), marked.set, bind=mode != "restore")
+    projection = None
+    if request.accepted is not None:
+        projection = {
+            "accepted_digest": ipc.canonical_digest(request.accepted),
+            "context": {
+                "kind": "tobkiri.saved.input-projection.v1",
+                "task_context": request.accepted["request"]["task_context"],
+                "resolved_chat_references": None,
+                "target_settings": {
+                    "tool_selection": request.source["request"]["tool_selection"],
+                },
+            },
+        }
+    body = ipc.canonical_json({"source": request.source, "projection": projection})
+    # A competing binder can win before this request acquires the SQLite lock.
+    result = {"accepted": request.source if mode == "replay" else request.accepted}
+
+    def serve(peer: socket.socket) -> None:
+        tag, start = _receive(peer)
+        assert tag == ipc._START
+        start = json.loads(start)
+        assert start["saved_input"] == {
+            "mode": "restore" if mode == "restore" else "bind",
+            "input_bytes": len(body),
+        }
+        assert set(start) == {
+            "identity", "security_epoch", "runtime_instance", "deadline_ns",
+            "saved_input",
+        }
+        peer.settimeout(0.02)
+        with pytest.raises(TimeoutError):
+            peer.recv(1)
+        peer.settimeout(5)
+        _send(peer, ipc._BODY_READY)
+        assert _receive(peer) == (ipc._ORCHESTRATION_INPUT, body)
+        assert body.count("保存する内容 🧪".encode()) == 1
+        _send(peer, ipc._CHECK)
+        assert _receive(peer) == (ipc._LIVE, b"")
+        if mode == "bind":
+            assert not marked.is_set()
+            _send(peer, ipc._PUBLISH_CHECK)
+            assert _receive(peer) == (ipc._PUBLISH_PERMIT, b"")
+            assert marked.is_set()
+        _send(peer, ipc._PLAN, ipc.canonical_json(result))
+
+    with _served_saved_input(monkeypatch, serve) as writer:
+        assert writer(request) == result
+    assert marked.is_set() is (mode == "bind")
+
+
+def _fund_saved_input(peer: socket.socket) -> None:
+    assert _receive(peer)[0] == ipc._START
+    _send(peer, ipc._BODY_READY)
+    assert _receive(peer)[0] == ipc._ORCHESTRATION_INPUT
+    _send(peer, ipc._CHECK)
+    assert _receive(peer) == (ipc._LIVE, b"")
+
+
+@pytest.mark.parametrize("reply", [
+    b'{"accepted":null,"extra":true}', b'{ "accepted":null}',
+    b'{"accepted":null,"accepted":null}', b'{"accepted":{"request":{}}}',
+    b'{"accepted":{"request":{"content":"changed","conversation_id":"conv-1",'
+    b'"conversation_revision":42,"turn_id":"turn-1"}}}',
+])
+def test_saved_input_restore_rejects_noncanonical_or_rebound_result(
+    monkeypatch: pytest.MonkeyPatch, reply: bytes,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PLAN, reply)
+        assert peer.recv(1) == b""
+
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(ipc._ProtocolError, match="input result is invalid"),
+    ):
+        writer(_saved_input_request(_Borrow()))
+
+
+def test_saved_input_restore_rejects_publication_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PUBLISH_CHECK)
+        assert _receive(peer) == (ipc._CANCEL, b"")
+        assert peer.recv(1) == b""
+
+    def mark() -> None:
+        pytest.fail("Restore cannot mark publication possible")
+
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(ipc._ProtocolError),
+    ):
+        writer(_saved_input_request(_Borrow(), mark))
+
+
+@pytest.mark.parametrize("live", [False, True])
+def test_saved_input_only_recognizes_legacy_codec_failure_after_live(
+    monkeypatch: pytest.MonkeyPatch, live: bool,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        if live:
+            _fund_saved_input(peer)
+        else:
+            assert _receive(peer)[0] == ipc._START
+        _send(peer, ipc._FAILURE, ipc._LEGACY_READ_FAILURE)
+
+    expected = (
+        ipc.NativeProviderRegistryRequiresLegacyRead if live else ipc._ProtocolError
+    )
+    with _served_saved_input(monkeypatch, serve) as writer, pytest.raises(expected):
+        writer(_saved_input_request(_Borrow(), lambda: None, bind=True))
+
+
+@pytest.mark.parametrize(
+    "reply", [None, b"legacy-read-required", b"publication-unconfirmed"],
+)
+def test_saved_input_bind_preserves_publication_uncertainty(
+    monkeypatch: pytest.MonkeyPatch, reply: bytes | None,
+) -> None:
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PUBLISH_CHECK)
+        assert _receive(peer) == (ipc._PUBLISH_PERMIT, b"")
+        if reply is not None:
+            _send(peer, ipc._FAILURE, reply)
+
+    marked = threading.Event()
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(HostPublicationUnconfirmed),
+    ):
+        writer(_saved_input_request(_Borrow(), marked.set, bind=True))
+    assert marked.is_set()
+
+
+def test_saved_input_bind_keeps_large_inline_images_within_a_single_body() -> None:
+    request = _saved_input_request(_Borrow(), lambda: None, bind=True)
+    assert request.accepted is not None
+    images = []
+    for octet in (b"A", b"B"):
+        raw = b"\x89PNG\r\n\x1a\n" + octet * (1024 * 1024 - 8)
+        url = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+        images.append({"type": "image_url", "image_url": {"url": url}})
+    content = [{"type": "text", "text": "test"}, *images]
+    request.source["request"]["content"] = content
+    request.accepted["request"]["content"] = content
+    body, _, _ = ipc._saved_input_body(request)
+    assert ipc.MAX_CANONICAL_JSON_BYTES // 2 < len(body) < ipc.MAX_CANONICAL_JSON_BYTES
+    for image in images:
+        assert body.count(image["image_url"]["url"].encode("ascii")) == 1
+
+
+def test_saved_input_bind_rejects_null_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PLAN, b'{"accepted":null}')
+
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(ipc._ProtocolError, match="input result is invalid"),
+    ):
+        writer(_saved_input_request(_Borrow(), lambda: None, bind=True))
+
+
+def test_saved_input_bind_rejects_a_different_projection_after_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _saved_input_request(_Borrow(), lambda: None, bind=True)
+
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PUBLISH_CHECK)
+        assert _receive(peer) == (ipc._PUBLISH_PERMIT, b"")
+        _send(peer, ipc._PLAN, ipc.canonical_json({"accepted": request.source}))
+
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(HostPublicationUnconfirmed),
+    ):
+        writer(request)
+
+
+def test_saved_input_checks_guard_again_after_marking_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    borrow = _Borrow()
+
+    def serve(peer: socket.socket) -> None:
+        _fund_saved_input(peer)
+        _send(peer, ipc._PUBLISH_CHECK)
+        assert _receive(peer) == (ipc._CANCEL, b"")
+        _send(peer, ipc._FAILURE, b"cancelled")
+
+    with (
+        _served_saved_input(monkeypatch, serve) as writer,
+        pytest.raises(HostPublicationUnconfirmed),
+    ):
+        writer(_saved_input_request(borrow, borrow.revoked.set, bind=True))
 
 
 def test_side_chat_turn_start_uses_separate_admission_and_exact_caller(

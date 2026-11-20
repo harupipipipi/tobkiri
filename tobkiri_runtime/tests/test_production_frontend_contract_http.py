@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import quote
 
 import pytest
@@ -3888,6 +3888,231 @@ def test_native_saved_turn_start_borrows_signed_lifecycle_lease_and_owner_input(
                 borrow.assert_current()
 
 
+def test_native_saved_input_borrows_ordinary_signed_lifecycle_and_recovers_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capture before starting a turn and restore the same input after a lost reply."""
+    from core_runtime import native_provider_prepare_ipc as ipc
+    from core_runtime.authority.v4 import LeaseState
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from core_runtime.provider_prepare_native_v4 import (
+        NativeProviderRegistryRequiresLegacyRead,
+    )
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+    from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import (
+        TARGETS,
+    )
+    from tobkiri_host.runtime import V4DispatchSession
+
+    parent_target = ("tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved")
+    child_target = (
+        "tobkiri.action.turn.lifecycle.v1", "rumi_turn_runtime_pack.turn-lifecycle",
+    )
+    user_data = tmp_path / "user-data"
+    owner = DurableTurnRuntime("defaults", user_data_root=user_data)
+    original_invoke = V4DispatchSession.invoke
+    original_recover = DurableTurnRuntime.saved_input
+    original_bind = DurableTurnRuntime.bind_saved_input
+    parents: list[RequestEnvelope] = []
+    children: list[RequestEnvelope] = []
+    borrows: list[ipc.NativeSavedInputRequest] = []
+    legacy: list[tuple[str, str]] = []
+    generations: list[object] = []
+    published: list[str] = []
+
+    def invoke(
+        session: V4DispatchSession,
+        contract: str,
+        operation: str,
+        payload: Mapping[str, object],
+        **kwargs: object,
+    ) -> Mapping[str, object]:
+        if (contract, operation) == READINESS:
+            return {
+                "ready": payload.get("delivery_mode") != "incremental",
+                "model_profile_id": "model-profile-1",
+            }
+        if (contract, operation) == TARGETS[2]:
+            generations.append(payload)
+            return {"status": "ok", "output": "Hi", "finish_reason": "stop"}
+        return original_invoke(session, contract, operation, payload, **kwargs)
+
+    def recover_legacy(
+        store: DurableTurnRuntime, source: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        legacy.append((source["request"]["turn_id"], "recover"))
+        return original_recover(store, source)
+
+    def bind_legacy(
+        store: DurableTurnRuntime,
+        source: Mapping[str, Any],
+        accepted: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        legacy.append((source["request"]["turn_id"], "bind"))
+        return original_bind(store, source, accepted)
+
+    def write(request: ipc.NativeSavedInputRequest) -> Mapping[str, object]:
+        request.assert_current()
+        borrows.append(request)
+        child, parent = children[-1], parents[-1]
+        assert request.context is child.context
+        assert request.runtime_instance == server._native_provider_prepare_instance
+        assert child.context.caller_principal == parent.target_principal
+        assert request.deadline_monotonic == child.deadline_monotonic
+        assert child.deadline_monotonic <= parent.deadline_monotonic
+        assert child.resource_reservation_id is not None
+        assert child.resource_reservation_id != parent.resource_reservation_id
+        assert child.lease.token != parent.lease.token
+        assert canonical_digest(request.source) == canonical_digest({
+            "request": parent.payload["request"],
+        })
+        for envelope in (child, parent):
+            _, state = authority.inspect_lease_token(envelope.lease.token.decode("ascii"))
+            assert state is LeaseState.DISPATCHED
+        turn_id = request.source["request"]["turn_id"]
+        if turn_id == "compatibility":
+            raise NativeProviderRegistryRequiresLegacyRead()
+        if turn_id == "unavailable":
+            raise ipc.NativeProviderPrepareUnavailable()
+        if request.accepted is None:
+            assert child.payload["operation"] == "recover_saved_input"
+            assert "request" not in child.payload
+            assert request.mark_publication_possible is None
+            try:
+                return {"accepted": original_recover(owner, request.source)}
+            except TurnConflict:
+                raise ipc.NativeSavedInputFailure("conflict") from None
+        assert child.payload["operation"] == "bind_saved_input"
+        assert canonical_digest(request.accepted) == canonical_digest({
+            "request": child.payload["request"],
+        })
+        assert "task_context" not in request.accepted["request"]
+        assert request.mark_publication_possible is not None
+        assert owner.get(turn_id) is None
+        if turn_id == "changed":
+            return {"accepted": {"request": {
+                **request.accepted["request"], "content": "Different content",
+            }}}
+        request.mark_publication_possible()
+        published.append(turn_id)
+        accepted = original_bind(owner, request.source, request.accepted)
+        if turn_id == "ambiguous":
+            raise OSError("fixture lost the reply after SQLite commit")
+        return {"accepted": accepted}
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    monkeypatch.setattr(DurableTurnRuntime, "saved_input", recover_legacy)
+    monkeypatch.setattr(DurableTurnRuntime, "bind_saved_input", bind_legacy)
+    _publish_native_runtime_fixture(monkeypatch)
+    monkeypatch.setattr(ipc, "capture_launcher_saved_input_writer", lambda: write)
+
+    with contextmanager(_captured_production_server)(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    ) as (server, session, authority):
+        dispatch = session.broker._dispatch
+
+        def observe_dispatch(
+            selected: object, envelope: RequestEnvelope, *args: object, **kwargs: object,
+        ) -> object:
+            target = envelope.contract_id, envelope.operation_id
+            if target == parent_target:
+                parents.append(envelope)
+            if target == child_target:
+                children.append(envelope)
+            return dispatch(selected, envelope, *args, **kwargs)
+
+        monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+        conversations = ConversationStore("defaults", user_data_root=user_data)
+        route = _contract("POST", "/api/chat/turn")
+        cookie, csrf, origin = _authenticate(server)
+
+        def send(body: dict) -> tuple[int, dict]:
+            status, result, _ = _request(
+                server, "POST", route, body=body, headers={
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+            )
+            return status, result
+
+        for name in ("projected", "compatibility", "ambiguous", "unavailable", "changed"):
+            conversations.create(
+                {"id": name, "model_reference": "model-profile-1"},
+                expected_revision=conversations.snapshot()["revision"],
+            )
+            body = {"request": {
+                "turn_id": name, "conversation_id": name,
+                "conversation_revision": 1, "content": "Hello",
+            }}
+            if name == "projected":
+                body["request"]["task_context"] = {
+                    "version": "tobkiri.saved-task-context.v1", "source_id": "fixture-context",
+                    "conversation_id": name, "recipient_id": f"conversation:{name}",
+                    "input_id": name, "source_revision": 1, "generation": 1,
+                    "items": [{"id": "note", "kind": "goal", "body": "Untrusted input context"}],
+                }
+            first_child = len(children)
+            status, result = send(body)
+            if name in {"ambiguous", "unavailable", "changed"}:
+                assert status != 200, result
+                assert owner.get(name) is None
+                assert conversations.get(name)["messages"] == []
+                assert all(
+                    child.payload["operation"] in {"recover_saved_input", "bind_saved_input"}
+                    for child in children[first_child:]
+                )
+                if name != "ambiguous":
+                    assert original_recover(owner, body) is None
+                    continue
+                assert original_recover(owner, body) == body
+                retry_child = len(children)
+                status, result = send(body)
+                assert status == 200 and result["data"]["status"] == "completed", result
+                assert [child.payload["operation"] for child in children[retry_child:]] == [
+                    "recover_saved_input", "begin_saved", "claim_saved",
+                ]
+            else:
+                assert status == 200 and result["data"]["status"] == "completed", result
+            accepted = original_recover(owner, body)
+            assert "task_context" not in accepted["request"]
+            assert result["data"]["input_context_receipt"]["source_input_digest"] == (
+                canonical_digest(body)
+            )
+            assert owner.get(name)["input_digest"] == canonical_digest(accepted)
+            assert [message["role"] for message in conversations.get(name)["messages"]] == [
+                "user", "assistant",
+            ]
+            retry_child = len(children)
+            status, result = send(body)
+            assert status == 200 and result["data"]["status"] == "existing", result
+            assert [child.payload["operation"] for child in children[retry_child:]] == [
+                "recover_saved_input", "begin_saved", "claim_saved",
+            ]
+            if name == "projected":
+                first_child = len(children)
+                changed = {"request": {**body["request"], "content": "Different input"}}
+                status, result = send(changed)
+                assert status != 200, result
+                assert len(children) == first_child + 1
+                assert children[-1].payload["operation"] == "recover_saved_input"
+
+        assert legacy == [
+            ("compatibility", "recover"), ("compatibility", "bind"),
+            ("compatibility", "recover"),
+        ]
+        assert published == ["projected", "ambiguous"]
+        assert len(generations) == 3
+        for borrow in borrows:
+            with pytest.raises(PermissionError):
+                borrow.assert_current()
+            if borrow.mark_publication_possible is not None:
+                with pytest.raises(PermissionError):
+                    borrow.mark_publication_possible()
+
+
 def test_signed_saved_http_selects_native_wasm_before_packvm_materialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4179,6 +4404,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
     append_envelopes: list[RequestEnvelope] = []
     ordinary_append_requests: list[ipc.NativeConversationAppendRequest] = []
     start_requests: list[ipc.NativeSavedTurnStartRequest] = []
+    saved_input_requests: list[ipc.NativeSavedInputRequest] = []
     start_envelopes: list[RequestEnvelope] = []
     settlement_requests: list[ipc.NativeSavedTurnSettlementRequest] = []
     settlement_envelopes: list[RequestEnvelope] = []
@@ -4522,6 +4748,12 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         materializations.append(evidence)
         return evidence
 
+    def unexpected_saved_input(
+        request: ipc.NativeSavedInputRequest,
+    ) -> Mapping[str, object]:
+        saved_input_requests.append(request)
+        raise AssertionError("Side Chat used the ordinary Saved Input port")
+
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     monkeypatch.setattr(backend, "materialize", observe_packvm)
     monkeypatch.setattr(NativeSavedOrchestrationBackend, "materialize", observe_native)
@@ -4532,6 +4764,10 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         ipc, "capture_launcher_side_chat_conversation_append_writer",
         lambda: side_append if use_native_append else None,
     )
+    if use_native_start:
+        monkeypatch.setattr(
+            ipc, "capture_launcher_saved_input_writer", lambda: unexpected_saved_input,
+        )
     monkeypatch.setattr(ipc, "capture_launcher_saved_turn_start_writer", lambda: ordinary_start)
     monkeypatch.setattr(
         ipc, "capture_launcher_side_chat_turn_start_writer",
@@ -4828,6 +5064,7 @@ def test_signed_side_chat_http_uses_shared_saved_orchestration(
         for request in append_requests:
             with pytest.raises(PermissionError):
                 request.assert_current()
+        assert not saved_input_requests
         assert len(start_envelopes) == 2
         assert [request.action for request in start_requests] == (
             ["begin", "claim"] if use_native_start else []

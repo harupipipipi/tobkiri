@@ -34,13 +34,14 @@ use crate::{
         ModelAccessProjectionPhase, ModelRegistryRequiresLegacyRead, NativeRegistryRequest,
         OriginalModelResolveRole, OriginalSavedReceiptRole, PendingProviderPrepare,
         ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
-        SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
-        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
-        TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT, APPLICATION_PRESENTATION_INPUT_LIMIT,
-        APPLICATION_PRESENTATION_RESULT_LIMIT, CONVERSATION_APPEND_LIMIT,
-        CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
-        CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, PROVIDER_SNAPSHOT_REPLY_LIMIT,
-        SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+        SavedInputMode, SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError,
+        SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
+        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
+        APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
+        CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
+        CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
+        PROVIDER_SNAPSHOT_REPLY_LIMIT, SAVED_INPUT_FRAME_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT,
+        TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
     },
     shell_handoff::{process_identity, LauncherProcessIdentity},
 };
@@ -103,6 +104,8 @@ struct Start<'a> {
     #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_start: Option<TurnStart>,
     #[serde(default, deserialize_with = "deserialize_present_object")]
+    saved_input: Option<SavedInputStart>,
+    #[serde(default, deserialize_with = "deserialize_present_object")]
     turn_settlement: Option<TurnSettlement>,
     #[serde(borrow, default, deserialize_with = "deserialize_present")]
     conversation_append: Option<ConversationAppend<'a>>,
@@ -124,6 +127,7 @@ struct Start<'a> {
 
 enum RequestStart {
     Inline(NativeRegistryRequest),
+    SavedInput(SavedInputStart),
     SavedOrchestration {
         input_bytes: usize,
     },
@@ -153,9 +157,9 @@ impl RequestStart {
         deadline: Instant,
     ) -> Result<()> {
         let (tag, payload): (u8, &[u8]) = match self {
-            Self::ConversationComplete { .. } | Self::ModelAccessProjection { .. } => {
-                (FAILURE, b"denied")
-            }
+            Self::ConversationComplete { .. }
+            | Self::ModelAccessProjection { .. }
+            | Self::SavedInput(_) => (FAILURE, b"denied"),
             Self::ApplicationPresentation { .. } => (FAILURE, b"unavailable"),
             _ => (INAPPLICABLE, &[]),
         };
@@ -164,6 +168,7 @@ impl RequestStart {
 }
 
 enum BodyStart<'a> {
+    SavedInput(&'a SavedInputStart),
     SavedOrchestration(&'a SavedOrchestrationStart),
     ApplicationPresentation(&'a ApplicationPresentationStart),
     ConversationComplete(&'a ConversationCompleteStart),
@@ -210,22 +215,28 @@ impl Start<'_> {
             &self.model_access_projection,
             &self.saved_local_chat,
             &self.ai_route,
+            &self.saved_input,
         ) {
-            (None, None, None, None, None, None) => None,
-            (Some(saved), None, None, None, None, None) => {
+            (None, None, None, None, None, None, None) => None,
+            (Some(saved), None, None, None, None, None, None) => {
                 Some(BodyStart::SavedOrchestration(saved))
             }
-            (None, Some(presentation), None, None, None, None) => {
+            (None, Some(presentation), None, None, None, None, None) => {
                 Some(BodyStart::ApplicationPresentation(presentation))
             }
-            (None, None, Some(complete), None, None, None) => {
+            (None, None, Some(complete), None, None, None, None) => {
                 Some(BodyStart::ConversationComplete(complete))
             }
-            (None, None, None, Some(projection), None, None) => {
+            (None, None, None, Some(projection), None, None, None) => {
                 Some(BodyStart::ModelAccessProjection(projection))
             }
-            (None, None, None, None, Some(chat), None) => Some(BodyStart::SavedLocalChat(chat)),
-            (None, None, None, None, None, Some(routing)) => Some(BodyStart::AiRouting(routing)),
+            (None, None, None, None, Some(chat), None, None) => {
+                Some(BodyStart::SavedLocalChat(chat))
+            }
+            (None, None, None, None, None, Some(routing), None) => {
+                Some(BodyStart::AiRouting(routing))
+            }
+            (None, None, None, None, None, None, Some(input)) => Some(BodyStart::SavedInput(input)),
             _ => bail!("native Registry start must name exactly one operation"),
         };
         let registry_read = match (
@@ -312,6 +323,26 @@ impl Start<'_> {
             }
             (None, None, None, None, None, None, None, None, None, Some(append), None, None) => {
                 append.operation()?
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(BodyStart::SavedInput(input)),
+                None,
+            ) => {
+                ensure!(
+                    (1..=SAVED_INPUT_FRAME_LIMIT).contains(&input.input_bytes),
+                    "invalid saved input size"
+                );
+                return Ok(RequestStart::SavedInput(*input));
             }
             (
                 None,
@@ -596,6 +627,20 @@ struct TurnStart {
     input_digest: String,
     #[serde(deserialize_with = "deserialize_digest")]
     source_digest: String,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedInputStart {
+    mode: SavedInputMode,
+    input_bytes: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedInputReply<'a> {
+    #[serde(borrow)]
+    accepted: &'a RawValue,
 }
 
 #[derive(Deserialize)]
@@ -1471,6 +1516,7 @@ pub(crate) fn admit_connection(
     let needs_active_host = matches!(
         &request,
         RequestStart::SavedOrchestration { .. }
+            | RequestStart::SavedInput(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
             | RequestStart::ModelAccessProjection { .. }
@@ -1546,6 +1592,7 @@ pub(crate) fn admit_connection(
     let proof = candidate.verified_source();
     let has_launch_proof = match &request {
         RequestStart::Inline(operation) => operation.has_launch_proof(proof),
+        RequestStart::SavedInput(_) => proof.permits_saved_input(),
         RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
         RequestStart::ApplicationPresentation { role, .. } => {
             proof.permits_application_presentation(*role)
@@ -1617,6 +1664,26 @@ impl AdmittedConnection {
         } = self;
         let operation = match request {
             RequestStart::Inline(operation) => operation,
+            RequestStart::SavedInput(SavedInputStart { mode, input_bytes }) => {
+                let connection = Connection::new(
+                    manager,
+                    candidate,
+                    stream,
+                    deadline,
+                    ReplyRole::SavedInput(mode),
+                );
+                let input_connection = Arc::clone(&connection);
+                return connection.run(
+                    app,
+                    NativeRegistryRequest::SavedInput {
+                        mode,
+                        input_bytes,
+                        receive_input: Box::new(move |deadline| {
+                            input_connection.receive_funded_input(input_bytes, deadline)
+                        }),
+                    },
+                );
+            }
             RequestStart::SavedOrchestration { input_bytes } => {
                 let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
                 let Some(input) =
@@ -1734,6 +1801,7 @@ impl AdmittedConnection {
             NativeRegistryRequest::ConversationAppend { .. } => ReplyRole::ConversationAppend,
             NativeRegistryRequest::ModelResolve { .. } => ReplyRole::ModelResolve,
             NativeRegistryRequest::TurnRead { .. } => ReplyRole::TurnRead,
+            NativeRegistryRequest::SavedInput { mode, .. } => ReplyRole::SavedInput(*mode),
             NativeRegistryRequest::TurnStart { action, .. } => ReplyRole::TurnStart(*action),
             NativeRegistryRequest::TurnSettlement { .. } => ReplyRole::TurnSettlement,
             NativeRegistryRequest::SavedOrchestration { .. } => ReplyRole::SavedOrchestration,
@@ -1761,6 +1829,7 @@ enum ReplyRole {
     ModelResolve,
     TurnRead,
     TurnStart(SavedTurnStartAction),
+    SavedInput(SavedInputMode),
     TurnSettlement,
     SavedOrchestration,
     ApplicationPresentation,
@@ -1776,6 +1845,7 @@ impl ReplyRole {
             Self::ApplicationPresentation
                 | Self::ConversationComplete
                 | Self::ModelAccessProjection
+                | Self::SavedInput(_)
         )
     }
 
@@ -1793,7 +1863,10 @@ impl ReplyRole {
         self.uses_conversation_publication()
             || matches!(
                 self,
-                Self::ModelSave | Self::TurnStart(_) | Self::TurnSettlement
+                Self::ModelSave
+                    | Self::TurnStart(_)
+                    | Self::TurnSettlement
+                    | Self::SavedInput(SavedInputMode::Bind)
             )
     }
 
@@ -1824,6 +1897,7 @@ impl ReplyRole {
             ),
             Self::ModelResolve => (MODEL_RESOLVE_REPLY_LIMIT, "legacy-read-required"),
             Self::TurnRead => (TURN_READ_REPLY_LIMIT, "limit-exceeded"),
+            Self::SavedInput(_) => (SAVED_INPUT_FRAME_LIMIT, "limit-exceeded"),
             Self::SavedOrchestration => (SAVED_ORCHESTRATION_FRAME_LIMIT, "limit-exceeded"),
             Self::ApplicationPresentation => {
                 (APPLICATION_PRESENTATION_RESULT_LIMIT, "limit-exceeded")
@@ -1963,7 +2037,10 @@ impl ReplyRole {
                 },
             };
         }
-        if !matches!(self, Self::TurnStart(_) | Self::TurnSettlement) {
+        if !matches!(
+            self,
+            Self::TurnStart(_) | Self::TurnSettlement | Self::SavedInput(_)
+        ) {
             return failure_code(error);
         }
         if authority == WireAuthority::PublicationPermitted {
@@ -1971,6 +2048,10 @@ impl ReplyRole {
         }
         let needs_legacy_codec = match self {
             Self::TurnStart(_) => error.is::<TurnStartRequiresLegacyCodec>(),
+            Self::SavedInput(_) => matches!(
+                error.downcast_ref::<SettlementError>(),
+                Some(SettlementError::RequiresLegacyCodec)
+            ),
             _ => error.is::<TurnSettlementRequiresLegacyCodec>(),
         };
         if authority == WireAuthority::Live && needs_legacy_codec {
@@ -2028,6 +2109,26 @@ impl ReplyRole {
             }
             if result.turn.get().len() > TURN_READ_REPLY_LIMIT {
                 return Err(overflow_code);
+            }
+        }
+        if let Self::SavedInput(mode) = self {
+            let live = match mode {
+                SavedInputMode::Restore => authority == WireAuthority::Live,
+                SavedInputMode::Bind => matches!(
+                    authority,
+                    WireAuthority::Live | WireAuthority::PublicationPermitted
+                ),
+            };
+            if !live {
+                return Err("unavailable");
+            }
+            let reply: SavedInputReply<'_> =
+                serde_json::from_slice(output).map_err(|_| "internal")?;
+            let accepted = reply.accepted.get();
+            if !(accepted.starts_with('{')
+                || (mode == SavedInputMode::Restore && accepted == "null"))
+            {
+                return Err("internal");
             }
         }
         if matches!(
@@ -2176,7 +2277,10 @@ impl Connection {
         self.checkpoint(&mut wire)?;
         if self.reply.uses_funded_input() {
             ensure!(
-                wire.funded_input_received && check == AuthorityCheck::Live,
+                wire.funded_input_received
+                    && (check == AuthorityCheck::Live
+                        || (self.reply == ReplyRole::SavedInput(SavedInputMode::Bind)
+                            && check == AuthorityCheck::Publication)),
                 "native Registry DATA request is outside its live phase"
             );
         }
@@ -2678,6 +2782,86 @@ mod tests {
         format!(
             r#"{{"identity":{{"profile_id":"profile","profile_revision":"revision","activation_id":"activation","plan_digest":"digest"}},"runtime_instance":"0123456789abcdef0123456789abcdef","security_epoch":1,"deadline_ns":1{operation}}}"#
         )
+    }
+
+    #[test]
+    fn saved_input_wire_separates_read_and_publication() {
+        for (name, mode) in [
+            ("restore", SavedInputMode::Restore),
+            ("bind", SavedInputMode::Bind),
+        ] {
+            let start = start_frame(&format!(
+                r#","saved_input":{{"mode":"{name}","input_bytes":{SAVED_INPUT_FRAME_LIMIT}}}"#
+            ));
+            let request = serde_json::from_str::<Start<'_>>(&start)
+                .unwrap()
+                .request_start()
+                .unwrap();
+            assert!(matches!(request, RequestStart::SavedInput(saved)
+                if saved.mode == mode && saved.input_bytes == SAVED_INPUT_FRAME_LIMIT));
+            let role = ReplyRole::SavedInput(mode);
+            assert!(role.uses_funded_input());
+            assert_eq!(role.permits_publication(), mode == SavedInputMode::Bind);
+            assert_eq!(
+                role.validate_result(WireAuthority::AwaitingLive, br#"{"accepted":{}}"#),
+                Err("unavailable")
+            );
+            assert_eq!(
+                role.validate_result(WireAuthority::Live, br#"{"accepted":{}}"#),
+                Ok(())
+            );
+            assert!(role
+                .validate_result(WireAuthority::Live, br#"{"accepted":{},"extra":true}"#)
+                .is_err());
+            let compatibility = LegacySavedTurnSettlementError::RequiresLegacyCodec.into();
+            assert_eq!(
+                role.failure_code(WireAuthority::Live, &compatibility),
+                "legacy-read-required"
+            );
+            assert_eq!(
+                role.failure_code(WireAuthority::AwaitingLive, &compatibility),
+                "unavailable"
+            );
+            assert_eq!(
+                role.failure_code(WireAuthority::PublicationPermitted, &compatibility),
+                "unavailable"
+            );
+        }
+        for invalid in [
+            r#","saved_input":null"#.to_owned(),
+            r#","saved_input":{"mode":"bind","input_bytes":0}"#.to_owned(),
+            format!(
+                r#","saved_input":{{"mode":"bind","input_bytes":{}}}"#,
+                SAVED_INPUT_FRAME_LIMIT + 1
+            ),
+            r#","saved_input":{"mode":"read","input_bytes":1}"#.to_owned(),
+            r#","saved_input":{"mode":"restore","input_bytes":1,"publication":true}"#.to_owned(),
+            format!(r#","saved_input":{{"mode":"restore","input_bytes":1}}{PROVIDER_REQUEST}"#),
+        ] {
+            let candidate = start_frame(&invalid);
+            assert!(serde_json::from_str::<Start<'_>>(&candidate)
+                .ok()
+                .and_then(|start| start.request_start().ok())
+                .is_none());
+        }
+        let restore = ReplyRole::SavedInput(SavedInputMode::Restore);
+        let bind = ReplyRole::SavedInput(SavedInputMode::Bind);
+        assert_eq!(
+            restore.validate_result(WireAuthority::Live, br#"{"accepted":null}"#),
+            Ok(())
+        );
+        assert_eq!(
+            restore.validate_result(WireAuthority::PublicationPermitted, br#"{"accepted":{}}"#),
+            Err("unavailable")
+        );
+        assert_eq!(
+            bind.validate_result(WireAuthority::Live, br#"{"accepted":null}"#),
+            Err("internal")
+        );
+        assert_eq!(
+            bind.validate_result(WireAuthority::PublicationPermitted, br#"{"accepted":{}}"#),
+            Ok(())
+        );
     }
 
     #[test]

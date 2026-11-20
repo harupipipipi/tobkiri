@@ -18,6 +18,7 @@ on:
       - 'tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs'
       - 'tobkiri_launcher/src-tauri/src/native_harness_dispatch*.rs'
       - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_ipc.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_job.rs'
       - 'tobkiri_launcher/src-tauri/src/native_launch_metadata.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
@@ -147,5 +148,7 @@ jobs:
           native_setup_ipc_requires_the_exact_main_loopback_setup_route
           native_first_setup_launch_argument attestation_binds_role_prefixes_paths_sentinels_and_digest
           turn_settlement_declaration_pins_wit_and_rejects_extra_permissions
+          saved_input_wire_separates_read_and_publication saved_input_job_checks_mode_proof_and_funded_body
+          saved_input_environment_requires_current_ordinary_turn_start_proof
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
           malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

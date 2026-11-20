@@ -418,6 +418,13 @@ impl VerifiedRegistryLaunch {
             .is_some()
     }
 
+    /// Require the ordinary signed Turn start chain and the verified Turn input port.
+    pub(crate) fn permits_saved_input(&self) -> bool {
+        self.turn
+            .as_ref()
+            .is_some_and(|source| source.declares_saved_input && source.start.saved_turn.is_some())
+    }
+
     /// Require the receipt caller's own legacy edge and verified receipt declaration.
     pub(crate) fn permits_saved_receipt(&self, role: OriginalSavedReceiptRole) -> bool {
         self.conversation
@@ -757,6 +764,7 @@ struct VerifiedTurnSource {
     settlement: [Option<VerifiedTurnSettlementGrant>; 4],
     read: VerifiedConversationConfirmationRoles,
     start: VerifiedTurnStartRoles,
+    declares_saved_input: bool,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
@@ -1601,6 +1609,7 @@ impl VerifiedRegistryLaunch {
                 ],
                 read: VerifiedConversationConfirmationRoles::default(),
                 start: VerifiedTurnStartRoles::default(),
+                declares_saved_input: false,
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -1624,6 +1633,7 @@ impl VerifiedRegistryLaunch {
             settlement: [None, None, None, None],
             read: confirmation.confirmation,
             start: VerifiedTurnStartRoles::default(),
+            declares_saved_input: false,
             archive_sha256: confirmation.archive_sha256,
             archive_bytes: confirmation.archive_bytes,
             manifest_sha256: confirmation.manifest_sha256,
@@ -1650,10 +1660,21 @@ impl VerifiedRegistryLaunch {
             settlement: [None, None, None, None],
             read: VerifiedConversationConfirmationRoles::default(),
             start,
+            declares_saved_input: false,
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
         });
+        proof
+    }
+
+    pub(crate) fn test_saved_input_proof_for(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        caller: SavedTurnStartCaller,
+    ) -> Self {
+        let mut proof = Self::test_turn_start_proof_for(identity, catalog_revision, caller);
+        proof.turn.as_mut().unwrap().declares_saved_input = true;
         proof
     }
 
@@ -3118,6 +3139,49 @@ pub(super) fn reacquire_turn_start_pack_for(
     caller: SavedTurnStartCaller,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
+    let source = revalidate_turn_start_source(inspection, proof, caller, &checkpoint)?;
+    reacquire_turn_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        require_turn_start_declaration,
+    )
+    .context("bundled Turn start archive verification failed")
+}
+
+/// Reacquire the Turn input port under the ordinary signed Turn start chain.
+pub(super) fn reacquire_saved_input_pack(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &VerifiedRegistryLaunch,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<VerifiedPack> {
+    ensure!(
+        proof.permits_saved_input(),
+        "admitted launch has no verified ordinary Saved Input source"
+    );
+    let source = revalidate_turn_start_source(
+        inspection,
+        proof,
+        SavedTurnStartCaller::SavedTurn,
+        &checkpoint,
+    )?;
+    reacquire_turn_archive(
+        inspection,
+        proof,
+        source,
+        checkpoint,
+        require_turn_input_declaration,
+    )
+    .context("bundled Turn input archive verification failed")
+}
+
+fn revalidate_turn_start_source<'proof>(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    proof: &'proof VerifiedRegistryLaunch,
+    caller: SavedTurnStartCaller,
+    checkpoint: &impl Fn() -> Result<()>,
+) -> Result<&'proof VerifiedTurnSource> {
     let source = proof
         .turn
         .as_ref()
@@ -3128,15 +3192,8 @@ pub(super) fn reacquire_turn_start_pack_for(
         .context("admitted launch has no verified Turn start source for the caller")?;
     checkpoint()?;
     inspection.with_source(|sources| start.require_source(sources))??;
-    start.revalidate(inspection.allocation_budget()?, &checkpoint)?;
-    reacquire_turn_archive(
-        inspection,
-        proof,
-        source,
-        checkpoint,
-        require_turn_start_declaration,
-    )
-    .context("bundled Turn start archive verification failed")
+    start.revalidate(inspection.allocation_budget()?, checkpoint)?;
+    Ok(source)
 }
 
 fn reacquire_turn_archive(
@@ -3554,12 +3611,12 @@ fn verify_turn_source(
     for (selection, caller) in selections.iter_mut().zip(SettlementCaller::ALL) {
         *selection = select_original_saved_turn_settlement(active, budget, caller)?;
     }
-    let read = if matches!(receipt.version(), "0.2.0" | "0.3.0" | "0.4.0") {
+    let read = if matches!(receipt.version(), "0.2.0" | "0.3.0" | TURN_INPUT_VERSION) {
         verify_conversation_confirmation_source(inspection, active, &checkpoint)?
     } else {
         VerifiedConversationConfirmationRoles::default()
     };
-    let start = if matches!(receipt.version(), "0.3.0" | "0.4.0") {
+    let start = if matches!(receipt.version(), "0.3.0" | TURN_INPUT_VERSION) {
         verify_turn_start_source(inspection, active, &checkpoint)?
     } else {
         VerifiedTurnStartRoles::default()
@@ -3599,6 +3656,7 @@ fn verify_turn_source(
         settlement,
         read,
         start,
+        declares_saved_input: pack.manifest.version == TURN_INPUT_VERSION,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -4317,8 +4375,17 @@ fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
 
 fn require_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
-        matches!(pack.manifest.version.as_str(), "0.3.0" | "0.4.0"),
+        matches!(pack.manifest.version.as_str(), "0.3.0" | TURN_INPUT_VERSION),
         "bundled Turn Pack has no verified start port"
+    );
+    require_turn_settlement_declaration(pack)?;
+    Ok(())
+}
+
+fn require_turn_input_declaration(pack: &VerifiedPack) -> Result<()> {
+    ensure!(
+        pack.manifest.version == TURN_INPUT_VERSION,
+        "bundled Turn Pack has no verified input port"
     );
     require_turn_settlement_declaration(pack)?;
     Ok(())
@@ -4460,6 +4527,7 @@ const READ_TURN_WIT_DIGEST: &str =
     "sha256:c1c9ade00909c4c8d63eb64ad00fcd9e9b5ea9bcf96a821c492e8c2d0efbe8a6";
 const START_TURN_WIT_DIGEST: &str =
     "sha256:0fe4841f35ba3986068facc99ca11880837acfe737cc9b79b5bc1ba72a62e3b5";
+const TURN_INPUT_VERSION: &str = "0.4.0";
 const TURN_READ_SHAPE: (&str, &[u8]) = (
     "wit/legacy-read.shape.json",
     include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/legacy-read.shape.json"),
@@ -4495,7 +4563,7 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
         "0.1.0" => (1, Digest::parse(ORIGINAL_TURN_WIT_DIGEST)?),
         "0.2.0" => (2, Digest::parse(READ_TURN_WIT_DIGEST)?),
         "0.3.0" => (3, Digest::parse(START_TURN_WIT_DIGEST)?),
-        "0.4.0" => (4, Digest::hash(TURN_WIT.1)),
+        TURN_INPUT_VERSION => (4, Digest::hash(TURN_WIT.1)),
         _ => anyhow::bail!("bundled Turn settlement Pack version is unsupported"),
     };
     let read = ports >= 2;
@@ -5789,6 +5857,7 @@ mod tests {
         assert!(require_turn_settlement_declaration(&current).unwrap());
         assert!(require_turn_read_declaration(&current).is_ok());
         assert!(require_turn_start_declaration(&current).is_ok());
+        assert!(require_turn_input_declaration(&current).is_ok());
 
         let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
         extra["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -5809,6 +5878,7 @@ mod tests {
             .to_string()
             .contains("unexpected WIT"));
         assert!(require_turn_start_declaration(&verify(draft)).is_err());
+        assert!(require_turn_input_declaration(&verify(draft)).is_err());
         fs::write(
             path.join("wit/pack.wit"),
             current_wit.replace("option<u64>", "option<u32>"),
@@ -5839,6 +5909,7 @@ mod tests {
             .retain(|file| file != TURN_INPUT_SHAPE.0);
         let start = verify(&serde_json::to_vec(&old).unwrap());
         assert!(require_turn_start_declaration(&start).is_ok());
+        assert!(require_turn_input_declaration(&start).is_err());
 
         let (previous, after) = start_wit.split_once("interface legacy-start {").unwrap();
         let (_, world) = after.split_once("world pack {").unwrap();

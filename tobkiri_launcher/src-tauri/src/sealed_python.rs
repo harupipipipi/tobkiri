@@ -70,6 +70,7 @@ pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_
 pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
     "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND";
 pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START";
+pub(crate) const SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_SAVED_INPUT";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -127,6 +128,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) linked_conversation_read: bool,
     pub(crate) conversation_list: bool,
     pub(crate) side_chat_saved_turn_start: bool,
+    pub(crate) saved_input: bool,
 }
 
 impl RoleArguments {
@@ -271,6 +273,7 @@ impl RoleArguments {
                     crate::native_harness_bootstrap::SavedTurnStartCaller::SideChat,
                 )
             }),
+            saved_input: proof.is_some_and(|proof| proof.permits_saved_input()),
         };
         self
     }
@@ -429,6 +432,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
             | SIDE_CHAT_SAVED_TURN_START_ENV
+            | SAVED_INPUT_ENV
             | crate::native_provider_prepare_service::LINKED_CONVERSATION_READ_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
@@ -5024,6 +5028,56 @@ mod tests {
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     #[test]
+    fn saved_input_environment_requires_current_ordinary_turn_start_proof() {
+        use crate::{
+            host_contract::ExecutionProfileIdentity,
+            native_harness_bootstrap::{SavedTurnStartCaller, VerifiedRegistryLaunch},
+        };
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "defaults".into(),
+            profile_revision: "revision:fixture".into(),
+            activation_id: "activation:fixture".into(),
+            plan_digest: "sha256:fixture".into(),
+        };
+        let revision = "catalog:fixture";
+        let old = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity.clone(),
+            revision,
+            SavedTurnStartCaller::SavedTurn,
+        );
+        let ordinary = VerifiedRegistryLaunch::test_saved_input_proof_for(
+            identity.clone(),
+            revision,
+            SavedTurnStartCaller::SavedTurn,
+        );
+        let side_chat = VerifiedRegistryLaunch::test_saved_input_proof_for(
+            identity,
+            revision,
+            SavedTurnStartCaller::SideChat,
+        );
+        for (proof, expected) in [
+            (None, (false, false)),
+            (Some(&old), (false, false)),
+            (Some(&ordinary), (true, false)),
+            (Some(&side_chat), (false, true)),
+        ] {
+            let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
+                .unwrap()
+                .with_native_registry_admission(proof)
+                .split_native_registry_environment();
+            assert_eq!(
+                (
+                    environment.saved_input,
+                    environment.side_chat_saved_turn_start
+                ),
+                expected
+            );
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    #[test]
     fn saved_request_markers_are_allowed_for_defaultspack_only() {
         use crate::native_provider_prepare_service::{
             AI_GATEWAY_POLICY_ENV, AI_GATEWAY_RESULT_ENV, AI_PIPELINE_ENV, AI_ROUTING_ENV,
@@ -5037,6 +5091,7 @@ mod tests {
             CONVERSATION_COMPLETE_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
             SIDE_CHAT_SAVED_TURN_START_ENV,
+            SAVED_INPUT_ENV,
             LINKED_CONVERSATION_READ_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,

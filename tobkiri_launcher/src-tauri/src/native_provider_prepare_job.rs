@@ -16,7 +16,7 @@ use serde_json::value::RawValue;
 use tauri::{AppHandle, Manager};
 use tobkiri_core::ids::{OpName, ProfileId, ShapeRef};
 use tobkiri_core::{
-    AllocationBudget, AllocationError, CoreBuffer, CoreError, CoreRef, CoreValue,
+    AllocationBudget, AllocationError, CoreBuffer, CoreError, CoreRef, CoreValue, Digest,
     LegacyConversationReadCandidate, LegacyConversationRecheck, LegacyRegistryRead,
     NativeArtifactError, NativeArtifactInspection, NativeRegistry,
     PreparedLegacyConversationRecheck, MAX_BYTES,
@@ -24,17 +24,19 @@ use tobkiri_core::{
 use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation};
 pub(crate) use tobkiri_harness_native::SavedOrchestrationStepError;
 use tobkiri_harness_native::{
-    begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
-    compile_original_local_chat, invoke_original_saved_orchestration_port,
+    begin_legacy_saved_turn_from_admitted_port, capture_legacy_saved_input_from_admitted_port,
+    claim_legacy_saved_turn_from_admitted_port, compile_original_local_chat,
+    invoke_original_saved_input_recover_port, invoke_original_saved_orchestration_port,
     invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
     invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
     observe_original_local_chat_policy, post_original_local_chat, project_original_local_chat,
     read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatPolicy,
-    OriginalLocalChatRequest, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
-    OriginalSavedTurnCheck, OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome,
-    OriginalSavedTurnStartStep,
+    OriginalLocalChatRequest, OriginalProviderSnapshotRole, OriginalSavedInputIdentity,
+    OriginalSavedInputOutcome, OriginalSavedInputProjection, OriginalSavedInputRow,
+    OriginalSavedLocalChatRole, OriginalSavedTurnCheck, OriginalSavedTurnStartInput,
+    OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
 };
 use tobkiri_store::{DataRoot, StoreError};
 use tobkiri_wasm::{
@@ -52,14 +54,14 @@ use super::{
         reacquire_gateway_result_pack, reacquire_linked_conversation_context_pack,
         reacquire_model_resolve_pack, reacquire_model_save_pack, reacquire_model_settings_pack,
         reacquire_provider_prepare_pack, reacquire_provider_snapshot_pack,
-        reacquire_request_prepare_pack, reacquire_saved_local_chat_adapter,
-        reacquire_saved_orchestration_pack, reacquire_saved_receipt_pack,
-        reacquire_stream_result_pack, reacquire_tool_intents_pack, reacquire_turn_read_pack,
-        reacquire_turn_settlement_pack, reacquire_turn_start_pack_for, reacquire_usage_cost_pack,
-        saved_local_chat_dispatch_bundle, ApplicationPresentationRole, ConversationAppendCaller,
-        ConversationReadCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
-        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
-        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        reacquire_request_prepare_pack, reacquire_saved_input_pack,
+        reacquire_saved_local_chat_adapter, reacquire_saved_orchestration_pack,
+        reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
+        reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
+        reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
+        ConversationAppendCaller, ConversationReadCaller, SavedTurnStartCaller, SettlementCaller,
+        VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION,
+        FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
         GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
         PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
@@ -93,6 +95,8 @@ pub(crate) const MODEL_RESOLVE_REPLY_LIMIT: usize = 1024 * 1024;
 pub(crate) const TURN_READ_REPLY_LIMIT: usize = 1024 * 1024;
 /// Maximum encoded saved Turn start result including its wire envelope.
 pub(crate) const TURN_START_REPLY_LIMIT: usize = TURN_READ_REPLY_LIMIT + 128;
+/// Maximum authenticated input or reply bytes for the Saved Turn projection.
+pub(crate) const SAVED_INPUT_FRAME_LIMIT: usize = MAX_BYTES;
 /// Maximum original saved-orchestration input and result JSON.
 pub(crate) const SAVED_ORCHESTRATION_FRAME_LIMIT: usize = 4 * 1024 * 1024;
 /// Maximum UTF-8 bytes funded before reading an application presentation input.
@@ -216,6 +220,13 @@ pub(crate) enum LinkedConversationReadMode {
     RecheckParent,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SavedInputMode {
+    Restore,
+    Bind,
+}
+
 pub(crate) enum NativeRegistryRequest {
     Provider {
         request: Vec<u8>,
@@ -278,6 +289,11 @@ pub(crate) enum NativeRegistryRequest {
         input_digest: String,
         source_digest: String,
     },
+    SavedInput {
+        mode: SavedInputMode,
+        input_bytes: usize,
+        receive_input: Box<dyn FnOnce(Instant) -> Result<Vec<u8>> + Send>,
+    },
     TurnSettlement {
         caller: SettlementCaller,
         turn_id: String,
@@ -339,6 +355,7 @@ impl NativeRegistryRequest {
             Self::ModelResolve { role, .. } => proof.permits_model_resolve(*role),
             Self::TurnRead { caller, .. } => proof.permits_turn_read(*caller),
             Self::TurnStart { caller, .. } => proof.permits_turn_start_for(*caller),
+            Self::SavedInput { .. } => proof.permits_saved_input(),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
             Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
             Self::ApplicationPresentation { role, .. } => {
@@ -357,6 +374,10 @@ impl NativeRegistryRequest {
                 | Self::ConversationConfirmation { .. }
                 | Self::ConversationAppend { .. }
                 | Self::TurnStart { .. }
+                | Self::SavedInput {
+                    mode: SavedInputMode::Bind,
+                    ..
+                }
                 | Self::TurnSettlement { .. }
                 | Self::SavedLocalChat { .. }
         )
@@ -368,6 +389,7 @@ impl NativeRegistryRequest {
             Self::ApplicationPresentation { .. }
                 | Self::ConversationComplete { .. }
                 | Self::ModelAccessProjection { .. }
+                | Self::SavedInput { .. }
         )
     }
 
@@ -379,6 +401,13 @@ impl NativeRegistryRequest {
             }
             Self::ModelAccessProjection { input_bytes, .. } => {
                 ModelAccessProjectionPhase::check_input_size(*input_bytes)?;
+                return Ok(*input_bytes);
+            }
+            Self::SavedInput { input_bytes, .. } => {
+                ensure!(
+                    (1..=SAVED_INPUT_FRAME_LIMIT).contains(input_bytes),
+                    "invalid saved input body size"
+                );
                 return Ok(*input_bytes);
             }
             Self::ModelSave { request, provider } => (request, Some(provider)),
@@ -1499,6 +1528,110 @@ async fn run(
                         projected_local_chat: false,
                     });
                 }
+                NativeRegistryRequest::SavedInput {
+                    mode,
+                    input_bytes,
+                    receive_input,
+                } => {
+                    checkpoint()?;
+                    let _funding = input_funding
+                        .take()
+                        .context("saved input funding is missing")?;
+                    let input = receive_input(execution_deadline)?;
+                    ensure!(
+                        input.len() == input_bytes && input.capacity() <= input_bytes,
+                        "saved input differs from its funded length"
+                    );
+                    revalidate()?;
+                    let (source, input_identity, projection) =
+                        decode_saved_input_request(&input, mode, &graph)?;
+                    let pack = reacquire_saved_input_pack(
+                        &inspection,
+                        listener.verified_source(),
+                        checkpoint,
+                    )?;
+                    revalidate()?;
+                    let profile = ProfileId::parse(&identity.profile_id)?;
+                    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-input@1.0")?;
+                    let operation = OpName::parse("recover")?;
+                    let port = inspection
+                        .prepare_declared_read_only_port(
+                            &pack,
+                            &shape,
+                            &operation,
+                            &profile,
+                            execution_deadline,
+                            0,
+                        )
+                        .await?;
+                    let data = DataRoot::open_existing(&config.user_data_dir)
+                        .map_err(|_| LegacySavedTurnSettlementError::Storage)?;
+                    let handle = tokio::runtime::Handle::current();
+                    let outcome = tokio::task::block_in_place(|| {
+                        let recover = |row: OriginalSavedInputRow<'_>| {
+                            handle.block_on(invoke_original_saved_input_recover_port(
+                                port, source, row, &graph,
+                            ))
+                        };
+                        if let Some(projection) = projection {
+                            let permit = Arc::clone(
+                                publish_permit
+                                    .as_ref()
+                                    .ok_or(LegacySavedTurnSettlementError::Revoked)?,
+                            );
+                            let authorize =
+                                original_saved_turn_authority(OriginalSavedTurnAuthority {
+                                    app: app.clone(),
+                                    manager: Arc::clone(&manager),
+                                    listener: Arc::clone(&listener),
+                                    current: Arc::clone(&continue_current),
+                                    permit,
+                                    cancellation: cancellation.clone(),
+                                    deadline: execution_deadline,
+                                });
+                            capture_legacy_saved_input_from_admitted_port(
+                                &data,
+                                &profile,
+                                &input_identity,
+                                &graph,
+                                execution_deadline,
+                                authorize,
+                                || Ok(projection),
+                                recover,
+                            )
+                        } else {
+                            read_legacy_saved_input_from_admitted_port(
+                                &data,
+                                &profile,
+                                &input_identity,
+                                &graph,
+                                execution_deadline,
+                                || {
+                                    revalidate()
+                                        .map_err(|_| LegacySavedTurnSettlementError::Revoked)
+                                },
+                                recover,
+                            )
+                        }
+                    })?;
+                    let reply = match outcome {
+                        OriginalSavedInputOutcome::Accepted(body) => Some(body),
+                        OriginalSavedInputOutcome::Missing if mode == SavedInputMode::Restore => {
+                            None
+                        }
+                        OriginalSavedInputOutcome::Missing => {
+                            return Err(LegacySavedTurnSettlementError::Storage.into())
+                        }
+                        OriginalSavedInputOutcome::LegacyFallback => {
+                            return Err(LegacySavedTurnSettlementError::RequiresLegacyCodec.into())
+                        }
+                    };
+                    return Ok(PreparedReply {
+                        wire: encode_saved_input_reply(reply.as_ref(), &graph)?,
+                        document: None,
+                        projected_local_chat: false,
+                    });
+                }
                 NativeRegistryRequest::TurnStart {
                     caller,
                     action,
@@ -2211,6 +2344,123 @@ fn encode_turn_start_reply(
         output[..prefix.len()].copy_from_slice(prefix);
         output[prefix.len()..row_end].copy_from_slice(body.as_bytes());
         output[row_end] = b'}';
+        Ok(())
+    })
+    .map_err(|_| LegacySavedTurnSettlementError::Capacity)
+}
+
+fn decode_saved_input_request<'a>(
+    body: &'a [u8],
+    mode: SavedInputMode,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<
+    (
+        &'a str,
+        OriginalSavedInputIdentity,
+        Option<OriginalSavedInputProjection>,
+    ),
+    LegacySavedTurnSettlementError,
+> {
+    use LegacySavedTurnSettlementError as SavedInputError;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Request<'a> {
+        #[serde(borrow)]
+        source: &'a RawValue,
+        #[serde(borrow)]
+        projection: &'a RawValue,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Source<'a> {
+        #[serde(borrow)]
+        request: SourceKey<'a>,
+    }
+    #[derive(Deserialize)]
+    struct SourceKey<'a> {
+        turn_id: &'a str,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Projection<'a> {
+        accepted_digest: &'a str,
+        #[serde(borrow)]
+        context: &'a RawValue,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ProjectionFields<'a> {
+        kind: &'a str,
+        #[serde(borrow, rename = "task_context")]
+        _task_context: &'a RawValue,
+        #[serde(borrow, rename = "resolved_chat_references")]
+        _resolved_chat_references: &'a RawValue,
+        #[serde(borrow, rename = "target_settings")]
+        _target_settings: &'a RawValue,
+    }
+
+    let request: Request<'_> =
+        serde_json::from_slice(body).map_err(|_| SavedInputError::InvalidRequest)?;
+    let source = request.source.get();
+    let key: Source<'_> =
+        serde_json::from_str(source).map_err(|_| SavedInputError::InvalidRequest)?;
+    let turn_id = key.request.turn_id;
+    if turn_id.is_empty() || turn_id.len() > 256 {
+        return Err(SavedInputError::InvalidRequest);
+    }
+    let identity = OriginalSavedInputIdentity {
+        turn_id: CoreBuffer::copy_from(turn_id.as_bytes(), budget)
+            .map_err(|_| SavedInputError::Capacity)?,
+        // The authenticated Host sends its canonical original document.
+        // The Wasm recover port checks this digest against independently validated JSON
+        // before a retained input can be returned or a new projection can be committed.
+        source_digest: Digest::hash(source.as_bytes()),
+    };
+    let projection = match mode {
+        SavedInputMode::Restore if request.projection.get() == "null" => None,
+        SavedInputMode::Restore => return Err(SavedInputError::InvalidRequest),
+        SavedInputMode::Bind => {
+            let projected: Projection<'_> = serde_json::from_str(request.projection.get())
+                .map_err(|_| SavedInputError::InvalidRequest)?;
+            let context = projected.context.get();
+            if context.len() > TURN_READ_REPLY_LIMIT {
+                return Err(SavedInputError::Capacity);
+            }
+            let fields: ProjectionFields<'_> =
+                serde_json::from_str(context).map_err(|_| SavedInputError::InvalidRequest)?;
+            if fields.kind != "tobkiri.saved.input-projection.v1" {
+                return Err(SavedInputError::InvalidRequest);
+            }
+            Some(OriginalSavedInputProjection {
+                identity: OriginalSavedInputIdentity {
+                    turn_id: identity.turn_id.share(),
+                    source_digest: identity.source_digest,
+                },
+                accepted_digest: Digest::parse(projected.accepted_digest)
+                    .map_err(|_| SavedInputError::InvalidRequest)?,
+                context: CoreBuffer::copy_from(context.as_bytes(), budget)
+                    .map_err(|_| SavedInputError::Capacity)?,
+            })
+        }
+    };
+    Ok((source, identity, projection))
+}
+
+fn encode_saved_input_reply(
+    body: Option<&CoreBuffer>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreBuffer, LegacySavedTurnSettlementError> {
+    const PREFIX: &[u8] = b"{\"accepted\":";
+    let body = body.map_or(b"null".as_slice(), CoreBuffer::as_bytes);
+    let end = PREFIX.len() + body.len();
+    if end >= SAVED_INPUT_FRAME_LIMIT {
+        return Err(LegacySavedTurnSettlementError::Capacity);
+    }
+    CoreBuffer::write_exact(end + 1, budget, |output| {
+        output[..PREFIX.len()].copy_from_slice(PREFIX);
+        output[PREFIX.len()..end].copy_from_slice(body);
+        output[end] = b'}';
         Ok(())
     })
     .map_err(|_| LegacySavedTurnSettlementError::Capacity)
@@ -2975,6 +3225,81 @@ mod tests {
                 .downcast::<SavedOrchestrationStepError>()
                 .unwrap(),
             SavedOrchestrationStepError::Invalid
+        );
+    }
+
+    #[test]
+    fn saved_input_job_checks_mode_proof_and_funded_body() {
+        use crate::host_contract::ExecutionProfileIdentity;
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        let ordinary = VerifiedRegistryLaunch::test_saved_input_proof_for(
+            identity.clone(),
+            "catalog",
+            SavedTurnStartCaller::SavedTurn,
+        );
+        let side = VerifiedRegistryLaunch::test_saved_input_proof_for(
+            identity,
+            "catalog",
+            SavedTurnStartCaller::SideChat,
+        );
+        for mode in [SavedInputMode::Restore, SavedInputMode::Bind] {
+            let job = NativeRegistryRequest::SavedInput {
+                mode,
+                input_bytes: SAVED_INPUT_FRAME_LIMIT,
+                receive_input: Box::new(|_| panic!("admission cannot read the body")),
+            };
+            assert!(job.has_launch_proof(&ordinary));
+            assert!(!job.has_launch_proof(&side));
+            assert!(job.uses_funded_input());
+            assert_eq!(
+                job.requires_publication_permit(),
+                mode == SavedInputMode::Bind
+            );
+            assert_eq!(job.input_capacity().unwrap(), SAVED_INPUT_FRAME_LIMIT);
+        }
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let source = r#"{"request":{"turn_id":"turn"}}"#;
+        let digest = Digest::hash(source.as_bytes());
+        let context = r#"{"kind":"tobkiri.saved.input-projection.v1","resolved_chat_references":null,"target_settings":{},"task_context":null}"#;
+        let body = format!(
+            r#"{{"projection":{{"accepted_digest":"{digest}","context":{context}}},"source":{source}}}"#
+        );
+        assert!(
+            decode_saved_input_request(body.as_bytes(), SavedInputMode::Restore, &budget).is_err()
+        );
+        let (decoded, observed, projection) =
+            decode_saved_input_request(body.as_bytes(), SavedInputMode::Bind, &budget).unwrap();
+        assert_eq!(decoded, source);
+        assert_eq!(observed.source_digest, digest);
+        assert_eq!(observed.turn_id.as_bytes(), b"turn");
+        let projection = projection.unwrap();
+        assert_eq!(projection.accepted_digest, digest);
+        assert_eq!(projection.context.as_bytes(), context.as_bytes());
+        let read = format!(r#"{{"projection":null,"source":{source}}}"#);
+        assert!(
+            decode_saved_input_request(read.as_bytes(), SavedInputMode::Bind, &budget).is_err()
+        );
+        assert!(
+            decode_saved_input_request(read.as_bytes(), SavedInputMode::Restore, &budget)
+                .unwrap()
+                .2
+                .is_none()
+        );
+        assert!(decode_saved_input_request(
+            format!(r#"{{"source":{source}}}"#).as_bytes(),
+            SavedInputMode::Restore,
+            &budget
+        )
+        .is_err());
+        assert_eq!(
+            encode_saved_input_reply(None, &budget).unwrap().as_bytes(),
+            br#"{"accepted":null}"#
         );
     }
 

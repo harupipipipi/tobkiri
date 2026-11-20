@@ -71,7 +71,7 @@
       "memory_mib": 48,
       "wall_ms": 10000,
       "table_elements": 10000,
-      "output_bytes": 3145728
+      "output_bytes": 4194304
     },
     "loops": {
       "max_iterations": 100,

@@ -366,6 +366,7 @@ where
         command.env_remove(crate::sealed_python::CONVERSATION_COMPLETE_ENV);
         command.env_remove(crate::sealed_python::CONVERSATION_SIDE_CHAT_APPEND_ENV);
         command.env_remove(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV);
+        command.env_remove(crate::sealed_python::SAVED_INPUT_ENV);
         #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
         if matches!(role, PythonRole::Kernel | PythonRole::Defaultspack) {
             if let Some(endpoint) = config.native_provider_prepare_endpoint.as_ref() {
@@ -431,6 +432,9 @@ where
                     }
                     if native_registry.side_chat_saved_turn_start {
                         command.env(crate::sealed_python::SIDE_CHAT_SAVED_TURN_START_ENV, "1");
+                    }
+                    if native_registry.saved_input && !config.is_dev_workspace() {
+                        command.env(crate::sealed_python::SAVED_INPUT_ENV, "1");
                     }
                 }
             }

@@ -57,13 +57,14 @@ pub(crate) use provider_prepare::{
     ConversationCompletePhase, ConversationRegistryRequiresLegacyRead,
     ConversationWriteRequiresLegacyRead, LinkedConversationReadMode, ModelAccessProjectionPhase,
     ModelRegistryRequiresLegacyRead, NativeRegistryRequest, PendingProviderPrepare,
-    ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
+    ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse, SavedInputMode,
     SavedLocalChatRequiresLegacyRequest, SavedOrchestrationStepError, SavedTurnStartAction,
     TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
     APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
     CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT, CONVERSATION_CONFIRMATION_LIMIT,
     CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT, PROVIDER_SNAPSHOT_REPLY_LIMIT,
-    SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT, TURN_START_REPLY_LIMIT,
+    SAVED_INPUT_FRAME_LIMIT, SAVED_ORCHESTRATION_FRAME_LIMIT, TURN_READ_REPLY_LIMIT,
+    TURN_START_REPLY_LIMIT,
 };
 
 enum OwnedRuntime {

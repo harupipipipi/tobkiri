@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from weakref import WeakValueDictionary
 
 if TYPE_CHECKING:
@@ -1943,6 +1943,7 @@ def capture_production_dispatch(
         REVIEWER_HEALTH_ROLES,
         WORKFLOW_PROVIDER_HEALTH_ROLES,
         WORKFLOW_PROVIDER_SNAPSHOT_ENTRIES,
+        SAVED_INPUT_MINIMUM_MEMORY,
         SAVED_RECEIPT_MAX_ID_CHARS,
         SAVED_RECEIPT_MINIMUM_MEMORY,
         SAVED_ORCHESTRATION_MINIMUM_MEMORY,
@@ -1985,6 +1986,8 @@ def capture_production_dispatch(
         WorkflowProviderHealthRole,
         WorkflowProviderSnapshotRole,
         WorkflowSnapshotEntry,
+        NativeSavedInputFailure,
+        NativeSavedInputRequest,
         NativeSavedReceiptFailure,
         NativeSavedReceiptRequest,
         NativeSavedOrchestrationRequest,
@@ -2018,6 +2021,7 @@ def capture_production_dispatch(
         capture_launcher_model_settings_reader,
         capture_launcher_provider_prepare_planner,
         capture_launcher_provider_snapshot_reader,
+        capture_launcher_saved_input_writer,
         capture_launcher_saved_receipt_reader,
         capture_launcher_saved_orchestration_step,
         capture_launcher_saved_local_chat_executor,
@@ -2070,6 +2074,7 @@ def capture_production_dispatch(
         "saved-turn": capture_launcher_conversation_append_writer(),
         "side-chat": capture_launcher_side_chat_conversation_append_writer(),
     }
+    native_saved_input_writer = capture_launcher_saved_input_writer()
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
     native_presentation = capture_launcher_application_presentation()
@@ -2978,12 +2983,8 @@ def capture_production_dispatch(
 
     turn_start_routes: dict[SavedTurnStartCaller, tuple[_CapturedPlanEdge, ...]] = {}
 
-    def capture_turn_start_route(
-        caller: SavedTurnStartCaller, turn: _CapturedPlanEdge, *parents: _CapturedPlanEdge,
-    ) -> None:
-        if native_turn_start_writers[caller] is None:
-            return
-        lifecycle = select_original_chat_edge(
+    def select_turn_lifecycle_edge(turn: _CapturedPlanEdge) -> _CapturedPlanEdge | None:
+        return select_original_chat_edge(
             {turn.target.principal_id},
             turn_pack,
             "tobkiri.action.turn.lifecycle.v1",
@@ -2991,13 +2992,27 @@ def capture_production_dispatch(
             f"{turn_pack}.turn-runtime.lifecycle",
             EffectClass.PRIVILEGED,
         )
-        if lifecycle is not None:
-            turn_start_routes[caller] = (lifecycle, turn, *parents)
 
-    if ordinary_turn_edge is not None:
-        capture_turn_start_route("saved-turn", ordinary_turn_edge)
-    if side_chat_edge is not None and side_chat_turn_edge is not None:
-        capture_turn_start_route("side-chat", side_chat_turn_edge, side_chat_edge)
+    saved_input_route: tuple[_CapturedPlanEdge, _CapturedPlanEdge] | None = None
+    if ordinary_turn_edge is not None and (
+        native_turn_start_writers["saved-turn"] is not None
+        or native_saved_input_writer is not None
+    ):
+        lifecycle = select_turn_lifecycle_edge(ordinary_turn_edge)
+        if lifecycle is not None:
+            ordinary_lifecycle_route = (lifecycle, ordinary_turn_edge)
+            if native_turn_start_writers["saved-turn"] is not None:
+                turn_start_routes["saved-turn"] = ordinary_lifecycle_route
+            if native_saved_input_writer is not None:
+                saved_input_route = ordinary_lifecycle_route
+    if (
+        side_chat_edge is not None
+        and side_chat_turn_edge is not None
+        and native_turn_start_writers["side-chat"] is not None
+    ):
+        lifecycle = select_turn_lifecycle_edge(side_chat_turn_edge)
+        if lifecycle is not None:
+            turn_start_routes["side-chat"] = (lifecycle, side_chat_turn_edge, side_chat_edge)
 
     native_saved_execution: NativeWasmBinding | None = None
     native_saved_original_provider: str | None = None
@@ -6328,6 +6343,267 @@ def capture_production_dispatch(
         with saved_owner_publication_lock:
             saved_owner_publications[id(envelope)] = envelope
 
+    def assert_saved_input_projection(
+        source: Mapping[str, Any], accepted: Mapping[str, Any] | None,
+    ) -> None:
+        original = dict(source["request"])
+        if "resolved_chat_references" in original:
+            raise AuthorityDenied("native saved input source cannot claim resolved references")
+        if accepted is None:
+            return
+        # Only the owner-projected context and references may differ.
+        projected = dict(accepted["request"])
+        original.pop("task_context", None)
+        projected.pop("task_context", None)
+        projected.pop("resolved_chat_references", None)
+        if canonical_digest(original) != canonical_digest(projected):
+            raise AuthorityDenied("native saved Turn user input changed")
+
+    def saved_owner_lifecycle_guard(
+        invocation: _HostInvocation,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        edge: _CapturedPlanEdge,
+        ancestors: tuple[RequestEnvelope, ...],
+        runtime: tuple[str, Callable[[], None]],
+        *,
+        minimum_memory: int = 0,
+    ) -> Callable[[], None]:
+        envelope = invocation.envelope
+        chain = (envelope, *ancestors)
+        reservation_id = envelope.resource_reservation_id
+        if (
+            operation_id != envelope.operation_id
+            or payload is not envelope.payload
+            or not matches_captured_edge(envelope, edge)
+            or reservation_id is None
+            or any(item.resource_reservation_id == reservation_id for item in ancestors)
+            or len({item.lease.token for item in chain}) != len(chain)
+            or any(child.deadline_monotonic > ancestor.deadline_monotonic
+                   for child, ancestor in zip(chain[:-1], ancestors, strict=True))
+        ):
+            raise AuthorityDenied("native saved Turn lifecycle lineage changed")
+
+        def guard() -> None:
+            invocation.assert_current()
+            if native_provider_runtime is not runtime:
+                raise AuthorityDenied("native saved Turn lifecycle capture changed")
+            require_retained_ancestors(envelope, ancestors)
+            runtime[1]()
+            resources = production_admission.native_resources(reservation_id)
+            if resources.memory_bytes < minimum_memory:
+                raise AuthorityDenied("native saved input capacity is unavailable")
+
+        return guard
+
+    def saved_input_lineage(
+        context: RequestContext,
+        payload: Mapping[str, Any],
+        parent: CapturedInvocationScopeV4 | None,
+    ) -> tuple[RequestEnvelope, ...] | None:
+        if saved_input_route is None or parent is None:
+            return None
+        lifecycle, turn = saved_input_route
+        operation = payload.get("operation")
+        fields = {"operation", "profile_id"}
+        if operation == "bind_saved_input":
+            fields.add("request")
+        elif operation != "recover_saved_input":
+            return None
+        if (
+            set(payload) - {"_session_id"} != fields
+            or payload["profile_id"] != context.profile_id
+            or parent.envelope.context.profile_id != context.profile_id
+            or context.caller_principal.value != lifecycle.caller.principal_id
+        ):
+            return None
+        return match_captured_ancestors(parent, (turn,))
+
+    def is_native_saved_input_route(
+        context: RequestContext, payload: Mapping[str, Any],
+    ) -> bool:
+        return native_provider_runtime is not None and saved_input_lineage(
+            context, payload, parent_invocation_scopes.lookup(context.caller_session_id),
+        ) is not None
+
+    def wrap_native_ordinary_saved_turn(
+        contribution: HostProviderContributionV4,
+        capture: HostProviderCaptureContextV4,
+        lifecycle: _CapturedPlanEdge,
+        turn: _CapturedPlanEdge,
+    ) -> HostProviderContributionV4:
+        """Supply the native input port for Profiles pinned to the original Turn Pack."""
+        from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+        from ecosystem.rumi_turn_runtime_pack.runtime.input_context import (
+            execute_with_input_context,
+        )
+        from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+            SAVED_CONTRACTS,
+            execute_saved_turn,
+            validate_saved_turn_start,
+        )
+
+        if capture.user_data_root is None:
+            raise AuthorityDenied("native saved input owner is unavailable")
+        store = DurableTurnRuntime(capture.profile_id, user_data_root=capture.user_data_root)
+        borrow_context = capture.borrow_saved_context
+        borrow_settlement = capture.borrow_saved_turn_settlement
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native saved input context is unavailable")
+            envelope = invocation.envelope
+            if invocation.parent_invocation is not None or not matches_captured_edge(
+                envelope, turn,
+            ):
+                return contribution.invoke(operation_id, payload, invocation)
+            runtime = native_provider_runtime
+            if (
+                runtime is None or operation_id != envelope.operation_id
+                or payload is not envelope.payload
+            ):
+                raise AuthorityDenied("native saved input capture is unavailable")
+            client = invocation.contract_client(
+                allowed_contract_ids=SAVED_CONTRACTS,
+                consumer_pack_id=turn_pack,
+                include_credentials=False,
+            )
+            values = {key: value for key, value in payload.items() if key != "_session_id"}
+
+            def exchange(accepted: Mapping[str, Any] | None) -> Mapping[str, Any]:
+                invocation.assert_current()
+                if native_provider_runtime is not runtime:
+                    raise AuthorityDenied("native saved input capture changed")
+                arguments: dict[str, Any] = {"profile_id": envelope.context.profile_id}
+                if accepted is None:
+                    arguments["operation"] = "recover_saved_input"
+                else:
+                    arguments["operation"] = "bind_saved_input"
+                    arguments["request"] = accepted["request"]
+                return client.invoke(*lifecycle.binding_key[1:], arguments)
+
+            def recover_input(source: Mapping[str, Any]) -> Mapping[str, Any] | None:
+                result = exchange(None)
+                if result == {"legacy": True}:
+                    return store.saved_input(source)
+                return result["accepted"]
+
+            def bind_input(
+                source: Mapping[str, Any], accepted: Mapping[str, Any],
+            ) -> Mapping[str, Any]:
+                result = exchange(accepted)
+                if result == {"legacy": True}:
+                    return store.bind_saved_input(source, accepted)
+                return result["accepted"]
+
+            with (
+                borrow_context(invocation) if borrow_context is not None else nullcontext(None)
+            ) as resolver:
+                validate_saved_turn_start(
+                    store, values, client=client, guard=invocation.assert_current,
+                    context_resolver=resolver, context_owner=invocation,
+                )
+                return execute_with_input_context(
+                    values, client=client, guard=invocation.assert_current,
+                    recover_input=recover_input, bind_input=bind_input,
+                    execute=lambda initial: execute_saved_turn(
+                        store, initial, client=client, guard=invocation.assert_current,
+                        track_execution=invocation.cancellation.track,
+                        context_resolver=resolver, context_owner=invocation,
+                        borrow_settlement=lambda: (
+                            borrow_settlement(invocation) if borrow_settlement else None
+                        ),
+                    ),
+                )
+
+        return replace(contribution, invoke=invoke)
+
+    def wrap_native_saved_input(
+        contribution: HostProviderContributionV4,
+        edge: _CapturedPlanEdge,
+        writer: Callable[[NativeSavedInputRequest], Mapping[str, Any]],
+    ) -> HostProviderContributionV4:
+        """Capture and restore input through the original nested Lifecycle edge."""
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if payload.get("operation") not in ("recover_saved_input", "bind_saved_input"):
+                return contribution.invoke(operation_id, payload, invocation)
+            if type(invocation) is not _HostInvocation:
+                raise AuthorityDenied("native saved input context is unavailable")
+            envelope = invocation.envelope
+            parent = invocation.parent_invocation
+            runtime = native_provider_runtime
+            ancestors = saved_input_lineage(envelope.context, payload, parent)
+            if ancestors is None or parent is None or runtime is None:
+                raise AuthorityDenied("native saved input lineage is unavailable")
+            guard = saved_owner_lifecycle_guard(
+                invocation, operation_id, payload, edge, ancestors, runtime,
+                minimum_memory=SAVED_INPUT_MINIMUM_MEMORY,
+            )
+            if saved_owner_publication_possible(envelope):
+                raise HostPublicationUnconfirmed("saved input capture is unconfirmed")
+            guard()
+            source = validate_saved_conversation_input(parent.public_payload())
+            accepted = (
+                validate_saved_conversation_input({"request": payload["request"]})
+                if payload["operation"] == "bind_saved_input" else None
+            )
+            assert_saved_input_projection(source, accepted)
+
+            def mark_publication() -> None:
+                guard()
+                record_saved_owner_publication(envelope)
+
+            try:
+                result = writer(NativeSavedInputRequest(
+                    context=envelope.context,
+                    runtime_instance=runtime[0],
+                    deadline_monotonic=envelope.deadline_monotonic,
+                    assert_current=guard,
+                    source=source,
+                    accepted=accepted,
+                    mark_publication_possible=(
+                        mark_publication if accepted is not None else None
+                    ),
+                ))
+                guard()
+                if set(result) != {"accepted"}:
+                    raise ValueError("native saved input result is invalid")
+                restored = result["accepted"]
+                if restored is None:
+                    if accepted is not None:
+                        raise ValueError("native saved input capture returned no input")
+                else:
+                    restored = validate_saved_conversation_input(restored)
+                    assert_saved_input_projection(source, restored)
+                return {"accepted": restored}
+            except Exception as error:
+                if saved_owner_publication_possible(envelope):
+                    raise HostPublicationUnconfirmed("saved input capture is unconfirmed") from None
+                guard()
+                if isinstance(error, NativeProviderRegistryRequiresLegacyRead):
+                    # The authenticated response proves there was no write permit.
+                    return {"legacy": True}
+                if isinstance(error, NativeSavedInputFailure):
+                    from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+
+                    if error.code in {"conflict", "not-found"}:
+                        raise TurnConflict("saved input no longer matches its owner") from None
+                    if error.code == "invalid":
+                        raise ValueError("native saved input is invalid") from None
+                    if error.code == "denied":
+                        raise AuthorityDenied("native saved input is denied") from None
+                raise
+
+        return replace(contribution, invoke=invoke)
+
     def saved_turn_start_lineage(
         context: RequestContext,
         payload: Mapping[str, Any],
@@ -6407,28 +6683,12 @@ def capture_production_dispatch(
                 return contribution.invoke(operation_id, payload, invocation)
             caller, action, edge, ancestors = lineage
             writer = native_turn_start_writers[caller]
-            chain = (envelope, *ancestors)
-            if (
-                writer is None or operation_id != envelope.operation_id
-                or payload is not envelope.payload
-                or not matches_captured_edge(envelope, edge)
-                or envelope.resource_reservation_id is None
-                or any(item.resource_reservation_id == envelope.resource_reservation_id
-                       for item in ancestors)
-                or len({item.lease.token for item in chain}) != len(chain)
-                or any(child.deadline_monotonic > ancestor.deadline_monotonic
-                       for child, ancestor in zip(chain[:-1], ancestors, strict=True))
-            ):
-                raise AuthorityDenied("native saved Turn start lineage changed")
+            if writer is None:
+                raise AuthorityDenied("native saved Turn start writer is unavailable")
+            guard = saved_owner_lifecycle_guard(
+                invocation, operation_id, payload, edge, ancestors, runtime,
+            )
             reservation_id = envelope.resource_reservation_id
-
-            def guard() -> None:
-                invocation.assert_current()
-                if native_provider_runtime is not runtime:
-                    raise AuthorityDenied("native saved Turn start capture changed")
-                require_retained_ancestors(envelope, ancestors)
-                runtime[1]()
-                production_admission.native_resources(reservation_id)
 
             def legacy() -> Mapping[str, Any]:
                 guard()
@@ -6450,21 +6710,7 @@ def capture_production_dispatch(
             source = validate_saved_conversation_input(parent.public_payload())
             accepted = validate_saved_conversation_input({"request": payload["request"]})
             request = accepted["request"]
-            # The owner may resolve context and references. Every other field
-            # remains the authenticated parent's input.
-            projection_fields = {"task_context", "resolved_chat_references"}
-            source_user = {
-                key: value for key, value in source["request"].items()
-                if key not in projection_fields
-            }
-            accepted_user = {
-                key: value for key, value in request.items() if key not in projection_fields
-            }
-            if (
-                "resolved_chat_references" in source["request"]
-                or canonical_digest(source_user) != canonical_digest(accepted_user)
-            ):
-                raise AuthorityDenied("native saved Turn user input changed")
+            assert_saved_input_projection(source, accepted)
             try:
                 result = writer(NativeSavedTurnStartRequest(
                     context=envelope.context,
@@ -8336,6 +8582,7 @@ def capture_production_dispatch(
     native_saved_turn_read_bindings: dict[
         tuple[str, str, str], ResolvedOperationBinding
     ] = {}
+    native_saved_input_key: tuple[str, str, str] | None = None
     native_saved_turn_start_key: tuple[str, str, str] | None = None
     turn_start_edge = next((route[0] for route in turn_start_routes.values()), None)
     native_saved_append_binding: ResolvedOperationBinding | None = None
@@ -8486,6 +8733,25 @@ def capture_production_dispatch(
                 if item.key == native_saved_turn_start_key else item
                 for item in contributions
             )
+        if saved_input_route is not None and native_saved_input_writer is not None:
+            input_edge, input_turn = saved_input_route
+            if input_turn.resolved_binding in captured_bindings:
+                input_turn_key = (*input_turn.binding_key[1:], input_turn.target.principal_id)
+                contributions = tuple(
+                    wrap_native_ordinary_saved_turn(
+                        item, provider_capture, input_edge, input_turn,
+                    ) if item.key == input_turn_key else item
+                    for item in contributions
+                )
+            if input_edge.resolved_binding in captured_bindings:
+                native_saved_input_key = (
+                    *input_edge.binding_key[1:], input_edge.target.principal_id,
+                )
+                contributions = tuple(
+                    wrap_native_saved_input(item, input_edge, native_saved_input_writer)
+                    if item.key == native_saved_input_key else item
+                    for item in contributions
+                )
         if native_model_resolve_reader is not None:
             resolve_bindings = {
                 (*edge.binding_key[1:], edge.target.principal_id): edge.resolved_binding
@@ -8677,7 +8943,8 @@ def capture_production_dispatch(
                 ),
                 native_turn_start_publication_possible=(
                     saved_owner_publication_possible
-                    if any(item.key == native_saved_turn_start_key for item in contributions)
+                    if any(item.key in {native_saved_turn_start_key, native_saved_input_key}
+                           for item in contributions)
                     else None
                 ),
                 native_conversation_confirmation_publication_possible=(
@@ -8700,6 +8967,7 @@ def capture_production_dispatch(
                         native_model_save_key,
                         native_saved_append_key,
                         native_saved_turn_start_key,
+                        native_saved_input_key,
                     } or item.key in native_conversation_get_bindings
                     or item.key in native_provider_snapshot_bindings
                     or item.key in native_saved_receipt_bindings
@@ -8867,6 +9135,12 @@ def capture_production_dispatch(
         (binding, SAVED_TURN_READ_MINIMUM_MEMORY, is_native_saved_turn_read_route)
         for binding in native_saved_turn_read_bindings.values()
     )
+    if native_saved_input_key is not None and saved_input_route is not None:
+        native_admission_rules.append((
+            saved_input_route[0].resolved_binding,
+            SAVED_INPUT_MINIMUM_MEMORY,
+            is_native_saved_input_route,
+        ))
     if native_saved_turn_start_key is not None and turn_start_edge is not None:
         native_admission_rules.append((
             turn_start_edge.resolved_binding,
@@ -9758,6 +10032,7 @@ def capture_production_dispatch(
                 or native_turn_settlement_bindings or native_conversation_confirmation_bindings
                 or native_saved_turn_read_bindings
                 or native_saved_turn_start_key is not None
+                or native_saved_input_key is not None
                 or native_saved_append_key is not None or native_saved_execution is not None
                 or saved_local_chat_routes or native_provider_snapshot_bindings
                 or native_presentation_bindings
