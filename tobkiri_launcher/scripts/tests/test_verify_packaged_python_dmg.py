@@ -970,7 +970,12 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
     assert installed_paths[0].exists() is not shutdown_verified
 
 
-@pytest.mark.parametrize("mode", ["fresh", "setup", "chat", "failed", "changed"])
+@pytest.mark.parametrize(
+    "mode", [
+        "fresh", "setup", "chat", "failed", "changed", "metadata-only",
+        "same-size-rewrite",
+    ]
+)
 def test_installed_dmg_receipt_records_only_completed_checks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str,
 ) -> None:
@@ -989,6 +994,26 @@ def test_installed_dmg_receipt_records_only_completed_checks(
 
         def attach(self):
             events.append("attach")
+            if mode == "metadata-only":
+                before = dmg.stat()
+                original_mode = stat.S_IMODE(before.st_mode)
+                dmg.chmod(original_mode ^ stat.S_IXUSR)
+                dmg.chmod(original_mode)
+                assert dmg.stat().st_ctime_ns != before.st_ctime_ns
+            if mode == "same-size-rewrite":
+                before = dmg.stat()
+                original = dmg.read_bytes()
+                dmg.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+                os.utime(dmg, ns=(before.st_atime_ns, before.st_mtime_ns))
+                after = dmg.stat()
+                assert (
+                    after.st_dev, after.st_ino, after.st_mode,
+                    after.st_size, after.st_mtime_ns,
+                ) == (
+                    before.st_dev, before.st_ino, before.st_mode,
+                    before.st_size, before.st_mtime_ns,
+                )
+                assert after.st_ctime_ns != before.st_ctime_ns
 
         def application_bundle(self):
             return app
@@ -1034,7 +1059,7 @@ def test_installed_dmg_receipt_records_only_completed_checks(
         wait_for_user_setup_seconds=60.0 if mode in {"setup", "chat"} else None,
         wait_for_user_chat=["60", "private-provider", "private-model"] if mode == "chat" else None,
     )
-    if mode in {"failed", "changed"}:
+    if mode in {"failed", "changed", "same-size-rewrite"}:
         with pytest.raises(MODULE.DmgVerificationError, match="verification failed|DMG changed"):
             MODULE.verify_dmg(args)
         assert not receipt.exists()
@@ -1059,7 +1084,12 @@ def test_installed_dmg_receipt_records_only_completed_checks(
             "checks": checks,
         }
         assert stat.S_IMODE(receipt.stat().st_mode) == 0o600
-    assert events == ["attach", "no-packvm", "boot", "cleanup", "close"]
+    expected_events = (
+        ["attach", "cleanup", "close"]
+        if mode == "same-size-rewrite"
+        else ["attach", "no-packvm", "boot", "cleanup", "close"]
+    )
+    assert events == expected_events
 
 
 def tempfile_parent_value() -> str:

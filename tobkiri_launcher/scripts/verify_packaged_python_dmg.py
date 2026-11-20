@@ -746,6 +746,14 @@ def _dmg_metadata(metadata: os.stat_result) -> tuple[Identity, int, int, int, in
     )
 
 
+def _dmg_content_metadata(metadata: os.stat_result) -> tuple[Identity, int, int, int]:
+    """Return stable metadata while allowing hdiutil's checksum xattr to update ctime."""
+    return (
+        Identity.from_stat(metadata), metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns,
+    )
+
+
 def _fingerprint_dmg(dmg: Path) -> tuple[str, os.stat_result]:
     descriptor = os.open(dmg, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     try:
@@ -762,6 +770,19 @@ def _fingerprint_dmg(dmg: Path) -> tuple[str, os.stat_result]:
         return digest.hexdigest(), metadata
     finally:
         os.close(descriptor)
+
+
+def _verify_dmg_unchanged(
+    dmg: Path, expected_sha256: str, expected_metadata: os.stat_result, stage: str,
+) -> None:
+    """Bind the image bytes and stable file identity across a verification stage."""
+    actual_sha256, actual_metadata = _fingerprint_dmg(dmg)
+    if (
+        actual_sha256 != expected_sha256
+        or _dmg_content_metadata(actual_metadata)
+        != _dmg_content_metadata(expected_metadata)
+    ):
+        raise DmgVerificationError(f"DMG changed during {stage}")
 
 
 def _write_installed_boot_receipt(
@@ -815,8 +836,8 @@ def verify_dmg(args: argparse.Namespace) -> None:
     primary_error: BaseException | None = None
     try:
         mount.attach()
-        if diagnostics is not None and _dmg_metadata(dmg.lstat()) != _dmg_metadata(dmg_metadata):
-            raise DmgVerificationError("DMG changed during attach")
+        if diagnostics is not None:
+            _verify_dmg_unchanged(dmg, dmg_sha256, dmg_metadata, "attach")
         app_bundle = mount.application_bundle()
         if args.expect_no_packvm:
             _verify_no_packvm_assets(app_bundle)
@@ -889,8 +910,9 @@ def verify_dmg(args: argparse.Namespace) -> None:
         finally:
             mount.close()
     if diagnostics is not None:
-        if _dmg_metadata(dmg.lstat()) != _dmg_metadata(dmg_metadata):
-            raise DmgVerificationError("DMG changed during installed boot verification")
+        _verify_dmg_unchanged(
+            dmg, dmg_sha256, dmg_metadata, "installed boot verification"
+        )
         _write_installed_boot_receipt(diagnostics, args, dmg_sha256, dmg_metadata.st_size)
     print(f"Verified mounted DMG packaged Python: {dmg}")
     if args.expected_native_setup_component_sha256 is not None:
