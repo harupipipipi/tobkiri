@@ -6024,6 +6024,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   経路選択59件、IPC 798件、署名済み構成のHTTPと自動・手動の回帰5件が通過した。回帰では配布GUIと
   同じURLと空の本文から手動処理を起動した。Launcher IPCと実行権取得後の処理は差し替えた。
   Brokerがコミットした後の応答喪失を再現し、同じリクエストIDでの再送が実行権を重複取得しないことを確認した。
+  `0bb05d635` の[macOS CI](https://github.com/harupipipipi/tobkiri/actions/runs/44665630511/job/136054079190)で、
+  自動・手動の証明をまとめた型に、変更前の `Option::is_none` が残っていると判明した。両方の証明の
+  有無を判定する型の `is_empty` に直した。
+- `21d502efe` は、期限切れの自動Calendar実行を `calendar-status` から同じWasm入力・開始ポートへ
+  接続した。署名済みの元のJob Brokerが保存済み発生回と現在のAdapterを照合した後、実際に発行した
+  1回の `status` 呼出しをHostで捕捉する。同じ呼出しのリース、容量、予定IDとキー、キャンセル信号を
+  検査する。元のTurnの保存入力が既に確定済みなら復元し、元ソースだけが残る場合は入力を確定して
+  から実行権を取得する。元ソースやProviderの記録が欠ける場合は元の照合待ちを返す。
+  実行中の予定を手動 `trigger` で更新する操作は、現行Schedule Storeの規則どおり競合を返す。
+  本番構成の署名済み回帰4件、IPC 805件、Rustの経路選択59件が通過した。回帰ではLauncher IPCと
+  実行権取得後の処理を差し替え、入力確定の前後で応答が途切れた発生回を同じTurnとして再開する
+  ことを確認した。
+  Job BrokerをRustへ移した後は、現在のBrokerアーカイブのdigestに結びつくHost側の捕捉処理を
+  廃止し、元の発生回とAdapterの確認をRustのBrokerで行う。
 - `ada704c89` は公開時の期限と検査を一つの引数にまとめて、既存入力確定の `too_many_arguments` を
   修正した。元の[Clippyゲート](https://github.com/harupipipipi/tobkiri/actions/runs/44660705548)は
   `8b21d6696` でこの指摘により停止した。`817341b81` の
