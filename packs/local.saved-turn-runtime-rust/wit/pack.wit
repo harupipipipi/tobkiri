@@ -77,6 +77,37 @@ interface legacy-start {
   ) -> result<settlement-outcome, error>;
 }
 
+interface legacy-input {
+  use tobkiri:core/types@1.2.0.{error};
+  use legacy-settlement.{settlement-error};
+
+  record source-identity {
+    turn-id: string,
+    source-digest: string,
+  }
+
+  record input-projection {
+    identity: source-identity,
+    accepted-digest: string,
+    context: string,
+  }
+
+  /// Identify the admitted original input before reading its physical index.
+  identify: func(source: string) -> result<result<source-identity, settlement-error>, error>;
+
+  /// Bind the owner-projected input to the original without publishing a row.
+  prepare: func(source: string, accepted: string)
+    -> result<result<input-projection, settlement-error>, error>;
+
+  /// Restore the exact winner from the indexed projection held by the owner.
+  recover: func(
+    source: string,
+    source-digest: string,
+    accepted-digest: string,
+    context: string,
+  ) -> result<result<string, settlement-error>, error>;
+}
+
 world pack {
   import tobkiri:core/types@1.2.0;
   import tobkiri:core/flow@1.2.0;
@@ -85,4 +116,5 @@ world pack {
   export legacy-settlement;
   export legacy-read;
   export legacy-start;
+  export legacy-input;
 }

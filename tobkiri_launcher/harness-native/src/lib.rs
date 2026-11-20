@@ -37,12 +37,16 @@ mod original_saved_turn_settlement;
 #[cfg(unix)]
 pub use original_saved_turn_settlement::{
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
-    OriginalSavedTurnCheck, OriginalSavedTurnDecision, OriginalSavedTurnRow,
+    OriginalSavedInputIdentity, OriginalSavedInputOutcome, OriginalSavedInputProjection,
+    OriginalSavedInputRow, OriginalSavedTurnCheck, OriginalSavedTurnDecision, OriginalSavedTurnRow,
     OriginalSavedTurnStartInput, OriginalSavedTurnStartOutcome, OriginalSavedTurnStartStep,
-    begin_legacy_saved_turn_from_admitted_port, claim_legacy_saved_turn_from_admitted_port,
+    begin_legacy_saved_turn_from_admitted_port, capture_legacy_saved_input_from_admitted_port,
+    claim_legacy_saved_turn_from_admitted_port, invoke_original_saved_input_identify_port,
+    invoke_original_saved_input_prepare_port, invoke_original_saved_input_recover_port,
     invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
-    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port, read_legacy_saved_turn,
-    settle_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port,
+    invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
+    read_legacy_saved_input_from_admitted_port, read_legacy_saved_turn, settle_legacy_saved_turn,
+    settle_legacy_saved_turn_from_admitted_port,
 };
 mod preparation;
 #[cfg(unix)]

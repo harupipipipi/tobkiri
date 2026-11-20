@@ -991,17 +991,7 @@ async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow:
     let pack = tobkiri_core::pack::verify_tpk(&fs::read(source)?, &BTreeMap::new())?;
     let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-start@1.0")?;
     let original = OriginalStore::new();
-    fs::create_dir_all(original.database.parent().unwrap())?;
-    let connection = Connection::open(&original.database)?;
-    connection.execute_batch(ORIGINAL_TURNS_SCHEMA)?;
-    connection.execute_batch(
-        "CREATE TABLE saved_inputs (id TEXT PRIMARY KEY, source_digest TEXT NOT NULL,
-             accepted_digest TEXT NOT NULL, context TEXT NOT NULL);
-         CREATE TABLE message_deliveries (id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
-             body TEXT NOT NULL);
-         CREATE TABLE message_interrupts (id TEXT PRIMARY KEY, body TEXT NOT NULL);
-         CREATE TABLE calendar_preparations (id TEXT PRIMARY KEY, body TEXT NOT NULL);",
-    )?;
+    let connection = initialize_saved_input_store(&original)?;
     let source = Digest::hash(b"the original request before owner projection");
     connection.execute(
         "INSERT INTO saved_inputs VALUES (?1, ?2, ?3, '{}')",
@@ -1119,6 +1109,200 @@ async fn actual_wasm_starts_and_claims_in_the_original_sqlite_owner() -> anyhow:
         assert_eq!(account.snapshot()?.charged_bytes, 0);
     }
     assert_eq!(offered.load(Ordering::Acquire), 3);
+    Ok(())
+}
+
+fn initialize_saved_input_store(original: &OriginalStore) -> anyhow::Result<Connection> {
+    fs::create_dir_all(original.database.parent().unwrap())?;
+    let connection = Connection::open(&original.database)?;
+    connection.execute_batch(super::start_tests::LEGACY_SCHEMA)?;
+    Ok(connection)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the source-built saved-turn component with the input port"]
+async fn actual_wasm_captures_and_recovers_the_original_saved_input() -> anyhow::Result<()> {
+    use std::collections::BTreeMap;
+    use tobkiri_canon::ids::{OpName, ShapeRef};
+    use tobkiri_core::pack::{generate_manifest, verify_directory, verify_tpk};
+    use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
+    use tobkiri_wasm::WasmEngine;
+
+    struct Proof;
+    impl NativeSetupLease for Proof {
+        fn validate(&self) -> std::result::Result<(), GateError> {
+            Ok(())
+        }
+        fn allocation_domain(&self) -> Digest {
+            Digest::hash(b"original saved input Wasm proof")
+        }
+    }
+
+    let staging = tempfile::tempdir()?;
+    let pack = if let Some(path) = std::env::var_os("TOBKIRI_TURN_WASM_PACK") {
+        verify_tpk(&fs::read(path)?, &BTreeMap::new())?
+    } else {
+        let wasm = std::env::var_os("TOBKIRI_TURN_WASM_COMPONENT")
+            .expect("provide the source-built local.saved-turn-runtime component");
+        let path = staging.path().canonicalize()?;
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = repository.join("packs/local.saved-turn-runtime-rust");
+        fs::create_dir_all(path.join("wit/deps"))?;
+        fs::copy(wasm, path.join("component.wasm"))?;
+        fs::copy(
+            repository.join("crates/tobkiri-wit/wit/core-v1-2/core.wit"),
+            path.join("wit/deps/core.wit"),
+        )?;
+        for name in [
+            "pack.wit",
+            "legacy-input.shape.json",
+            "legacy-start.shape.json",
+            "legacy-read.shape.json",
+            "legacy-settlement.shape.json",
+        ] {
+            fs::copy(source.join("wit").join(name), path.join("wit").join(name))?;
+        }
+        let manifest = generate_manifest(&path, &fs::read(source.join("pack.draft.json"))?)?;
+        fs::write(path.join("pack.json"), manifest)?;
+        verify_directory(&path, &BTreeMap::new())?
+    };
+    let shape = ShapeRef::parse("local.saved-turn-runtime.legacy-input@1.0")?;
+    let control = CoreControl::default();
+    let ledger = CapacityLedger::new();
+    let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
+    let engine = WasmEngine::new_with_control(&control)?;
+    let original = OriginalStore::new();
+    drop(initialize_saved_input_store(&original)?);
+    let source = json!({"request": {
+        "conversation_id": CONVERSATION, "conversation_revision": 7,
+        "turn_id": TURN, "content": "日本語で答えて"
+    }})
+    .to_string();
+    let source_digest = tobkiri_canon::digest(
+        &tobkiri_canon::parse(source.as_bytes(), tobkiri_canon::Variant::StrictV1)?,
+        tobkiri_canon::Variant::StrictV1,
+    )?;
+    let funded: Arc<dyn AllocationBudget> = Arc::new(BoundedBudget::default());
+    let invocation = account.begin()?;
+    let deadline = invocation.deadline()?;
+    let mut wasm = engine.native_setup_store(invocation, ())?;
+    let operation = OpName::parse("identify")?;
+    let identity = invoke_original_saved_input_identify_port(
+        wasm.prepare_declared_read_only_port(
+            &pack,
+            &shape,
+            &operation,
+            &original.profile,
+            deadline,
+            0,
+        )
+        .await?,
+        &source,
+        &funded,
+    )
+    .await?;
+    assert_eq!(identity.turn_id.as_bytes(), TURN.as_bytes());
+    assert_eq!(identity.source_digest, source_digest);
+    drop(wasm);
+
+    let invocation = account.begin()?;
+    let deadline = invocation.deadline()?;
+    let mut wasm = engine.native_setup_store(invocation, ())?;
+    let operation = OpName::parse("prepare")?;
+    let projection = invoke_original_saved_input_prepare_port(
+        wasm.prepare_declared_read_only_port(
+            &pack,
+            &shape,
+            &operation,
+            &original.profile,
+            deadline,
+            0,
+        )
+        .await?,
+        &source,
+        &source,
+        &funded,
+    )
+    .await?;
+    let expected = json!({"kind": "tobkiri.saved.input-projection.v1", "task_context": null,
+        "resolved_chat_references": null, "target_settings": {}});
+    assert_eq!(
+        serde_json::from_slice::<Value>(projection.context.as_bytes())?,
+        expected
+    );
+    assert_eq!(projection.accepted_digest, source_digest);
+    drop(wasm);
+
+    let operation = OpName::parse("recover")?;
+    let offered = Arc::new(AtomicU64::new(0));
+    let runtime = tokio::runtime::Handle::current();
+    for projection in [Some(projection), None] {
+        let invocation = account.begin()?;
+        let deadline = invocation.deadline()?;
+        let mut wasm = engine.native_setup_store(invocation, ())?;
+        let port = wasm
+            .prepare_declared_read_only_port(
+                &pack,
+                &shape,
+                &operation,
+                &original.profile,
+                deadline,
+                0,
+            )
+            .await?;
+        let offered_here = Arc::clone(&offered);
+        let outcome = tokio::task::block_in_place(|| {
+            let recover = |row: OriginalSavedInputRow<'_>| {
+                runtime.block_on(invoke_original_saved_input_recover_port(
+                    port, &source, row, &funded,
+                ))
+            };
+            if let Some(projection) = projection {
+                let journal = original.journal();
+                capture_legacy_saved_input_from_admitted_port(
+                    &original.root,
+                    &original.profile,
+                    &identity,
+                    &funded,
+                    deadline,
+                    move |phase| {
+                        if phase == OriginalSavedTurnCheck::Publish {
+                            assert!(journal.is_file());
+                            offered_here.fetch_add(1, Ordering::AcqRel);
+                        }
+                        Ok(())
+                    },
+                    || Ok(projection),
+                    recover,
+                )
+            } else {
+                read_legacy_saved_input_from_admitted_port(
+                    &original.root,
+                    &original.profile,
+                    &identity,
+                    &funded,
+                    deadline,
+                    || Ok(()),
+                    recover,
+                )
+            }
+        })?;
+        let OriginalSavedInputOutcome::Accepted(accepted) = outcome else {
+            panic!("the verified port did not recover the input");
+        };
+        assert_eq!(Digest::hash(accepted.as_bytes()), source_digest);
+        assert_eq!(
+            serde_json::from_slice::<Value>(accepted.as_bytes())?,
+            serde_json::from_str::<Value>(&source)?
+        );
+        drop(wasm);
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+    }
+    assert_eq!(offered.load(Ordering::Acquire), 1);
+    let connection = Connection::open(&original.database)?;
+    let rows: i64 =
+        connection.query_row("SELECT COUNT(*) FROM saved_inputs", [], |row| row.get(0))?;
+    assert_eq!(rows, 1);
     Ok(())
 }
 

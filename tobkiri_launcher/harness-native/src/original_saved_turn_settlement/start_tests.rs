@@ -9,7 +9,7 @@ const INPUT_DIGEST: &str =
     "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const SOURCE_DIGEST: &str =
     "sha256:2222222222222222222222222222222222222222222222222222222222222222";
-const LEGACY_SCHEMA: &str = "
+pub(super) const LEGACY_SCHEMA: &str = "
     CREATE TABLE turns (
         id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
         updated_at INTEGER NOT NULL, body TEXT NOT NULL
@@ -26,7 +26,7 @@ const LEGACY_SCHEMA: &str = "
 ";
 
 #[derive(Default)]
-struct Budget(AtomicU64);
+pub(super) struct Budget(AtomicU64);
 
 impl AllocationBudget for Budget {
     fn reserve(&self, request: AllocationRequest) -> std::result::Result<(), AllocationError> {

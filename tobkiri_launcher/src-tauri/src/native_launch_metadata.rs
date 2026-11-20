@@ -123,7 +123,10 @@ impl VerifiedRegistryLaunch {
     }
 
     /// Require the caller's original nested presentation grant and verified read port.
-    pub(crate) fn permits_application_presentation(&self, role: ApplicationPresentationRole) -> bool {
+    pub(crate) fn permits_application_presentation(
+        &self,
+        role: ApplicationPresentationRole,
+    ) -> bool {
         self.application_presentation
             .as_ref()
             .and_then(|source| source.bundle(role))
@@ -819,7 +822,11 @@ impl VerifiedSavedLocalChatSource {
             self.direct.as_ref()
         }?;
         (entry.side_chat.is_some() == role.is_side_chat()
-            && entry.roles.iter().flatten().any(|(granted, _)| *granted == role))
+            && entry
+                .roles
+                .iter()
+                .flatten()
+                .any(|(granted, _)| *granted == role))
         .then_some(entry)
     }
 }
@@ -1958,8 +1965,8 @@ impl LaunchActivationObserver<'_> {
             || model_save_selection.is_some()
             || query_snapshot_selection.is_some()
             || model_access_snapshot_selection.is_some();
-        let (app_root, catalog_revision, locked, shell_snapshot, workflow) =
-            inspection.with_source(|sources| {
+        let (app_root, catalog_revision, locked, shell_snapshot, workflow) = inspection
+            .with_source(|sources| {
                 let catalog_revision = &sources.authority().catalog_revision;
                 if let Some(active) = active {
                     validate_observed_activation(active, self.identity, catalog_revision)?;
@@ -2011,17 +2018,11 @@ impl LaunchActivationObserver<'_> {
         if let Some(locked) = locked {
             locked.verify(checkpoint)?;
         }
-        let [
-            shell_settings,
-            model_save_snapshot,
-            model_search,
-            command_datasource,
-            model_access_read,
-            model_access_catalog,
-        ] = shell_snapshot
-            .map(|bundle| bundle.verify(checkpoint))
-            .transpose()?
-            .unwrap_or_default();
+        let [shell_settings, model_save_snapshot, model_search, command_datasource, model_access_read, model_access_catalog] =
+            shell_snapshot
+                .map(|bundle| bundle.verify(checkpoint))
+                .transpose()?
+                .unwrap_or_default();
         let workflow = workflow
             .map(|bundle| {
                 let (entries, callers) = bundle.verify(checkpoint)?;
@@ -3553,12 +3554,12 @@ fn verify_turn_source(
     for (selection, caller) in selections.iter_mut().zip(SettlementCaller::ALL) {
         *selection = select_original_saved_turn_settlement(active, budget, caller)?;
     }
-    let read = if matches!(receipt.version(), "0.2.0" | "0.3.0") {
+    let read = if matches!(receipt.version(), "0.2.0" | "0.3.0" | "0.4.0") {
         verify_conversation_confirmation_source(inspection, active, &checkpoint)?
     } else {
         VerifiedConversationConfirmationRoles::default()
     };
-    let start = if receipt.version() == "0.3.0" {
+    let start = if matches!(receipt.version(), "0.3.0" | "0.4.0") {
         verify_turn_start_source(inspection, active, &checkpoint)?
     } else {
         VerifiedTurnStartRoles::default()
@@ -4316,7 +4317,7 @@ fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
 
 fn require_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
-        pack.manifest.version == "0.3.0",
+        matches!(pack.manifest.version.as_str(), "0.3.0" | "0.4.0"),
         "bundled Turn Pack has no verified start port"
     );
     require_turn_settlement_declaration(pack)?;
@@ -4431,11 +4432,13 @@ fn require_application_presentation_declaration(pack: &VerifiedPack) -> Result<(
         manifest.version == "0.1.0"
             && manifest.files.len() == APPLICATION_PRESENTATION_WIT.len() + 1
             && manifest.shapes[0].wit == "wit/pack.wit"
-            && APPLICATION_PRESENTATION_WIT.into_iter().all(|(path, bytes)| {
-                pack.files
-                    .get(path)
-                    .is_some_and(|file| *file.digest() == Digest::hash(bytes))
-            }),
+            && APPLICATION_PRESENTATION_WIT
+                .into_iter()
+                .all(|(path, bytes)| {
+                    pack.files
+                        .get(path)
+                        .is_some_and(|file| *file.digest() == Digest::hash(bytes))
+                }),
         "bundled Application Presentation Pack has unexpected WIT or version"
     );
     require_registry_ports(
@@ -4455,6 +4458,8 @@ const ORIGINAL_TURN_WIT_DIGEST: &str =
     "sha256:6308b8f72305ac93942d4596116f3ddbdcfe1f590b6617ced2e0a75b0a93056e";
 const READ_TURN_WIT_DIGEST: &str =
     "sha256:c1c9ade00909c4c8d63eb64ad00fcd9e9b5ea9bcf96a821c492e8c2d0efbe8a6";
+const START_TURN_WIT_DIGEST: &str =
+    "sha256:0fe4841f35ba3986068facc99ca11880837acfe737cc9b79b5bc1ba72a62e3b5";
 const TURN_READ_SHAPE: (&str, &[u8]) = (
     "wit/legacy-read.shape.json",
     include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/legacy-read.shape.json"),
@@ -4462,6 +4467,10 @@ const TURN_READ_SHAPE: (&str, &[u8]) = (
 const TURN_START_SHAPE: (&str, &[u8]) = (
     "wit/legacy-start.shape.json",
     include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/legacy-start.shape.json"),
+);
+const TURN_INPUT_SHAPE: (&str, &[u8]) = (
+    "wit/legacy-input.shape.json",
+    include_bytes!("../../../packs/local.saved-turn-runtime-rust/wit/legacy-input.shape.json"),
 );
 const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 2] = [
     (
@@ -4480,15 +4489,18 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
     const SETTLEMENT: &str = "local.saved-turn-runtime.legacy-settlement@1.0";
     const READ: &str = "local.saved-turn-runtime.legacy-read@1.0";
     const START: &str = "local.saved-turn-runtime.legacy-start@1.0";
+    const INPUT: &str = "local.saved-turn-runtime.legacy-input@1.0";
     let manifest = &pack.manifest;
     let (ports, wit_digest) = match manifest.version.as_str() {
         "0.1.0" => (1, Digest::parse(ORIGINAL_TURN_WIT_DIGEST)?),
         "0.2.0" => (2, Digest::parse(READ_TURN_WIT_DIGEST)?),
-        "0.3.0" => (3, Digest::hash(TURN_WIT.1)),
+        "0.3.0" => (3, Digest::parse(START_TURN_WIT_DIGEST)?),
+        "0.4.0" => (4, Digest::hash(TURN_WIT.1)),
         _ => anyhow::bail!("bundled Turn settlement Pack version is unsupported"),
     };
     let read = ports >= 2;
-    let start = ports == 3;
+    let start = ports >= 3;
+    let input = ports == 4;
     verify_stateless_registry_surface(pack, registry_pack_receipt::SETTLEMENT_PACK_ID, ports)?;
     let matches_wit = |(path, bytes): (&str, &[u8])| {
         pack.files
@@ -4504,7 +4516,8 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
                 .get(TURN_WIT.0)
                 .is_some_and(|file| *file.digest() == wit_digest)
             && (!read || matches_wit(TURN_READ_SHAPE))
-            && (!start || matches_wit(TURN_START_SHAPE)),
+            && (!start || matches_wit(TURN_START_SHAPE))
+            && (!input || matches_wit(TURN_INPUT_SHAPE)),
         "bundled Turn settlement Pack has an unexpected WIT or runtime declaration"
     );
     require_registry_ports(pack, "prepare", &[SETTLEMENT])?;
@@ -4519,6 +4532,20 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
                 &[OpName::parse("begin")?, OpName::parse("claim")?],
             ),
             "bundled Turn Pack has no exact legacy start port"
+        );
+    }
+    if input {
+        ensure!(
+            declares_registry_port(
+                pack,
+                &ShapeRef::parse(INPUT)?,
+                &[
+                    OpName::parse("identify")?,
+                    OpName::parse("prepare")?,
+                    OpName::parse("recover")?,
+                ],
+            ),
+            "bundled Turn Pack has no exact legacy input port"
         );
     }
     Ok(read)
@@ -5747,6 +5774,7 @@ mod tests {
             TURN_WIT,
             TURN_READ_SHAPE,
             TURN_START_SHAPE,
+            TURN_INPUT_SHAPE,
         ]) {
             fs::write(path.join(relative), wit).unwrap();
         }
@@ -5791,7 +5819,28 @@ mod tests {
             .to_string()
             .contains("unexpected WIT"));
 
-        let (previous, after) = current_wit.split_once("interface legacy-start {").unwrap();
+        let (start, after) = current_wit.split_once("interface legacy-input {").unwrap();
+        let (_, world) = after.split_once("world pack {").unwrap();
+        let start_wit =
+            format!("{start}world pack {{{world}").replace("  export legacy-input;\n", "");
+        assert_eq!(
+            Digest::hash(start_wit.as_bytes()).as_str(),
+            START_TURN_WIT_DIGEST
+        );
+        fs::write(path.join(TURN_WIT.0), &start_wit).unwrap();
+        fs::remove_file(path.join(TURN_INPUT_SHAPE.0)).unwrap();
+        let mut old: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        old["version"] = serde_json::json!("0.3.0");
+        old["shapes"].as_array_mut().unwrap().pop();
+        old["ports"]["provides"].as_array_mut().unwrap().pop();
+        old["files"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|file| file != TURN_INPUT_SHAPE.0);
+        let start = verify(&serde_json::to_vec(&old).unwrap());
+        assert!(require_turn_start_declaration(&start).is_ok());
+
+        let (previous, after) = start_wit.split_once("interface legacy-start {").unwrap();
         let (_, world) = after.split_once("world pack {").unwrap();
         let previous_wit =
             format!("{previous}world pack {{{world}").replace("  export legacy-start;\n", "");
@@ -5801,7 +5850,6 @@ mod tests {
         );
         fs::write(path.join(TURN_WIT.0), &previous_wit).unwrap();
         fs::remove_file(path.join(TURN_START_SHAPE.0)).unwrap();
-        let mut old: serde_json::Value = serde_json::from_slice(draft).unwrap();
         old["version"] = serde_json::json!("0.2.0");
         old["shapes"].as_array_mut().unwrap().pop();
         old["ports"]["provides"].as_array_mut().unwrap().pop();

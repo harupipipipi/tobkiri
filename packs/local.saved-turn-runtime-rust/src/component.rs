@@ -8,8 +8,10 @@ wit_bindgen::generate!({
 
 use crate::{
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
-    Transition, settle, validate_legacy_saved_turn,
+    Transition, prepare_saved_input, replay_saved_input, saved_input_source, settle,
+    validate_legacy_saved_turn,
 };
+use exports::local::saved_turn_runtime::legacy_input;
 use exports::local::saved_turn_runtime::legacy_read::{self, ReadOutcome};
 use exports::local::saved_turn_runtime::legacy_settlement::{
     Guest, Replacement, SettlementError, SettlementOutcome,
@@ -119,6 +121,61 @@ impl legacy_start::Guest for Pack {
             &mut now_ms,
         ))
     }
+}
+
+impl legacy_input::Guest for Pack {
+    fn identify(
+        source: String,
+    ) -> Result<Result<legacy_input::SourceIdentity, SettlementError>, Error> {
+        Ok(saved_input_source(source.as_bytes())
+            .map(|identity| legacy_input::SourceIdentity {
+                turn_id: identity.turn_id,
+                source_digest: identity.source_digest,
+            })
+            .map_err(domain_error))
+    }
+
+    fn prepare(
+        source: String,
+        accepted: String,
+    ) -> Result<Result<legacy_input::InputProjection, SettlementError>, Error> {
+        let projection = match prepare_saved_input(source.as_bytes(), accepted.as_bytes()) {
+            Ok(projection) => projection,
+            Err(error) => return Ok(Err(domain_error(error))),
+        };
+        Ok(Ok(legacy_input::InputProjection {
+            identity: legacy_input::SourceIdentity {
+                turn_id: projection.turn_id,
+                source_digest: projection.source_digest,
+            },
+            accepted_digest: projection.accepted_digest,
+            context: input_json(projection.context)?,
+        }))
+    }
+
+    fn recover(
+        source: String,
+        source_digest: String,
+        accepted_digest: String,
+        context: String,
+    ) -> Result<Result<String, SettlementError>, Error> {
+        match replay_saved_input(
+            source.as_bytes(),
+            &source_digest,
+            &accepted_digest,
+            context.as_bytes(),
+        ) {
+            Ok(restored) => Ok(Ok(input_json(restored)?)),
+            Err(error) => Ok(Err(domain_error(error))),
+        }
+    }
+}
+
+fn input_json(bytes: Vec<u8>) -> Result<String, Error> {
+    String::from_utf8(bytes).map_err(|_| Error {
+        code: ErrorCode::Internal,
+        message: "saved input serialization failed".into(),
+    })
 }
 
 fn now_ms() -> crate::Result<i64> {

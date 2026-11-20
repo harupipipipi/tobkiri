@@ -48,6 +48,18 @@ const SELECT_TURN: &str = "SELECT id, request_id, body FROM turns WHERE id = ?1"
 
 type Error = LegacySavedTurnSettlementError;
 
+mod input_port;
+mod input_store;
+pub use input_port::{
+    invoke_original_saved_input_identify_port, invoke_original_saved_input_prepare_port,
+    invoke_original_saved_input_recover_port,
+};
+pub use input_store::{
+    OriginalSavedInputIdentity, OriginalSavedInputOutcome, OriginalSavedInputProjection,
+    OriginalSavedInputRow, capture_legacy_saved_input_from_admitted_port,
+    read_legacy_saved_input_from_admitted_port,
+};
+
 /// Authorization stage for a single original SQLite settlement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OriginalSavedTurnCheck {
@@ -177,18 +189,22 @@ fn decode_port_decision(
                     .map_err(|_| Error::Capacity)?,
             })
         }
-        ("rejected", Some(Val::Enum(code))) => Err(match code.as_str() {
-            "invalid-request" => Error::InvalidRequest,
-            "invalid-record" => Error::InvalidRecord,
-            "invalid-reference" => Error::InvalidReference,
-            "not-found" => Error::NotFound,
-            "conflict" => Error::Conflict,
-            "requires-legacy-codec" => Error::RequiresLegacyCodec,
-            "capacity" => Error::Capacity,
-            "revoked" => Error::Revoked,
-            _ => Error::Storage,
-        }),
+        ("rejected", Some(Val::Enum(code))) => Err(decode_guest_error(code.as_str())),
         _ => Err(Error::Storage),
+    }
+}
+
+fn decode_guest_error(code: &str) -> Error {
+    match code {
+        "invalid-request" => Error::InvalidRequest,
+        "invalid-record" => Error::InvalidRecord,
+        "invalid-reference" => Error::InvalidReference,
+        "not-found" => Error::NotFound,
+        "conflict" => Error::Conflict,
+        "requires-legacy-codec" => Error::RequiresLegacyCodec,
+        "capacity" => Error::Capacity,
+        "revoked" => Error::Revoked,
+        _ => Error::Storage,
     }
 }
 

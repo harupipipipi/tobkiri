@@ -5941,6 +5941,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   `begin_saved` と `claim_saved` の既存Wasm経路はその後に呼ばれる。元DBと旧入力projectionを保ち、
   同一キーの再送、入力digest不一致、配信・カレンダーの既存キュー、commit後に応答を失った場合の再開を
   署名済みHTTPとLauncherソケットで照合してからこの書込みを移す。2.0の検証用private DBとは別の所有者である。
+- `726cf453a` は保存入力の検証を `packs/saved-input` に共通化した。Saved Conversationの追記とSaved Turnの
+  捕捉・復元で、同じ有限の入力型とPython互換のcanonical処理を使う。旧タスク文脈、解決済み参照、
+  `target_settings`、元と確定後のdigestを照合する。v0.4のTurn Packに読み取り専用ポートを追加し、
+  旧v0.1〜v0.3の起動証明は以前のWIT digestで照合する。
+- Rustの既存DB向け実装は元の `saved_inputs` に先着の投影を保存し、再送ではその行を返す。
+  実際の書き込みはSQLiteのコミットフックで権限を確認する。通常の署名済みLifecycleから呼び出す配線、
+  Profile初回の安全なスキーマ作成、既存配信・カレンダーの待機行への再束縛が残る。
+  通常の署名済みチャット経路では元入力を二重に送らず、16 KiBの開始フレームと最大3 MiBの本文を
+  既存の容量・公開確定の境界に収める必要がある。`PUBLISH_PERMIT` 後の応答喪失は確定不明として照合する。
+  互換テスト65件、既存Turn所有者のRustテスト23件、ビルドしたWasmによる実SQLiteの保存と復元1件が通過した。
+  このWasm検証は、作成済みのDBと検証用の権限を使い、同じ行を復元して公開許可が1回だけ求められたことを確認した。
 
 ## 050: Side Chatのターン開始と実行権の取得
 

@@ -417,7 +417,7 @@ fn require_absent_turn(transaction: &Transaction<'_>, turn_id: &str) -> Result<(
     Ok(())
 }
 
-fn schema_present(transaction: &Transaction<'_>) -> Result<bool> {
+pub(super) fn schema_present(transaction: &Transaction<'_>) -> Result<bool> {
     prepare(transaction, COUNT_TABLES)?
         .query_row([], |row| row.get::<_, i64>(0))
         .map(|tables| tables == 5)

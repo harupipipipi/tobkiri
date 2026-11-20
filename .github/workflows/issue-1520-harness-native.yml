@@ -16,6 +16,8 @@ on:
       - 'tools/python313-producer/harness_native_ci_inputs.py'
       - 'tools/python313-producer/schema_probe/captured_loader.py'
       - 'tobkiri_launcher/harness-native/**'
+      - 'packs/local.saved-turn-runtime-rust/**'
+      - 'packs/saved-input/**'
       - 'crates/tobkiri-core/**'
       - 'crates/tobkiri-wasm/**'
       - 'Cargo.toml'
@@ -915,7 +917,7 @@ jobs:
           TOBKIRI_TURN_WASM_PACK: ${{ runner.temp }}/native-registry-packs/local.saved-turn-runtime.tpk
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
-            --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 3 -- \
+            --log "$RUNNER_TEMP/saved-turn-owner.log" --expected-passed 4 -- \
             cargo test --locked -p tobkiri-harness-native \
               original_saved_turn_settlement::tests::actual_wasm_ -- --ignored
       - name: Replay original saved orchestration against its Wasm component
