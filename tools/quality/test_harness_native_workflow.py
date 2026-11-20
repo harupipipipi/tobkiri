@@ -116,6 +116,21 @@ class NativeWorkflowContracts(unittest.TestCase):
             ],
         )
 
+    def test_snapshot_stage_counts_all_launcher_connection_and_job_tests(self) -> None:
+        staging = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
+        for module, receipt in (
+            ("native_provider_prepare_ipc", "harness-native-provider-connection"),
+            ("native_provider_prepare_job", "harness-native-provider-job"),
+        ):
+            with self.subTest(module=module):
+                source = (ROOT / "tobkiri_launcher/src-tauri/src" / f"{module}.rs").read_text(
+                    encoding="utf-8"
+                )
+                # These module-wide macOS filters run all their ordinary unit tests.
+                count = len(re.findall(r"(?m)^    #\[(?:tokio::)?test(?:\([^\n]*\))?\]$", source))
+                self.assertGreater(count, 0)
+                self.assertIn(f'{receipt}.log" --expected-passed {count} --', staging)
+
     def test_snapshot_dmg_opt_in_carries_the_verified_same_run_receipt_to_the_mount(self) -> None:
         self.assertRegex(self.workflow, r"package_launcher_dmg:\n[^\n]*\n        type: boolean\n        default: false")
         staging = step(self.native, "Stage the verified same-run Wasm through the original Launcher")
