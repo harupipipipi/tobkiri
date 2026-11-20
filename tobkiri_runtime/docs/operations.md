@@ -12,7 +12,7 @@
 
 1. [セットアップ](#セットアップ)
 2. [起動](#起動)
-3. [セキュリティモード](#セキュリティモード)
+3. [旧セットアップとセキュリティモードの履歴](#旧セットアップとセキュリティモードの履歴)
 4. [HTTP API 概要](#http-api-概要)
 5. [Pack 承認管理](#pack-承認管理)
 6. [ネットワーク権限管理](#ネットワーク権限管理)
@@ -22,7 +22,7 @@
 10. [Secrets 管理](#secrets-管理)
 11. [Pack Import / Apply](#pack-import--apply)
 12. [共有ストア管理](#共有ストア管理)
-13. [Docker / コンテナ管理](#docker--コンテナ管理)
+13. [Docker / コンテナ管理（履歴）](#docker--コンテナ管理)
 14. [Flow 実行](#flow-実行)
 15. [特権管理（Privileges）](#特権管理privileges)
 16. [UDS ソケット設定](#uds-ソケット設定)
@@ -42,112 +42,55 @@
 
 ## セットアップ
 
-### 必要条件
+デスクトップ製品のセットアップは Tobkiri Launcher で行います。対応する配布物・
+プラットフォームの制約、Profile の有効化、PackVM の準備は
+[Tobkiri Launcher 起動ガイド](tobkiri_launcher_start.md) を参照してください。
 
-- Python 3.10+
-- Docker（本番環境で必須）
-- Git
-
-### インストール
-
-```bash
-git clone https://github.com/harupipipipi/tobkiri.git
-cd tobkiri/tobkiri_runtime
-
-# セットアップ（CLI）
-python bootstrap.py --cli init
-
-# または手動
-pip install -r requirements.txt
-```
-
-### セットアップツール
-
-セットアップツールは CLI と Web の 2 つのインターフェースを提供します。
+Host 単体の疎通確認にはリポジトリの Python 環境を使います。リポジトリのルートで
+仮想環境を有効にしてから、必要な依存関係と runtime パッケージをインストールします。
 
 ```bash
-# CLI モード
-python bootstrap.py --cli              # 対話メニュー
-python bootstrap.py --cli check        # 環境チェック
-python bootstrap.py --cli init         # 初期セットアップ
-python bootstrap.py --cli doctor       # 診断
-python bootstrap.py --cli recover      # リカバリー
-python bootstrap.py --cli run          # アプリ起動
-
-# Web モード
-python bootstrap.py --web              # ブラウザ操作（デフォルトポート 8080）
-python bootstrap.py --web --port 9000  # ポート指定
+python -m pip install -r tobkiri_runtime/requirements.txt
+python -m pip install -e ./tobkiri_runtime
 ```
-
-セットアップツールは以下を自動化します: Python / Git / Docker のチェック、仮想環境（.venv）の作成、依存関係のインストール、user_data ディレクトリの初期化、default pack のインストール（オプション）。
 
 ---
 
 ## 起動
 
+デスクトップ製品は [Tobkiri Launcher 起動ガイド](tobkiri_launcher_start.md) に沿って
+起動します。対応する環境では PackVM の準備を済ませ、Launcher の Home で
+**Launch Tobkiri Harness** を選びます。
+
+Host 単体の疎通確認では、セットアップ済みの Python 環境で次を実行します。
+`python -m app` は Host を起動し、停止するまで待機します。
+
 ```bash
-# 本番環境（Docker 必須）
-python app.py
-
-# 開発環境（Docker 不要、明示的 opt-in と lockfile が必要）
-export RUMI_ENVIRONMENT=development
-export RUMI_USER_DATA="${RUMI_USER_DATA:-$PWD/user_data}"
-mkdir -p "$RUMI_USER_DATA"
-touch "$RUMI_USER_DATA/permissive.lock"
-python app.py --permissive
-
-# ヘッドレスモード
-python app.py --headless
-
-# ヘルスチェック実行
-python -m app --health
-
-# Pack バリデーション実行
-python app.py --validate
+python -m app
 ```
 
-`--health` は起動中の Host の `http://127.0.0.1:8765/health`（ポートは `RUMI_PORT` に従う）を probe し、結果を JSON で stdout に出力して終了します。listen socket は取らないため、別インスタンスが起動中でも安全に実行できます。Host が `status: "ok"` を返せば exit code 0、未起動（`"down"`）や `"error"`、予期しない応答の場合は exit code 1 です。CI/CD やコンテナオーケストレーションのヘルスチェックに利用できます。
+起動した Host の確認は別のターミナルで実行します。
 
-`--validate` は Pack のバリデーションを実行し、結果を出力して終了します。
+```bash
+python -m app --health
+```
+
+`--health` は起動中の Host の `http://127.0.0.1:8765/health`（ポートは
+`RUMI_PORT` に従う）を照会し、JSON を標準出力に出します。listen socket は取得
+しません。Host が `status: "ok"` を返した場合は終了コード 0、未起動
+（`"down"`）、`"error"`、予期しない応答の場合は終了コード 1 です。
+
+初期化のみ確認する場合は `python -m app --headless` を実行します。Host
+の起動処理後に待機せず終了します。疎通確認の範囲は Host 単体です。
+PackVM の準備と Harness の起動は Launcher 上で確認します。
 
 ---
 
-## セキュリティモード
+## 旧セットアップとセキュリティモードの履歴
 
-通常起動は strict です。permissive は開発時だけの例外で、CLI と環境変数のどちらで
-要求しても、明示的 opt-in と `permissive.lock` が必要です。
-
-| モード | Docker | 動作 |
-|--------|--------|------|
-| `strict`（デフォルト） | 必須 | Docker 不可なら実行拒否 |
-| `permissive` | 不要 | 警告付きでホスト実行を許可 |
-
-```bash
-# 本番
-export RUMI_SECURITY_MODE=strict
-
-# 開発（推奨: CLI を使う）
-export RUMI_ENVIRONMENT=development
-export RUMI_USER_DATA="${RUMI_USER_DATA:-$PWD/user_data}"
-mkdir -p "$RUMI_USER_DATA"
-touch "$RUMI_USER_DATA/permissive.lock"
-python app.py --permissive
-```
-
-既存の自動化で `RUMI_SECURITY_MODE=permissive` を使う場合も、同じ環境変数と lockfile が
-必要です。production で permissive を有効化しないでください。
-
-### Windows PowerShell
-
-PowerShell では次を実行します。
-
-```powershell
-$env:RUMI_ENVIRONMENT = "development"
-if (-not $env:RUMI_USER_DATA) { $env:RUMI_USER_DATA = Join-Path $PWD "user_data" }
-New-Item -ItemType Directory -Force -Path $env:RUMI_USER_DATA | Out-Null
-New-Item -ItemType File -Force -Path (Join-Path $env:RUMI_USER_DATA "permissive.lock") | Out-Null
-python app.py --permissive
-```
+旧 runtime の運用記録にある `bootstrap.py`、`app.py --permissive`、
+`app.py --validate`、Docker の strict / permissive モードは当時の手順です。
+現行のセットアップと起動は上記の手順を使います。
 
 ---
 
@@ -258,6 +201,8 @@ python app.py --permissive
 | POST | `/api/routes/reload` | ルートテーブルを再読み込み |
 
 ### Docker / コンテナ
+
+旧 runtime の Docker API の履歴です。
 
 | メソッド | パス | 説明 |
 |----------|------|------|
@@ -780,6 +725,9 @@ curl -X POST http://localhost:8765/api/stores/shared/revoke \
 
 ## Docker / コンテナ管理
 
+以下は旧 runtime の Docker 運用の履歴です。現行製品の PackVM の準備と診断は
+[Tobkiri Launcher 起動ガイド](tobkiri_launcher_start.md) を参照してください。
+
 ### Docker 状態確認
 
 ```bash
@@ -964,7 +912,8 @@ curl -X POST http://localhost:8765/api/privileges/{pack_id}/execute/{privilege_i
 
 ## UDS ソケット設定
 
-strict モードで Pack 実行コンテナから UDS ソケットにアクセスするための設定です。
+旧 runtime の strict モードで Pack 実行コンテナから UDS ソケットにアクセスする
+ための設定の履歴です。
 
 ### 環境変数
 
@@ -1243,7 +1192,7 @@ Tobkiri runtime の動作を制御する環境変数の一覧です。
 
 | 変数名 | デフォルト | 説明 |
 |--------|-----------|------|
-| `RUMI_SECURITY_MODE` | `strict` | セキュリティモード。`strict`（Docker 必須）または `permissive`（Docker 不要、開発用） |
+| `RUMI_SECURITY_MODE` | `strict` | 旧 runtime の Docker 運用時の設定（履歴） |
 | `RUMI_LOG_LEVEL` | `INFO` | ログレベル。`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
 | `RUMI_LOG_FORMAT` | `json` | ログ出力形式。`json`（構造化 JSON）または `text`（人間向けテキスト） |
 | `RUMI_DEPRECATION_LEVEL` | `warn` | 非推奨 API 呼び出し時の動作。`warn` / `error` / `silent` / `log` |
@@ -1269,14 +1218,11 @@ Tobkiri runtime の動作を制御する環境変数の一覧です。
 
 ## トラブルシューティング
 
-### Docker が利用できない
+### PackVM の準備が完了しない
 
-```
-Error: Docker is required but not available
-```
-
-開発時だけ、セキュリティモード節の手順で明示的 opt-in と `permissive.lock` を用意してから
-`python app.py --permissive` を実行してください。環境変数だけで sandbox を無効化することはできません。
+Launcher の **Packs → Tobkiri Host Pack Control → PackVM lifecycle** を開き、
+状態と表示理由を確認します。対応プラットフォームと手順は
+[Tobkiri Launcher 起動ガイド](tobkiri_launcher_start.md) を参照してください。
 
 ### Pack が承認されない
 

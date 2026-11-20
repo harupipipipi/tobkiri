@@ -99,7 +99,7 @@ Portable resource keys are printable ASCII with `/` separators and are unique
 after ASCII case folding, preventing filesystem case and Unicode ambiguity.
 
 The manifest has only the fixed top-level fields and fixed nested field sets
-defined in `.github/schemas/sealed-python-environment.v1.schema.json`.
+defined in the [environment manifest v1 schema](../../.github/schemas/sealed-python-environment.v1.schema.json).
 Its provenance `kind` is `pinned-python-build-standalone-v1` on macOS,
 `windows-authenticode-v1` on Windows, and `linux-immutable-package-v1` on
 Linux; `package_id` is always `dev.rumiai.app`.
@@ -113,10 +113,10 @@ opened under a shared OS lock by bootstrap for the lifetime of the process.
 
 The manifest-v1 wire shape is intentionally unchanged for compatibility.
 Exact directory identity is added as the required inventoried regular file
-`sealed-directory-modes.v1.json`, whose schema is
-`io.tobkiri.sealed-python-directory-modes.v1`. Its first entry binds the root
-as `.` and its remaining sorted entries bind the exact transitive directory
-closure; every mode is `0555`. Because this evidence file is in `files`, its
+`sealed-directory-modes.v1.json`. Its first entry binds the root as `.` and
+its remaining sorted entries bind the exact transitive directory closure.
+Every mode is `0555` under the [directory modes v1 schema](../../.github/schemas/sealed-python-directory-modes.v1.schema.json).
+Because this evidence file is in `files`, its
 bytes are covered by `environment_digest` and by the raw manifest digest that
 the launcher embeds. Existing v1 readers can deserialize the manifest, while
 the producer, bootstrap, Rust build verifier, and launcher now require and
@@ -134,24 +134,49 @@ permission exception exists. The signed app is checked afterward, and the
 read-only DMG is mounted and subjected to the same exact-mode/native smoke
 before upload, catching copy, bundle, image, or extraction drift.
 
-The launcher invokes the fixed boundary:
+The launcher sets its working directory to the sealed snapshot root and uses
+the fixed argument order in [`sealed_python_protocol.rs`](../src-tauri/src/sealed_python_protocol.rs).
+The Unix Defaultspack command below uses paths, a lowercase 64-hex nonce,
+and verified resource bindings supplied by Launcher.
 
-```text
-python -I -B -m tobkiri_sealed.bootstrap \
-  --role typed --nonce <parent-nonce> \
-  --attestation <new-attestation-path> \
-  --manifest <sealed-environment.v1.json> \
-  --environment-root <python-runtime> -- <role-argv...>
+```sh
+"$sealed_root/venv/bin/python3" -I -B -m tobkiri_sealed.bootstrap \
+  --role defaultspack --nonce "$nonce" \
+  --attestation "$attestation_dir/startup-$nonce.json" \
+  --manifest "$sealed_root/sealed-environment.v1.json" \
+  --environment-root "$sealed_root" \
+  --runtime-overlay-sha256 "$overlay_sha256" \
+  --outer-runtime-manifest-sha256 "$outer_manifest_sha256" \
+  --application-bundle-root "$bundle_root" \
+  --packvm-provisioning-sha256 "$provisioning_sha256" \
+  --packvm-helper-manifest-sha256 "$helper_manifest_sha256" \
+  --packvm-helper-team-id "$helper_team_id" \
+  -- "$@"
 ```
 
-The launch wire schema is `io.tobkiri.sealed-python-launch.v1`; the startup
-attestation schema is `io.tobkiri.sealed-python-attestation.v1`.
-The wire role values are `typed`, `defaultspack`, and `host_helper`; `typed`
-dispatches the packaged kernel wrapper. Bootstrap
-rejects unknown boundary arguments, binds every supplied path to the sealed
-snapshot, recomputes the stdlib/site-packages/native sentinel groups, and
-publishes an attestation through a new temporary file, `fsync`, and atomic
-no-replace publication. The role receives only the arguments after `--`.
+The launch wire is `io.tobkiri.sealed-python-launch.v3`. The bundle binding
+uses the macOS application root and PackVM digests, with a helper Team ID for
+Developer ID builds. On Windows and Linux the portable binding uses the
+application resource root and provisioning digest, with empty helper values.
+For a macOS CI bundle built without VM assets, Launcher passes the bundle
+root with empty PackVM digests and Team ID and verifies the absence of those
+assets. The options still appear on the wire. Launcher adds
+`--native-first-setup` for the `typed` role when native Setup is selected and
+`--packvm-disabled` for receipt-bound macOS CI probes of `typed` or
+`defaultspack`. Both switches precede `--`. Only `defaultspack` accepts
+application arguments after `--`.
+
+Bootstrap rejects unknown boundary arguments, verifies the sealed snapshot
+and the separate application bundle binding, and recomputes the
+stdlib/site-packages/native sentinel groups. It publishes the nonce-bound
+[startup attestation v2](../../.github/schemas/sealed-python-attestation.v2.schema.json)
+as `startup-<nonce>.json` outside the sealed resources. The
+`io.tobkiri.sealed-python-attestation-file.v1` contract covers the file
+publication lifecycle. Bootstrap writes a new temporary file, calls `fsync`,
+publishes atomically without replacing an existing file, and removes the
+temporary name. Launcher reads the completed single-link file, verifies the
+attestation and child lease, and then removes the file.
+
 `typed` directly runs `app.py`, `defaultspack` directly runs the long-lived
 `ecosystem/defaultspack/defaultspack/desktop_app.py`, and `host_helper`
 directly runs the stdin/stdout JSON
@@ -174,9 +199,12 @@ basename or client environment variable cannot select the packaged path.
 After attestation, the import path object is frozen and dispatch must preserve
 its exact contents.
 
-Bootstrap emits only the fields in
-`.github/schemas/sealed-python-attestation.v1.schema.json`. The native build
-script binds the raw manifest SHA-256 as
+Attestation v2 binds the base environment, runtime overlay, and outer runtime
+manifest through separate digests. Bootstrap includes `native_first_setup`
+and `packvm_disabled` only when the corresponding startup policies are active.
+See the [schema contract and historical formats](../schemas/SEALED_PYTHON_ENVIRONMENT.md).
+
+The native build script binds the raw manifest SHA-256 as
 `TOBKIRI_SEALED_PYTHON_MANIFEST_SHA256`; this binding is separate from the
 outer Tauri resource provenance manifest.
 

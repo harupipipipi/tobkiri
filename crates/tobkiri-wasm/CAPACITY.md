@@ -60,10 +60,18 @@ The source still contains earlier CanonValue/String/Vec runtime paths pending
 migration. The fork denies unsupported static/custom component allocations and
 ordinary dynamic async registration; those denials cannot be replaced with the
 old registration APIs or a native fallback to obtain a passing runtime receipt.
-PackHost now audits and rejects construction before Engine/JIT, native DATA
-seeding or component allocation while this coverage is incomplete. No caller or
-Profile flag can enable the historical paths. New runtime acceptance therefore
-requires actual coverage/wiring and a new executed receipt.
+
+The earlier capacity checkpoint (`ec8a0688f4`) recorded rejection before
+Engine/JIT. The current [PackHost constructor](src/host.rs) prepares a bounded,
+verified catalog as native Core control work. It checks Pack, view, binding,
+WIT, and artifact bounds, creates the Engine under the control context, and
+compiles verified components with effective limits for their exact Pack
+revisions. A missing revision limit causes an audited denial before compilation.
+Guest entry separately requires Gate authorization and the applicable Core
+entry, storage, and ABI allocation paths. Missing prerequisites or unsupported
+operations fail at entry. The catalog bounds and successful compilation leave
+aggregate memory coverage open, including JIT memory and guest instance costs.
+
 An opaque payload alone does not account for async_trait boxes, task queues,
 resource table control storage or retained physical I/O.
 
@@ -74,12 +82,11 @@ caps are not automatically substituted. Explicit transitive constraints apply
 separately. Off-owner frame budget lookup remains unavailable until this sealed
 boundary exists.
 
-The Wasm provider-entry traits transfer the same linear admitted dispatch into
-Core's private factory, without an extra grant or preminted budget. Their source
-declarations do not establish that the factory, owned future or terminal receipt
-are physically funded. Preparation is borrowed stack metadata; it allocates no
-preclaim holder or provider budget. Those paths remain unavailable until
-the actual borrowed preparation/reservation boundary and native wiring exist.
+The [Wasm provider dispatch](src/dispatch.rs) requires the Core provider-entry
+bridge. It validates the request before claiming the original port admission,
+then uses the same dispatch for entry. Aggregate physical coverage for the
+factory, owned futures, and terminal receipts still requires evidence across
+the complete entry path.
 
 ## SQL producer boundary
 
@@ -91,6 +98,8 @@ exclusive DB/journal/WAL recovery, fuel/cancellation/conversion, statement
 classification barriers, transaction cleanup or host marshal/VFS capacities.
 No SQL backend acceptance or whole-runtime claim follows from this artifact.
 
-Cargo's build script requires the explicit trusted producer directory, verifies
-the locked identity/digests and fails for missing/mismatching inputs. It never
-downloads or uses a guest-controlled module override/native SQL fallback.
+With the opt-in `private-sqlite-experiment` feature, the
+[build script](build.rs) requires `TOBKIRI_SQL_PRODUCER_DIR`, verifies the
+locked identity and digests, and fails for missing or mismatched inputs.
+Builds with the feature disabled skip producer validation. The experiment uses
+only the verified producer output.

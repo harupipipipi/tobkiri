@@ -114,11 +114,16 @@ The new configuration explicitly selects only the bundled `core-host`
 capability, disables global Tauri APIs, restricts commands through AppManifest,
 and checks the top-level host window label and URL at every command.
 That URL is not the invoking iframe origin and cannot establish frame isolation.
-The Core-build AppManifest list is exactly the ten registered Core handlers,
-including `pack_ui_ack` for generation-, receiver- and message-scoped Pack UI
-flow tickets and `core_host_output_ack` for the single trusted-host output
-ticket. Detach and stop retire those tickets; ACK never proves that
-Tauri/WebKit/Pack copies or Core-owned allocations have been physically freed.
+The Core-build AppManifest uses the eleven registered handlers listed in
+[`CORE_HOST_COMMANDS`](../src-tauri/src/core_host_commands.rs). `pack_ui_ack`
+handles generation-, receiver- and message-scoped Pack UI flow tickets.
+`core_host_output_ack` handles the single trusted-host output ticket.
+`core_terminal_reply` delivers bounded text from the trusted Core Host window
+to a pending terminal prompt. Native Setup routing and review use their own
+[Setup IPC handlers](../src-tauri/src/native_setup_commands.rs) on the main
+Setup window. Detach and stop retire Pack UI and host output tickets. ACK never
+proves that Tauri/WebKit/Pack copies or Core-owned allocations have been
+physically freed.
 Tauri's frame invoke-key enforcement still needs native proof. Tauri documents
 iframe-origin limits on Linux/Android, so platform-specific adversarial IPC,
 storage, network, module/CSP and lifecycle tests are required before declaring

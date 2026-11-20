@@ -1,22 +1,14 @@
 # Release workflow controls
 
-The release workflow has two explicit modes:
+## GitHub tag drafts
 
-- `production` is the only mode that can create a release package. It requires
-  synchronized application versions and the exact `v<version>` tag. macOS
-  requires a Developer ID Application identity, notarization, stapling, and
-  Gatekeeper assessment; `.app` bundles are archived for `notarytool` and the
-  ticket is stapled back onto the app bundle;
-  Windows requires Authenticode signing and verification with an HTTPS
-  timestamp service when a Windows packaging job is enabled. Linux has no
-  platform certificate requirement.
-- `local-dev` is an explicit debug-only path in `build-and-sign.sh`. Its
-  unsigned or ad-hoc output is written under the debug build target and is not
-  sealed, inventoried, attested, or eligible for upload.
-
-`release_gate.py` is the canonical version and signing-policy gate used by the
-workflow and `build-and-sign.sh`. It validates secret presence and tool
-availability without printing secret values.
+[The tag workflow](../.github/workflows/release.yml) requires synchronized
+application versions and the exact `v<version>` tag. It builds only
+`aarch64-apple-darwin` (Apple Silicon macOS). Tauri builds with `--no-sign`,
+then the workflow ad-hoc signs the apps and the PackVM VZ helper and packages
+the Launcher DMG. Draft artifacts have no Developer ID signature or Apple
+notarization. A maintainer reviews the inventory and release notes before
+publishing. See the [macOS distribution guide](../tobkiri_runtime/docs/macos-unsigned-distribution.md).
 
 Each matrix target writes one immutable `release-target.json` containing the
 actual checked-out source SHA, target triple, platform, architecture, and
@@ -25,29 +17,31 @@ set from the workflow's `TOBKIRI_REQUIRED_RELEASE_TARGETS` JSON array and
 rejects missing, duplicate, replaced, or unexpected assets before writing one
 sorted `release-inventory.json`. The gather create and verify commands expand
 that same array into repeated `--required-target` arguments, and the array
-must be non-empty and duplicate-free. GitHub artifact provenance attests that
-single inventory subject exactly once. Only after the inventory is verified
-and attested does the workflow create the reviewable draft release.
+must be non-empty and duplicate-free. GitHub build provenance attests the
+single inventory subject exactly once before draft creation. The attestation
+covers the inventory's build origin and the artifact digests it records.
+Apple code signing and notarization are separate platform checks.
 
-The current tag workflow packages `aarch64-apple-darwin`. Adding Windows,
-Linux, or macOS x86_64 requires adding the real packaging/signing matrix job and
-the same target to `TOBKIRI_REQUIRED_RELEASE_TARGETS` in one change. The
-release inventory library retains and tests the complete four-target default
-contract for compatibility; it does not claim an artifact was built when no
-matrix job produced it. The current one-target publication is intentional:
-the repository's sealed release packaging guard does not yet support the
-other targets, so expanding the matrix without those real packaging jobs
-would make the tag workflow fail rather than produce valid releases.
+Adding Windows, Linux, or macOS x86_64 requires sealed packaging support, an
+actual matrix job, and the same target in `TOBKIRI_REQUIRED_RELEASE_TARGETS`.
+The release inventory library retains its four-target default contract for
+compatibility.
 
-Required production credentials are supplied through GitHub Actions secrets and
-are never hard-coded:
+## Manual builds
 
-- macOS: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`,
-  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
-  `APPLE_TEAM_ID`.
-- Windows: `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`, and
-  the fixed HTTPS timestamp service configured by the workflow.
+`scripts/build-and-sign.sh --mode production` is the manual macOS path. It
+requires a Developer ID Application identity and performs notarization,
+stapling, and Gatekeeper assessment. It archives `.app` bundles for `notarytool`
+and staples the tickets to the original bundles. Supply the signing and
+notarization credentials in the environment as `APPLE_CERTIFICATE_BASE64`,
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
+`APPLE_PASSWORD` (the app-specific password), and `APPLE_TEAM_ID`.
 
-Local production runs need the same credentials and platform tools. No actual
-credential-backed signing is performed by the repository tests; tests use
-mocked tool calls and synthetic target artifacts.
+`scripts/build-and-sign.sh --mode local-dev` creates unsigned or ad-hoc debug
+output in the debug target directory. It exits before release sealing,
+inventory, attestation, or upload.
+
+`release_gate.py` checks versions and tags in the GitHub workflow and enforces
+the signing policy and tool availability in the manual script without printing
+secret values. Repository tests use mocked tool calls and synthetic target
+artifacts.

@@ -42,13 +42,17 @@ raw codec distinguishes an empty record `{}`, a payloadless result `{"tag":"ok"}
 and a result carrying an empty record `{"tag":"ok","val":{}}`. Result errors are
 read failures and must never become successful input delivery.
 
-The historical generic host facade flattens some unit cases; it is not acceptance
-for this contract. Generic zero-result representation, native codec forwarding
-and error-branch runtime proof remain pending under the current Wasm source
-freeze. No ingress-only fallback is added here. Stream/callback lifetime and
-forwarding are likewise unimplemented; current explicit denial does not complete
-that compatibility work. Runtime payload values require validation with the
-selected actual WIT signature and common codec.
+The historical generic host facade flattens some unit cases. Validate runtime
+payloads with the selected WIT signature and the common codec, including the
+distinction between an empty record, a payloadless success, and a read failure.
+
+Value-only physical input can fan out to the matching frozen Flow routes.
+Physical input carrying a stream or callback requires exactly one frozen route
+and stays in the originating session. The real Wasm tests exercise the original
+stream through EOF after parent acknowledgement, callback reuse through session
+close, cancellation before transfer, and the rejection of cross-session
+forwarding. See the
+[input forwarding tests](../../../crates/tobkiri-core/src/input_forwarding_guest_tests.rs).
 
 Core must match `read_input(source, view, operation)` against this frozen record,
 then pass the same descriptor through startup registration, physical read and
@@ -58,7 +62,5 @@ Profile revision/epoch and every downstream grant remain separate checks.
 User/UI ingress has its own explicit default-deny policy and cannot forge native
 physical-source evidence.
 
-Source fixtures and tests are migrated. Rust compilation and focused runtime
-proof are pending the root Cargo lease; no M2, Pi, live-provider or legacy parity
-receipt is replaced by these source changes. Python producer checkpoint 002 is
-frozen and unaffected.
+The [acceptance status](acceptance-status.md) tracks end-to-end evidence for
+native Send/save and the remaining Launcher GUI input routes.
