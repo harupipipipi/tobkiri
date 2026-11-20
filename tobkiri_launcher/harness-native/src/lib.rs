@@ -62,7 +62,7 @@ pub use original_authority::{
 pub use original_provider_prepare_selection::{
     ApplicationPresentationRole, CONVERSATION_COMPLETE_APPLICATION_ID, ConversationAppendCaller,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalCalendarSavedInputChoice, OriginalConversationAppendChoice,
+    OriginalCalendarSavedDispatchChoice, OriginalConversationAppendChoice,
     OriginalConversationCompleteChoice, OriginalConversationCompleteHealthChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
     OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,

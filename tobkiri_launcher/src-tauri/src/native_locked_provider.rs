@@ -16,7 +16,7 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalCalendarSavedInputChoice, OriginalConversationAppendChoice,
+    OriginalCalendarSavedDispatchChoice, OriginalConversationAppendChoice,
     OriginalConversationCompleteChoice, OriginalFailoverChoice,
     OriginalGatewayProviderHealthChoice, OriginalGatewayProviderSnapshotChoice,
     OriginalModelAccessProviderSnapshotSelection, OriginalModelSaveSelection,
@@ -71,7 +71,7 @@ pub(crate) struct LockedTurnStartBundle<'pin> {
 
 /// Signed Bundle documents for the automatic Calendar dispatch chain.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedCalendarSavedInputBundle<'pin> {
+pub(crate) struct LockedCalendarSavedDispatchBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
     routes: [LockedRegistryRoute<'pin>; 4],
     budget: Arc<dyn AllocationBudget>,
@@ -800,14 +800,14 @@ impl NativeApplicationSources {
 
     /// Capture the signed Bundle documents for the automatic Calendar caller.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-    pub(crate) fn calendar_saved_input_bundle<'pin>(
+    pub(crate) fn calendar_saved_dispatch_bundle<'pin>(
         &self,
-        selection: &'pin OriginalCalendarSavedInputChoice<'_>,
+        selection: &'pin OriginalCalendarSavedDispatchChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedCalendarSavedInputBundle<'pin>> {
+    ) -> Result<LockedCalendarSavedDispatchBundle<'pin>> {
         let [scheduler, broker, adapter, lifecycle] = selection.pins();
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
-        Ok(LockedCalendarSavedInputBundle {
+        Ok(LockedCalendarSavedDispatchBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
             routes: [
                 from_lock(scheduler)?,
@@ -1213,7 +1213,7 @@ impl LockedTurnStartBundle<'_> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl LockedCalendarSavedInputBundle<'_> {
+impl LockedCalendarSavedDispatchBundle<'_> {
     /// Verify all four privileged operations against the accepted Bundle.
     pub(crate) fn verify(
         self,

@@ -75,6 +75,7 @@ class _NestedCancellationProof:
         self._verified_drained = threading.Event()
         self._execution_guard: Callable[[], None] | None = None
         self._calendar_execution_witness: Callable[[], None] | None = None
+        self._calendar_execution_parent: _NestedCancellationProof | None = None
         self._saved_execution_parent: _NestedCancellationProof | None = None
 
     def matches_invocation(
@@ -864,6 +865,7 @@ class OwnedCancellationBinding:
             if calendar_guard is not None:
                 proof._execution_guard = calendar_guard
                 proof._calendar_execution_witness = calendar_guard
+                proof._calendar_execution_parent = inherited
             registry._active[key] = (self._signal, completed)
             registry._records[key] = proof
         context_token = _active_nested_cancellation_proof.set(proof)

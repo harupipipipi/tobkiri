@@ -70,6 +70,7 @@ pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_
 pub(crate) const CONVERSATION_SIDE_CHAT_APPEND_ENV: &str =
     "TOBKIRI_NATIVE_CONVERSATION_SIDE_CHAT_APPEND";
 pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START";
+pub(crate) const CALENDAR_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_CALENDAR_SAVED_TURN_START";
 pub(crate) const SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_SAVED_INPUT";
 pub(crate) const CALENDAR_SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_CALENDAR_SAVED_INPUT";
 
@@ -129,6 +130,7 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) linked_conversation_read: bool,
     pub(crate) conversation_list: bool,
     pub(crate) side_chat_saved_turn_start: bool,
+    pub(crate) calendar_saved_turn_start: bool,
     pub(crate) saved_input: bool,
     pub(crate) calendar_saved_input: bool,
 }
@@ -273,6 +275,11 @@ impl RoleArguments {
             side_chat_saved_turn_start: proof.is_some_and(|proof| {
                 proof.permits_turn_start_for(
                     crate::native_harness_bootstrap::SavedTurnStartCaller::SideChat,
+                )
+            }),
+            calendar_saved_turn_start: proof.is_some_and(|proof| {
+                proof.permits_turn_start_for(
+                    crate::native_harness_bootstrap::SavedTurnStartCaller::Calendar,
                 )
             }),
             saved_input: proof.is_some_and(|proof| proof.permits_saved_input()),
@@ -439,6 +446,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
             | SIDE_CHAT_SAVED_TURN_START_ENV
+            | CALENDAR_SAVED_TURN_START_ENV
             | SAVED_INPUT_ENV
             | CALENDAR_SAVED_INPUT_ENV
             | crate::native_provider_prepare_service::LINKED_CONVERSATION_READ_ENV
@@ -5064,13 +5072,20 @@ mod tests {
             revision,
             SavedTurnStartCaller::SideChat,
         );
-        let calendar = VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity, revision);
+        let calendar_input =
+            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity.clone(), revision);
+        let calendar_start = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity,
+            revision,
+            SavedTurnStartCaller::Calendar,
+        );
         for (proof, expected) in [
-            (None, (false, false, false)),
-            (Some(&old), (false, false, false)),
-            (Some(&ordinary), (true, false, false)),
-            (Some(&side_chat), (false, true, false)),
-            (Some(&calendar), (false, false, true)),
+            (None, (false, false, false, false)),
+            (Some(&old), (false, false, false, false)),
+            (Some(&ordinary), (true, false, false, false)),
+            (Some(&side_chat), (false, true, false, false)),
+            (Some(&calendar_input), (false, false, true, false)),
+            (Some(&calendar_start), (false, false, true, true)),
         ] {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
@@ -5081,6 +5096,7 @@ mod tests {
                     environment.saved_input,
                     environment.side_chat_saved_turn_start,
                     environment.calendar_saved_input,
+                    environment.calendar_saved_turn_start,
                 ),
                 expected
             );
@@ -5102,6 +5118,7 @@ mod tests {
             CONVERSATION_COMPLETE_ENV,
             CONVERSATION_SIDE_CHAT_APPEND_ENV,
             SIDE_CHAT_SAVED_TURN_START_ENV,
+            CALENDAR_SAVED_TURN_START_ENV,
             SAVED_INPUT_ENV,
             CALENDAR_SAVED_INPUT_ENV,
             LINKED_CONVERSATION_READ_ENV,

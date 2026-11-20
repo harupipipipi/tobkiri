@@ -18,7 +18,7 @@ use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalCalendarSavedInputChoice, OriginalConversationAppendChoice,
+    OriginalCalendarSavedDispatchChoice, OriginalConversationAppendChoice,
     OriginalConversationCompleteChoice, OriginalConversationCompleteHealthChoice,
     OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
     OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
@@ -414,12 +414,11 @@ impl VerifiedRegistryLaunch {
             .is_some_and(|source| source.permits_read(role))
     }
 
-    /// Require this caller's exact Saved Turn-to-Lifecycle chain and verified Turn start port.
+    /// Require this caller's exact signed chain and verified Turn start port.
     pub(crate) fn permits_turn_start_for(&self, caller: SavedTurnStartCaller) -> bool {
         self.turn
             .as_ref()
-            .and_then(|source| source.start.bundle(caller))
-            .is_some()
+            .is_some_and(|source| source.permits_start(caller))
     }
 
     /// Require the ordinary signed Turn start chain and the verified Turn input port.
@@ -430,10 +429,10 @@ impl VerifiedRegistryLaunch {
     /// Require this caller's signed chain and the verified Turn input port.
     pub(crate) fn permits_saved_input_for(&self, caller: SavedInputCaller) -> bool {
         self.turn.as_ref().is_some_and(|source| {
-            source.declares_saved_input
+            source.ports.input
                 && match caller {
                     SavedInputCaller::SavedTurn => source.start.saved_turn.is_some(),
-                    SavedInputCaller::Calendar => source.calendar_saved_input.is_some(),
+                    SavedInputCaller::Calendar => source.calendar_saved_dispatch.is_some(),
                 }
         })
     }
@@ -777,11 +776,24 @@ struct VerifiedTurnSource {
     settlement: [Option<VerifiedTurnSettlementGrant>; 4],
     read: VerifiedConversationConfirmationRoles,
     start: VerifiedTurnStartRoles,
-    calendar_saved_input: Option<VerifiedOrdinarySavedBundle>,
-    declares_saved_input: bool,
+    calendar_saved_dispatch: Option<VerifiedOrdinarySavedBundle>,
+    ports: VerifiedTurnPorts,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct VerifiedTurnPorts {
+    read: bool,
+    start: bool,
+    input: bool,
+}
+
+impl VerifiedTurnPorts {
+    fn supports_calendar_start(self) -> bool {
+        self.start && self.input
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -807,6 +819,7 @@ impl VerifiedTurnStartRoles {
         match caller {
             SavedTurnStartCaller::SavedTurn => self.saved_turn.as_ref(),
             SavedTurnStartCaller::SideChat => self.side_chat.as_ref(),
+            SavedTurnStartCaller::Calendar => None,
         }
     }
 }
@@ -932,6 +945,15 @@ struct VerifiedGatewayProviderSnapshotEntry {
 }
 
 impl VerifiedTurnSource {
+    fn permits_start(&self, caller: SavedTurnStartCaller) -> bool {
+        match caller {
+            SavedTurnStartCaller::Calendar => {
+                self.ports.supports_calendar_start() && self.calendar_saved_dispatch.is_some()
+            }
+            _ => self.ports.start && self.start.bundle(caller).is_some(),
+        }
+    }
+
     fn permits_settlement(&self, role: SettlementCaller) -> bool {
         self.settlement_grant(role).is_some()
     }
@@ -1623,8 +1645,8 @@ impl VerifiedRegistryLaunch {
                 ],
                 read: VerifiedConversationConfirmationRoles::default(),
                 start: VerifiedTurnStartRoles::default(),
-                calendar_saved_input: None,
-                declares_saved_input: false,
+                calendar_saved_dispatch: None,
+                ports: VerifiedTurnPorts::default(),
                 archive_sha256: "sha256:archive".into(),
                 archive_bytes: 512,
                 manifest_sha256: "sha256:manifest".into(),
@@ -1648,8 +1670,11 @@ impl VerifiedRegistryLaunch {
             settlement: [None, None, None, None],
             read: confirmation.confirmation,
             start: VerifiedTurnStartRoles::default(),
-            calendar_saved_input: None,
-            declares_saved_input: false,
+            calendar_saved_dispatch: None,
+            ports: VerifiedTurnPorts {
+                read: true,
+                ..Default::default()
+            },
             archive_sha256: confirmation.archive_sha256,
             archive_bytes: confirmation.archive_bytes,
             manifest_sha256: confirmation.manifest_sha256,
@@ -1665,19 +1690,28 @@ impl VerifiedRegistryLaunch {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
         let mut start = VerifiedTurnStartRoles::default();
-        let bundle = Some(VerifiedTurnEntryBundle::fixture(
-            caller == SavedTurnStartCaller::SideChat,
-        ));
+        let mut calendar_saved_dispatch = None;
         match caller {
-            SavedTurnStartCaller::SavedTurn => start.saved_turn = bundle,
-            SavedTurnStartCaller::SideChat => start.side_chat = bundle,
+            SavedTurnStartCaller::SavedTurn => {
+                start.saved_turn = Some(VerifiedTurnEntryBundle::fixture(false));
+            }
+            SavedTurnStartCaller::SideChat => {
+                start.side_chat = Some(VerifiedTurnEntryBundle::fixture(true));
+            }
+            SavedTurnStartCaller::Calendar => {
+                calendar_saved_dispatch = Some(VerifiedOrdinarySavedBundle::fixture());
+            }
         }
         proof.turn = Some(VerifiedTurnSource {
             settlement: [None, None, None, None],
             read: VerifiedConversationConfirmationRoles::default(),
             start,
-            calendar_saved_input: None,
-            declares_saved_input: false,
+            calendar_saved_dispatch,
+            ports: VerifiedTurnPorts {
+                start: true,
+                input: caller == SavedTurnStartCaller::Calendar,
+                ..Default::default()
+            },
             archive_sha256: "sha256:archive".into(),
             archive_bytes: 512,
             manifest_sha256: "sha256:manifest".into(),
@@ -1691,7 +1725,7 @@ impl VerifiedRegistryLaunch {
         caller: SavedTurnStartCaller,
     ) -> Self {
         let mut proof = Self::test_turn_start_proof_for(identity, catalog_revision, caller);
-        proof.turn.as_mut().unwrap().declares_saved_input = true;
+        proof.turn.as_mut().unwrap().ports.input = true;
         proof
     }
 
@@ -1702,12 +1736,9 @@ impl VerifiedRegistryLaunch {
         let mut proof = Self::test_turn_start_proof_for(
             identity,
             catalog_revision,
-            SavedTurnStartCaller::SavedTurn,
+            SavedTurnStartCaller::Calendar,
         );
-        let turn = proof.turn.as_mut().unwrap();
-        turn.start = VerifiedTurnStartRoles::default();
-        turn.calendar_saved_input = Some(VerifiedOrdinarySavedBundle::fixture());
-        turn.declares_saved_input = true;
+        proof.turn.as_mut().unwrap().ports.start = false;
         proof
     }
 
@@ -3173,14 +3204,12 @@ pub(super) fn reacquire_turn_start_pack_for(
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
     let source = revalidate_turn_start_source(inspection, proof, caller, &checkpoint)?;
-    reacquire_turn_archive(
-        inspection,
-        proof,
-        source,
-        checkpoint,
-        require_turn_start_declaration,
-    )
-    .context("bundled Turn start archive verification failed")
+    let declaration: fn(&VerifiedPack) -> Result<()> = match caller {
+        SavedTurnStartCaller::Calendar => require_calendar_turn_start_declaration,
+        _ => require_turn_start_declaration,
+    };
+    reacquire_turn_archive(inspection, proof, source, checkpoint, declaration)
+        .context("bundled Turn start archive verification failed")
 }
 
 /// Reacquire the Turn input port under the caller's signed chain.
@@ -3206,13 +3235,7 @@ pub(super) fn reacquire_saved_input_pack(
                 .turn
                 .as_ref()
                 .context("admitted launch has no verified Turn source")?;
-            let bundle = source
-                .calendar_saved_input
-                .as_ref()
-                .context("admitted launch has no verified Calendar Saved Input source")?;
-            checkpoint()?;
-            inspection.with_source(|sources| bundle.require_source(sources))??;
-            bundle.revalidate(inspection.allocation_budget()?, &checkpoint)?;
+            revalidate_calendar_saved_dispatch(inspection, source, &checkpoint)?;
             source
         }
     };
@@ -3235,15 +3258,37 @@ fn revalidate_turn_start_source<'proof>(
     let source = proof
         .turn
         .as_ref()
-        .context("admitted launch has no verified Turn source")?;
-    let start = source
-        .start
-        .bundle(caller)
+        .filter(|source| source.permits_start(caller))
         .context("admitted launch has no verified Turn start source for the caller")?;
-    checkpoint()?;
-    inspection.with_source(|sources| start.require_source(sources))??;
-    start.revalidate(inspection.allocation_budget()?, checkpoint)?;
+    match caller {
+        SavedTurnStartCaller::Calendar => {
+            revalidate_calendar_saved_dispatch(inspection, source, checkpoint)?;
+        }
+        _ => {
+            let start = source
+                .start
+                .bundle(caller)
+                .context("admitted launch has no verified Turn start bundle for the caller")?;
+            checkpoint()?;
+            inspection.with_source(|sources| start.require_source(sources))??;
+            start.revalidate(inspection.allocation_budget()?, checkpoint)?;
+        }
+    }
     Ok(source)
+}
+
+fn revalidate_calendar_saved_dispatch(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    source: &VerifiedTurnSource,
+    checkpoint: &impl Fn() -> Result<()>,
+) -> Result<()> {
+    let bundle = source
+        .calendar_saved_dispatch
+        .as_ref()
+        .context("admitted launch has no verified automatic Calendar dispatch source")?;
+    checkpoint()?;
+    inspection.with_source(|sources| bundle.require_source(sources))??;
+    bundle.revalidate(inspection.allocation_budget()?, checkpoint)
 }
 
 fn reacquire_turn_archive(
@@ -3671,10 +3716,10 @@ fn verify_turn_source(
     } else {
         VerifiedTurnStartRoles::default()
     };
-    let calendar_saved_input = if receipt.version() == TURN_INPUT_VERSION {
-        if let Some(choice) = OriginalCalendarSavedInputChoice::select(active, budget)? {
+    let calendar_saved_dispatch = if receipt.version() == TURN_INPUT_VERSION {
+        if let Some(choice) = OriginalCalendarSavedDispatchChoice::select(active, budget)? {
             let locked = inspection
-                .with_source(|sources| sources.calendar_saved_input_bundle(&choice, budget))??;
+                .with_source(|sources| sources.calendar_saved_dispatch_bundle(&choice, budget))??;
             Some(locked.verify(&checkpoint)?)
         } else {
             None
@@ -3684,7 +3729,7 @@ fn verify_turn_source(
     };
     let has_read = !read.is_empty();
     let has_settlement = selections.iter().any(Option::is_some);
-    if !has_settlement && !has_read && start.is_empty() && calendar_saved_input.is_none() {
+    if !has_settlement && !has_read && start.is_empty() && calendar_saved_dispatch.is_none() {
         return Ok(None);
     }
     let mut settlement = [None, None, None, None];
@@ -3708,17 +3753,17 @@ fn verify_turn_source(
         }
     }
     let pack = verify_registry_archive(inspection, receipt, input)?;
-    let declares_read = require_turn_settlement_declaration(&pack)?;
+    let ports = require_turn_settlement_declaration(&pack)?;
     ensure!(
-        !has_read || declares_read,
+        !has_read || ports.read,
         "bundled Turn Pack has no read port"
     );
     Ok(Some(VerifiedTurnSource {
         settlement,
         read,
         start,
-        calendar_saved_input,
-        declares_saved_input: pack.manifest.version == TURN_INPUT_VERSION,
+        calendar_saved_dispatch,
+        ports,
         archive_sha256: receipt.archive_sha256().to_owned(),
         archive_bytes: receipt.archive_bytes(),
         manifest_sha256: receipt.manifest_sha256().to_owned(),
@@ -4429,7 +4474,7 @@ fn require_provider_adapter_declaration(pack: &VerifiedPack) -> Result<()> {
 
 fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
-        require_turn_settlement_declaration(pack)?,
+        require_turn_settlement_declaration(pack)?.read,
         "bundled Turn Pack has no read port"
     );
     Ok(())
@@ -4437,19 +4482,25 @@ fn require_turn_read_declaration(pack: &VerifiedPack) -> Result<()> {
 
 fn require_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
-        matches!(pack.manifest.version.as_str(), "0.3.0" | TURN_INPUT_VERSION),
+        require_turn_settlement_declaration(pack)?.start,
         "bundled Turn Pack has no verified start port"
     );
-    require_turn_settlement_declaration(pack)?;
+    Ok(())
+}
+
+fn require_calendar_turn_start_declaration(pack: &VerifiedPack) -> Result<()> {
+    ensure!(
+        require_turn_settlement_declaration(pack)?.supports_calendar_start(),
+        "bundled Turn Pack has no verified v0.4 Calendar start port"
+    );
     Ok(())
 }
 
 fn require_turn_input_declaration(pack: &VerifiedPack) -> Result<()> {
     ensure!(
-        pack.manifest.version == TURN_INPUT_VERSION,
+        require_turn_settlement_declaration(pack)?.input,
         "bundled Turn Pack has no verified input port"
     );
-    require_turn_settlement_declaration(pack)?;
     Ok(())
 }
 
@@ -4615,7 +4666,7 @@ const TURN_SETTLEMENT_WIT_FILES: [(&str, &[u8]); 2] = [
     ),
 ];
 
-fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
+fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<VerifiedTurnPorts> {
     const SETTLEMENT: &str = "local.saved-turn-runtime.legacy-settlement@1.0";
     const READ: &str = "local.saved-turn-runtime.legacy-read@1.0";
     const START: &str = "local.saved-turn-runtime.legacy-start@1.0";
@@ -4678,7 +4729,7 @@ fn require_turn_settlement_declaration(pack: &VerifiedPack) -> Result<bool> {
             "bundled Turn Pack has no exact legacy input port"
         );
     }
-    Ok(read)
+    Ok(VerifiedTurnPorts { read, start, input })
 }
 
 fn verify_stateless_registry_surface(pack: &VerifiedPack, id: &str, ports: usize) -> Result<()> {
@@ -5916,10 +5967,24 @@ mod tests {
             verify_directory(&path, &Default::default()).unwrap()
         };
         let current = verify(draft);
-        assert!(require_turn_settlement_declaration(&current).unwrap());
+        assert!(require_turn_settlement_declaration(&current).unwrap().read);
         assert!(require_turn_read_declaration(&current).is_ok());
         assert!(require_turn_start_declaration(&current).is_ok());
         assert!(require_turn_input_declaration(&current).is_ok());
+        assert!(require_calendar_turn_start_declaration(&current).is_ok());
+
+        let mut optional_start: serde_json::Value = serde_json::from_slice(draft).unwrap();
+        let ports = optional_start["ports"]["provides"].as_array_mut().unwrap();
+        let start = ports
+            .iter_mut()
+            .find(|port| port["shape"] == "local.saved-turn-runtime.legacy-start")
+            .unwrap();
+        start["optional"] = serde_json::json!(true);
+        let incomplete = verify(&serde_json::to_vec(&optional_start).unwrap());
+        assert!(require_calendar_turn_start_declaration(&incomplete)
+            .unwrap_err()
+            .to_string()
+            .contains("no exact legacy start port"));
 
         let mut extra: serde_json::Value = serde_json::from_slice(draft).unwrap();
         extra["permissions"]["storage"] = serde_json::json!({"private": true});
@@ -5972,6 +6037,7 @@ mod tests {
         let start = verify(&serde_json::to_vec(&old).unwrap());
         assert!(require_turn_start_declaration(&start).is_ok());
         assert!(require_turn_input_declaration(&start).is_err());
+        assert!(require_calendar_turn_start_declaration(&start).is_err());
 
         let (previous, after) = start_wit.split_once("interface legacy-start {").unwrap();
         let (_, world) = after.split_once("world pack {").unwrap();
@@ -6013,7 +6079,7 @@ mod tests {
             .retain(|file| file != TURN_READ_SHAPE.0);
         let old = serde_json::to_vec(&old).unwrap();
         let original = verify(&old);
-        assert!(!require_turn_settlement_declaration(&original).unwrap());
+        assert!(!require_turn_settlement_declaration(&original).unwrap().read);
         assert!(require_turn_read_declaration(&original).is_err());
         assert!(require_turn_start_declaration(&original).is_err());
     }
@@ -6376,6 +6442,7 @@ mod tests {
         let callers = [
             SavedTurnStartCaller::SavedTurn,
             SavedTurnStartCaller::SideChat,
+            SavedTurnStartCaller::Calendar,
         ];
         for caller in callers {
             let start = VerifiedRegistryLaunch::test_turn_start_proof_for(
@@ -6386,6 +6453,11 @@ mod tests {
             for requested in callers {
                 assert_eq!(start.permits_turn_start_for(requested), requested == caller);
             }
+            assert!(!start.permits_saved_input_for(SavedInputCaller::SavedTurn));
+            assert_eq!(
+                start.permits_saved_input_for(SavedInputCaller::Calendar),
+                caller == SavedTurnStartCaller::Calendar
+            );
             assert!(!start.permits_saved_orchestration());
             assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
                 identity.clone(),
@@ -6423,6 +6495,18 @@ mod tests {
                 .permits_turn_start_for(caller));
             }
         }
+
+        let input_only =
+            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity.clone(), revision);
+        assert!(input_only.permits_saved_input_for(SavedInputCaller::Calendar));
+        assert!(!input_only.permits_turn_start_for(SavedTurnStartCaller::Calendar));
+        let mut old = VerifiedRegistryLaunch::test_turn_start_proof_for(
+            identity,
+            revision,
+            SavedTurnStartCaller::Calendar,
+        );
+        old.turn.as_mut().unwrap().ports.input = false;
+        assert!(!old.permits_turn_start_for(SavedTurnStartCaller::Calendar));
     }
 
     #[test]

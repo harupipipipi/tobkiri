@@ -646,10 +646,15 @@ def _turn_start_request(
 @contextmanager
 def _served_turn_start(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
+    *, calendar: bool = False,
 ) -> Iterator[Callable[[ipc.NativeSavedTurnStartRequest], Mapping[str, Any]]]:
     with _served(monkeypatch, serve):
-        monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
-        writer = ipc.capture_launcher_saved_turn_start_writer()
+        if calendar:
+            monkeypatch.setenv(ipc._CALENDAR_START_ENV, "1")
+            writer = ipc.capture_launcher_calendar_turn_start_writer()
+        else:
+            monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
+            writer = ipc.capture_launcher_saved_turn_start_writer()
         assert writer is not None
         yield writer
 
@@ -992,10 +997,34 @@ def test_side_chat_turn_start_uses_separate_admission_and_exact_caller(
         ipc._turn_start_payload(replace(ordinary, caller="forged"))  # type: ignore[arg-type]
 
 
+def test_calendar_turn_start_capture_rejects_other_callers_before_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(ipc._CALENDAR_START_ENV, raising=False)
+    monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
+    monkeypatch.setenv(ipc._SIDE_CHAT_START_ENV, "1")
+    monkeypatch.setattr(ipc, "_capture_launcher", object)
+    assert ipc.capture_launcher_calendar_turn_start_writer() is None
+    monkeypatch.setenv(ipc._CALENDAR_START_ENV, "1")
+    calendar = ipc.capture_launcher_calendar_turn_start_writer()
+    ordinary = ipc.capture_launcher_saved_turn_start_writer()
+    side_chat = ipc.capture_launcher_side_chat_turn_start_writer()
+    assert calendar is not None and ordinary is not None and side_chat is not None
+    request = _turn_start_request(_Borrow(), _unexpected_marker)
+    scheduled = replace(request, caller="calendar")
+    linked = replace(request, caller="side-chat")
+    for writer, borrow in ((calendar, request), (calendar, linked),
+                           (ordinary, scheduled), (side_chat, scheduled)):
+        with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
+            writer(borrow)
+
+
 @pytest.mark.parametrize("action", ["begin", "claim"])
 @pytest.mark.parametrize("published", [False, True])
+@pytest.mark.parametrize("calendar", [False, True])
 def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
     monkeypatch: pytest.MonkeyPatch, action: ipc.SavedTurnStartAction, published: bool,
+    calendar: bool,
 ) -> None:
     borrow = _Borrow()
     marks: list[bool] = []
@@ -1009,6 +1038,7 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
     request = replace(
         _turn_start_request(borrow, lambda: marks.append(True), action),
         assert_current=guard,
+        caller="calendar" if calendar else "saved-turn",
     )
     status = "queued" if action == "begin" and published else "running"
     row = dict(_STARTED_TURN, status=status, details="会話")
@@ -1032,6 +1062,7 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
             "runtime_instance": borrow.runtime_instance,
             "deadline_ns": numerator * 1_000_000_000 // denominator,
             "turn_start": {
+                **({"caller": "calendar"} if calendar else {}),
                 "action": action, "turn_id": "turn-1", "conversation_id": "conversation-1",
                 "conversation_revision": 3, "input_digest": _TURN_DIGEST,
                 "source_digest": _SOURCE_DIGEST,
@@ -1049,8 +1080,9 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
         _send(peer, 7, response)
         assert peer.recv(1) == b""
 
-    with _served_turn_start(monkeypatch, serve) as writer:
-        monkeypatch.delenv(ipc._SAVED_TURN_START_ENV)
+    with _served_turn_start(monkeypatch, serve, calendar=calendar) as writer:
+        marker = ipc._CALENDAR_START_ENV if calendar else ipc._SAVED_TURN_START_ENV
+        monkeypatch.delenv(marker)
         assert writer(request) == {"claimed": claimed, "turn": row}
     assert marks == ([True] if published else [])
 

@@ -1058,6 +1058,7 @@ where
     match String::deserialize(deserializer)?.as_str() {
         "saved-turn" => Ok(SavedTurnStartCaller::SavedTurn),
         "side-chat" => Ok(SavedTurnStartCaller::SideChat),
+        "calendar" => Ok(SavedTurnStartCaller::Calendar),
         _ => Err(de::Error::custom("unknown Turn start caller")),
     }
 }
@@ -5355,6 +5356,7 @@ mod tests {
         for (field, expected) in [
             (r#""caller":"saved-turn""#, SavedTurnStartCaller::SavedTurn),
             (r#""caller":"side-chat""#, SavedTurnStartCaller::SideChat),
+            (r#""caller":"calendar""#, SavedTurnStartCaller::Calendar),
         ] {
             let frame = message(field);
             let start = parse_start(START, frame.as_bytes()).unwrap();
@@ -5366,6 +5368,9 @@ mod tests {
         for field in [
             r#""caller":"side_chat""#,
             r#""caller":"saved-reconcile""#,
+            r#""caller":"calendar-manual""#,
+            r#""caller":"calendar-status""#,
+            r#""caller":"Calendar""#,
             r#""caller":null"#,
             r#""caller":"side-chat","caller":"saved-turn""#,
             r#""Caller":"side-chat""#,

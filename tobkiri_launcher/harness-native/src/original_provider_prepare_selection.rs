@@ -1197,6 +1197,8 @@ pub enum SavedTurnStartCaller {
     SavedTurn,
     /// The selected Shell invokes Saved Turn through the Side Chat service.
     SideChat,
+    /// The Scheduler Clock wakes an automatic Calendar dispatch.
+    Calendar,
 }
 
 /// The signed entry point behind a Saved Input request.
@@ -1208,20 +1210,21 @@ pub enum SavedInputCaller {
     Calendar,
 }
 
-/// The signed chain from the Scheduler Clock to Turn Lifecycle for automatic Calendar dispatch.
-pub struct OriginalCalendarSavedInputChoice<'a> {
+/// The signed chain from the Scheduler Clock to Turn Lifecycle for automatic Calendar dispatch,
+/// shared by saved input and Turn start.
+pub struct OriginalCalendarSavedDispatchChoice<'a> {
     _active: &'a OriginalActiveProfile,
     pins: [OriginalRoutePin; 4],
 }
 
-impl<'a> OriginalCalendarSavedInputChoice<'a> {
+impl<'a> OriginalCalendarSavedDispatchChoice<'a> {
     /// Select the four exact grants. Verify every pin against the signed Bundle before use.
     pub fn select(
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
         Ok(
-            select_calendar_saved_input_records(active.records(), budget)?.map(|pins| Self {
+            select_calendar_saved_dispatch_records(active.records(), budget)?.map(|pins| Self {
                 _active: active,
                 pins,
             }),
@@ -1250,7 +1253,8 @@ impl<'a> OriginalSavedTurnStartChoice<'a> {
         Self::select_for(active, budget, SavedTurnStartCaller::SavedTurn)
     }
 
-    /// Select this caller's exact start grants. Verify every pin against the signed Bundle.
+    /// Select a Shell caller's exact start grants. Calendar uses
+    /// [`OriginalCalendarSavedDispatchChoice`]. Verify every pin against the signed Bundle.
     pub fn select_for(
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
@@ -2624,15 +2628,15 @@ fn select_saved_turn_start_records(
     budget: &Arc<dyn AllocationBudget>,
     caller: SavedTurnStartCaller,
 ) -> Result<Option<SavedTurnStartPins>> {
+    let via_side_chat = match caller {
+        SavedTurnStartCaller::SavedTurn => false,
+        SavedTurnStartCaller::SideChat => true,
+        SavedTurnStartCaller::Calendar => return Ok(None),
+    };
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some((side_chat, turn)) = select_turn_entry(
-        &records,
-        matches!(caller, SavedTurnStartCaller::SideChat),
-        &SAVED_TURN,
-    )?
-    else {
+    let Some((side_chat, turn)) = select_turn_entry(&records, via_side_chat, &SAVED_TURN)? else {
         return Ok(None);
     };
     Ok(records
@@ -2640,7 +2644,7 @@ fn select_saved_turn_start_records(
         .map(|lifecycle| (side_chat, [turn, lifecycle])))
 }
 
-fn select_calendar_saved_input_records(
+fn select_calendar_saved_dispatch_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<Option<[OriginalRoutePin; 4]>> {
@@ -5605,10 +5609,15 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let select = |fixture: &Value| {
             let [profile, lock, plan] = parse_records(fixture, &budget);
-            select_calendar_saved_input_records((&profile, &lock, &plan), &budget)
+            select_calendar_saved_dispatch_records((&profile, &lock, &plan), &budget)
         };
         let mut fixture = records();
         assert!(select(&fixture).unwrap().is_none());
+        assert!(
+            select_saved_turn_start_for(&fixture, SavedTurnStartCaller::Calendar)
+                .unwrap()
+                .is_none()
+        );
         let first_row = fixture["plan"]["bindings"].as_array().unwrap().len();
         let chain = [
             (SCHEDULER_CLOCK_CALLER, &SCHEDULER_CONTROL),
@@ -5642,6 +5651,21 @@ mod tests {
             assert!(select(&missing).unwrap().is_none(), "grant {row}");
         }
 
+        let mut calendar_only = fixture.clone();
+        for (record, edges) in [("profile", "requested_edges"), ("plan", "bindings")] {
+            calendar_only[record][edges]
+                .as_array_mut()
+                .unwrap()
+                .remove(TURN_LIFECYCLE_ROW);
+        }
+        assert!(select(&calendar_only).unwrap().is_some());
+        assert!(select_saved_turn_start(&calendar_only).unwrap().is_none());
+        assert!(
+            select_saved_turn_start_for(&calendar_only, SavedTurnStartCaller::SideChat)
+                .unwrap()
+                .is_none()
+        );
+
         let mut manual = fixture;
         manual["profile"]["requested_edges"]
             .as_array_mut()
@@ -5659,6 +5683,14 @@ mod tests {
         );
         assert!(select(&manual).unwrap().is_none());
         assert!(select_saved_turn_start(&manual).unwrap().is_some());
+
+        add_fixture_grant(
+            &mut manual,
+            "rumi_schedule_store_pack.calendar.resource",
+            &SCHEDULER_CONTROL,
+            &budget,
+        );
+        assert!(select(&manual).unwrap().is_none());
     }
 
     #[test]
