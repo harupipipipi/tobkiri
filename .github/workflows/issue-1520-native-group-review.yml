@@ -92,11 +92,12 @@ jobs:
         run: cargo test --locked -p tobkiri-harness-native --lib original_local_chat::tests
       - name: Verify atomic saved input in the original SQLite owner
         run: cargo test --locked -p tobkiri-harness-native --lib original_saved_turn_settlement::input_store::tests
-      - name: Verify the signed Calendar Saved Input route
+      - name: Verify the signed Calendar saved routes
         run: >-
           cargo test --locked -p tobkiri-harness-native --lib --
           calendar_saved_input_requires_a_complete_scheduler_clock_chain
           calendar_manual_saved_dispatch_requires_all_five_grants
+          calendar_saved_orchestration_requires_its_own_guest_grant_and_entry
   actual-macos-host:
     runs-on: macos-15
     timeout-minutes: 50
@@ -167,6 +168,10 @@ jobs:
           saved_input_environment_requires_the_current_proof_for_each_caller
           sealed_python::tests::side_chat_append_environment_requires_its_own_launch_proof
           sealed_python::tests::side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs
+          saved_orchestration_admits_only_the_callers_proof_before_body_ready
+          saved_orchestration_start_requires_a_bounded_length_and_no_other_operation
+          saved_orchestration_uses_its_own_proof_and_funds_transport_capacity
+          saved_orchestration_admission_carries_the_exact_manifest_for_defaultspack
           saved_request_markers_are_allowed_for_defaultspack_only
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
           malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

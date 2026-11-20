@@ -35,8 +35,9 @@ use crate::{
         OriginalModelResolveRole, OriginalSavedReceiptRole, PendingProviderPrepare,
         ProviderPrepareDeadline, ProviderSnapshotRequiresLegacyRead, RegistryResponse,
         SavedInputCaller, SavedInputMode, SavedLocalChatRequiresLegacyRequest,
-        SavedOrchestrationStepError, SavedTurnStartAction, SavedTurnStartCaller, SettlementCaller,
-        TurnSettlementRequiresLegacyCodec, TurnStartRequiresLegacyCodec, AI_GATEWAY_DATA_LIMIT,
+        SavedOrchestrationCaller, SavedOrchestrationStepError, SavedTurnStartAction,
+        SavedTurnStartCaller, SettlementCaller, TurnSettlementRequiresLegacyCodec,
+        TurnStartRequiresLegacyCodec, VerifiedRegistryLaunch, AI_GATEWAY_DATA_LIMIT,
         APPLICATION_PRESENTATION_INPUT_LIMIT, APPLICATION_PRESENTATION_RESULT_LIMIT,
         CONVERSATION_APPEND_LIMIT, CONVERSATION_COMPLETE_RESULT_LIMIT,
         CONVERSATION_CONFIRMATION_LIMIT, CONVERSATION_READ_REPLY_LIMIT, MODEL_RESOLVE_REPLY_LIMIT,
@@ -129,6 +130,7 @@ enum RequestStart {
     Inline(NativeRegistryRequest),
     SavedInput(SavedInputStart),
     SavedOrchestration {
+        caller: SavedOrchestrationCaller,
         input_bytes: usize,
     },
     ApplicationPresentation {
@@ -151,6 +153,23 @@ enum RequestStart {
 }
 
 impl RequestStart {
+    fn has_launch_proof(&self, proof: &VerifiedRegistryLaunch) -> bool {
+        match self {
+            Self::Inline(operation) => operation.has_launch_proof(proof),
+            Self::SavedInput(input) => proof.permits_saved_input_for(input.caller),
+            Self::SavedOrchestration { caller, .. } => proof.permits_saved_orchestration(*caller),
+            Self::ApplicationPresentation { role, .. } => {
+                proof.permits_application_presentation(*role)
+            }
+            Self::ConversationComplete { .. } => proof.permits_conversation_complete(),
+            Self::ModelAccessProjection { phase, .. } => {
+                proof.permits_model_access_projection(phase.role())
+            }
+            Self::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
+            Self::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
+        }
+    }
+
     fn reject_missing_launch_proof(
         &self,
         stream: &mut UnixStream,
@@ -159,6 +178,10 @@ impl RequestStart {
         let (tag, payload): (u8, &[u8]) = match self {
             Self::ConversationComplete { .. }
             | Self::ModelAccessProjection { .. }
+            | Self::SavedOrchestration {
+                caller: SavedOrchestrationCaller::Calendar,
+                ..
+            }
             | Self::SavedInput(_) => (FAILURE, b"denied"),
             Self::ApplicationPresentation { .. } => (FAILURE, b"unavailable"),
             _ => (INAPPLICABLE, &[]),
@@ -363,6 +386,7 @@ impl Start<'_> {
                     "invalid Saved Orchestration input size"
                 );
                 return Ok(RequestStart::SavedOrchestration {
+                    caller: saved.caller,
                     input_bytes: saved.input_bytes,
                 });
             }
@@ -660,6 +684,8 @@ struct TurnStartReply<'a> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedOrchestrationStart {
+    #[serde(default, deserialize_with = "deserialize_saved_orchestration_caller")]
+    caller: SavedOrchestrationCaller,
     input_bytes: usize,
 }
 
@@ -1337,6 +1363,18 @@ where
     }
 }
 
+fn deserialize_saved_orchestration_caller<'de, D>(
+    deserializer: D,
+) -> std::result::Result<SavedOrchestrationCaller, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?.as_str() {
+        "calendar" => Ok(SavedOrchestrationCaller::Calendar),
+        _ => Err(de::Error::custom("unknown Saved Orchestration caller")),
+    }
+}
+
 fn deserialize_saved_caller<'de, D>(
     deserializer: D,
 ) -> std::result::Result<OriginalSavedReceiptRole, D::Error>
@@ -1617,22 +1655,7 @@ pub(crate) fn admit_connection(
             return Ok(None);
         }
     }
-    let proof = candidate.verified_source();
-    let has_launch_proof = match &request {
-        RequestStart::Inline(operation) => operation.has_launch_proof(proof),
-        RequestStart::SavedInput(input) => proof.permits_saved_input_for(input.caller),
-        RequestStart::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
-        RequestStart::ApplicationPresentation { role, .. } => {
-            proof.permits_application_presentation(*role)
-        }
-        RequestStart::ConversationComplete { .. } => proof.permits_conversation_complete(),
-        RequestStart::ModelAccessProjection { phase, .. } => {
-            proof.permits_model_access_projection(phase.role())
-        }
-        RequestStart::AiGatewayData { operation, .. } => operation.has_launch_proof(proof),
-        RequestStart::SavedLocalChat(chat) => proof.permits_saved_local_chat(chat.role),
-    };
-    if !matches_runtime || !has_launch_proof {
+    if !matches_runtime || !request.has_launch_proof(candidate.verified_source()) {
         request.reject_missing_launch_proof(
             &mut stream,
             deadline.min(Instant::now() + FRAME_TIMEOUT),
@@ -1717,14 +1740,17 @@ impl AdmittedConnection {
                     },
                 );
             }
-            RequestStart::SavedOrchestration { input_bytes } => {
+            RequestStart::SavedOrchestration {
+                caller,
+                input_bytes,
+            } => {
                 let body_deadline = deadline.min(Instant::now() + FRAME_TIMEOUT);
                 let Some(input) =
                     receive_orchestration_input(&mut stream, input_bytes, body_deadline)?
                 else {
                     return send_frame(&mut stream, FAILURE, b"cancelled", body_deadline);
                 };
-                NativeRegistryRequest::SavedOrchestration { input }
+                NativeRegistryRequest::SavedOrchestration { caller, input }
             }
             RequestStart::ApplicationPresentation { role, input_bytes } => {
                 let connection = Connection::new(
@@ -4523,15 +4549,23 @@ mod tests {
         let start = |descriptor: &str, extra: &str| {
             start_frame(&format!(r#", "saved_orchestration":{descriptor}{extra}"#))
         };
-        for input_bytes in [1, SAVED_ORCHESTRATION_FRAME_LIMIT] {
-            let frame = start(&format!(r#"{{"input_bytes":{input_bytes}}}"#), "");
-            validate_start_size(START, frame.len()).unwrap();
-            assert!(matches!(
-                parse_start(START, frame.as_bytes()).unwrap().request_start(),
-                Ok(RequestStart::SavedOrchestration { input_bytes: declared })
-                    if declared == input_bytes
-            ));
-            assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+        for (field, caller) in [
+            ("", SavedOrchestrationCaller::Ordinary),
+            (
+                r#", "caller":"calendar""#,
+                SavedOrchestrationCaller::Calendar,
+            ),
+        ] {
+            for input_bytes in [1, SAVED_ORCHESTRATION_FRAME_LIMIT] {
+                let frame = start(&format!(r#"{{"input_bytes":{input_bytes}{field}}}"#), "");
+                validate_start_size(START, frame.len()).unwrap();
+                assert!(matches!(
+                    parse_start(START, frame.as_bytes()).unwrap().request_start(),
+                    Ok(RequestStart::SavedOrchestration { input_bytes: declared, caller: actual })
+                        if declared == input_bytes && actual == caller
+                ));
+                assert!(parse_start(START_APPEND, frame.as_bytes()).is_err());
+            }
         }
         for descriptor in [
             "{}".to_owned(),
@@ -4543,6 +4577,13 @@ mod tests {
             r#"{"input_bytes":"1"}"#.to_owned(),
             r#"{"input_bytes":1,"input_bytes":1}"#.to_owned(),
             r#"{"input_bytes":1,"input":{}}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":null}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":true}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":{"calendar":null}}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":"ordinary"}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":"calendar-manual"}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":"calendar-status"}"#.to_owned(),
+            r#"{"input_bytes":1,"caller":"calendar","caller":"calendar"}"#.to_owned(),
             format!(
                 r#"{{"input_bytes":{}}}"#,
                 SAVED_ORCHESTRATION_FRAME_LIMIT + 1
@@ -4569,6 +4610,55 @@ mod tests {
                     .is_err(),
                 "{extra}"
             );
+        }
+    }
+
+    #[test]
+    fn saved_orchestration_admits_only_the_callers_proof_before_body_ready() {
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: "revision".into(),
+            activation_id: "activation".into(),
+            plan_digest: "plan".into(),
+        };
+        for granted in [
+            SavedOrchestrationCaller::Ordinary,
+            SavedOrchestrationCaller::Calendar,
+        ] {
+            let proof = VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
+                identity.clone(),
+                "catalog",
+                granted,
+            );
+            for (caller, rejection) in [
+                (
+                    SavedOrchestrationCaller::Ordinary,
+                    (INAPPLICABLE, b"".as_slice()),
+                ),
+                (
+                    SavedOrchestrationCaller::Calendar,
+                    (FAILURE, b"denied".as_slice()),
+                ),
+            ] {
+                let request = RequestStart::SavedOrchestration {
+                    caller,
+                    input_bytes: 2,
+                };
+                assert_eq!(request.has_launch_proof(&proof), caller == granted);
+                if caller != granted {
+                    let (mut client, mut server) = UnixStream::pair().unwrap();
+                    let deadline = Instant::now() + FRAME_TIMEOUT;
+                    request
+                        .reject_missing_launch_proof(&mut server, deadline)
+                        .unwrap();
+                    let (tag, bytes) = read_header(&mut client, deadline).unwrap();
+                    assert_eq!(tag, rejection.0);
+                    assert_eq!(
+                        read_input_bytes(&mut client, bytes, deadline).unwrap(),
+                        rejection.1
+                    );
+                }
+            }
         }
     }
 

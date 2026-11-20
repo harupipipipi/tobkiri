@@ -64,6 +64,8 @@ const MACOS_CI_PACKVM_FREE: bool = cfg!(all(
 ));
 pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
+pub(crate) const CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
+    "TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST";
 pub(crate) const PROVIDER_SNAPSHOT_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT";
 pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
 pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
@@ -132,6 +134,7 @@ impl SealedStartupPolicy {
 pub(crate) struct NativeRegistryEnvironment {
     pub(crate) provider_snapshot_version: Option<&'static str>,
     pub(crate) saved_orchestration_manifest: Option<String>,
+    pub(crate) calendar_saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
@@ -190,6 +193,7 @@ impl RoleArguments {
         mut self,
         proof: Option<&crate::native_harness_bootstrap::VerifiedRegistryLaunch>,
     ) -> Self {
+        use crate::native_harness_bootstrap::SavedOrchestrationCaller;
         use tobkiri_harness_native::OriginalProviderSnapshotRole::{
             Adapter, ConversationCompleteHealth, GatewayHealth, ModelAccessCatalog,
             ModelAccessRead, ReviewerHealth,
@@ -268,7 +272,14 @@ impl RoleArguments {
                 }
             }),
             saved_orchestration_manifest: proof
-                .and_then(|proof| proof.saved_orchestration_manifest())
+                .and_then(|proof| {
+                    proof.saved_orchestration_manifest(SavedOrchestrationCaller::Ordinary)
+                })
+                .map(str::to_owned),
+            calendar_saved_orchestration_manifest: proof
+                .and_then(|proof| {
+                    proof.saved_orchestration_manifest(SavedOrchestrationCaller::Calendar)
+                })
                 .map(str::to_owned),
             application_presentation_manifest: proof
                 .and_then(|proof| proof.application_presentation_manifest_sha256())
@@ -474,6 +485,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         key,
         PROVIDER_SNAPSHOT_ENV
             | SAVED_ORCHESTRATION_MANIFEST_ENV
+            | CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV
             | APPLICATION_PRESENTATION_ENV
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
@@ -4672,7 +4684,7 @@ mod tests {
     #[test]
     fn saved_orchestration_admission_carries_the_exact_manifest_for_defaultspack() {
         use crate::host_contract::ExecutionProfileIdentity;
-        use crate::native_harness_bootstrap::VerifiedRegistryLaunch;
+        use crate::native_harness_bootstrap::{SavedOrchestrationCaller, VerifiedRegistryLaunch};
 
         let identity = ExecutionProfileIdentity {
             profile_id: "profile".into(),
@@ -4680,34 +4692,53 @@ mod tests {
             activation_id: "activation".into(),
             plan_digest: digest('d'),
         };
-        let other_proof = VerifiedRegistryLaunch::test_proof(identity.clone(), "catalog");
-        let verified = VerifiedRegistryLaunch::test_saved_orchestration_proof(identity, "catalog");
         let expected = format!("sha256:{}", digest('b'));
 
-        for (proof, digest) in [
-            (None, None),
-            (Some(&other_proof), None),
-            (Some(&verified), Some(expected.as_str())),
+        for (include_proof, caller) in [
+            (false, None),
+            (true, None),
+            (true, Some(SavedOrchestrationCaller::Ordinary)),
+            (true, Some(SavedOrchestrationCaller::Calendar)),
         ] {
+            let proof = include_proof.then(|| match caller {
+                Some(caller) => VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
+                    identity.clone(),
+                    "catalog",
+                    caller,
+                ),
+                None => VerifiedRegistryLaunch::test_proof(identity.clone(), "catalog"),
+            });
             let (args, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
-                .with_native_registry_admission(proof)
+                .with_native_registry_admission(proof.as_ref())
                 .split_native_registry_environment();
-            assert_eq!(environment.saved_orchestration_manifest.as_deref(), digest);
+            assert_eq!(
+                environment.saved_orchestration_manifest.as_deref(),
+                (caller == Some(SavedOrchestrationCaller::Ordinary)).then_some(expected.as_str()),
+            );
+            assert_eq!(
+                environment.calendar_saved_orchestration_manifest.as_deref(),
+                (caller == Some(SavedOrchestrationCaller::Calendar)).then_some(expected.as_str()),
+            );
             assert!(environment.application_presentation_manifest.is_none());
             assert_eq!(args.into_values(), [OsString::from("serve")]);
         }
 
-        let key = OsStr::new(SAVED_ORCHESTRATION_MANIFEST_ENV);
-        assert!(packaged_environment_key_allowed(
-            PythonRole::Defaultspack,
-            key
-        ));
-        assert!(!packaged_environment_key_allowed(PythonRole::Kernel, key));
-        assert!(!packaged_environment_key_allowed(
-            PythonRole::HostHelper,
-            key
-        ));
+        for name in [
+            SAVED_ORCHESTRATION_MANIFEST_ENV,
+            CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV,
+        ] {
+            let key = OsStr::new(name);
+            assert!(packaged_environment_key_allowed(
+                PythonRole::Defaultspack,
+                key
+            ));
+            assert!(!packaged_environment_key_allowed(PythonRole::Kernel, key));
+            assert!(!packaged_environment_key_allowed(
+                PythonRole::HostHelper,
+                key
+            ));
+        }
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]

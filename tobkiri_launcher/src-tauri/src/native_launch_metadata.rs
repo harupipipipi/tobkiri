@@ -18,10 +18,10 @@ use tobkiri_gate::{ControlKind, CoreCancellation, PermissionSet};
 use tobkiri_harness_native::{
     select_original_saved_turn_settlement, OriginalActivationInspection, OriginalActiveProfile,
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalCalendarSavedDispatchChoice, OriginalConversationAppendChoice,
-    OriginalConversationCompleteChoice, OriginalConversationCompleteHealthChoice,
-    OriginalConversationConfirmationChoice, OriginalConversationReadSelection,
-    OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
+    OriginalCalendarSavedDispatchChoice, OriginalCalendarSavedOrchestrationChoice,
+    OriginalConversationAppendChoice, OriginalConversationCompleteChoice,
+    OriginalConversationCompleteHealthChoice, OriginalConversationConfirmationChoice,
+    OriginalConversationReadSelection, OriginalFailoverChoice, OriginalGatewayProviderHealthChoice,
     OriginalGatewayProviderSnapshotChoice, OriginalModelAccessProviderSnapshotSelection,
     OriginalModelResolveRole, OriginalModelResolveSelection, OriginalModelSaveSelection,
     OriginalModelSettingsSelection, OriginalProviderPrepareSelection, OriginalProviderSnapshotRole,
@@ -111,6 +111,16 @@ pub(crate) enum ConversationReadCaller {
     SavedTurn,
     /// The original Saved Orchestration function calling the owner.
     SavedOrchestration,
+}
+
+/// The signed caller of the saved conversation computation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum SavedOrchestrationCaller {
+    /// The legacy descriptor without an explicit caller.
+    #[default]
+    Ordinary,
+    /// An automatic Scheduler Clock dispatch.
+    Calendar,
 }
 
 impl VerifiedRegistryLaunch {
@@ -299,15 +309,19 @@ impl VerifiedRegistryLaunch {
         })
     }
 
-    /// Require the original ordinary saved chain and verified pure Wasm computation.
-    pub(crate) fn permits_saved_orchestration(&self) -> bool {
-        self.saved_orchestration_manifest().is_some()
+    /// Require the original chain for this caller and the verified pure Wasm computation.
+    pub(crate) fn permits_saved_orchestration(&self, caller: SavedOrchestrationCaller) -> bool {
+        self.saved_orchestration_manifest(caller).is_some()
     }
 
     /// Exact replacement manifest digest verified for the original saved chain.
-    pub(crate) fn saved_orchestration_manifest(&self) -> Option<&str> {
+    pub(crate) fn saved_orchestration_manifest(
+        &self,
+        caller: SavedOrchestrationCaller,
+    ) -> Option<&str> {
         self.orchestration
             .as_ref()
+            .filter(|source| source.permits(caller))
             .map(|source| source.manifest_sha256.as_str())
     }
 
@@ -858,13 +872,23 @@ impl VerifiedTurnStartRoles {
     }
 }
 
-/// The ordinary saved chain and its bundled executable computation.
+/// Independent caller proofs for the bundled executable computation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct VerifiedSavedOrchestrationSource {
-    route: [VerifiedLegacyRoutePin; 2],
+    ordinary: Option<[VerifiedLegacyRoutePin; 2]>,
+    calendar: Option<Box<VerifiedOrdinarySavedBundle>>,
     archive_sha256: String,
     archive_bytes: u64,
     manifest_sha256: String,
+}
+
+impl VerifiedSavedOrchestrationSource {
+    fn permits(&self, caller: SavedOrchestrationCaller) -> bool {
+        match caller {
+            SavedOrchestrationCaller::Ordinary => self.ordinary.is_some(),
+            SavedOrchestrationCaller::Calendar => self.calendar.is_some(),
+        }
+    }
 }
 
 /// The exact installed Bundle and independent signed roles available for local chat.
@@ -1787,10 +1811,25 @@ impl VerifiedRegistryLaunch {
         identity: ExecutionProfileIdentity,
         catalog_revision: &str,
     ) -> Self {
+        Self::test_saved_orchestration_proof_for(
+            identity,
+            catalog_revision,
+            SavedOrchestrationCaller::Ordinary,
+        )
+    }
+
+    pub(crate) fn test_saved_orchestration_proof_for(
+        identity: ExecutionProfileIdentity,
+        catalog_revision: &str,
+        caller: SavedOrchestrationCaller,
+    ) -> Self {
         let mut proof = Self::test_proof(identity, catalog_revision);
         proof.provider_prepare = None;
         proof.orchestration = Some(VerifiedSavedOrchestrationSource {
-            route: std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture()),
+            ordinary: (caller == SavedOrchestrationCaller::Ordinary)
+                .then(|| std::array::from_fn(|_| VerifiedLegacyRoutePin::fixture())),
+            calendar: (caller == SavedOrchestrationCaller::Calendar)
+                .then(|| Box::new(VerifiedOrdinarySavedBundle::fixture())),
             archive_sha256: format!("sha256:{}", "a".repeat(64)),
             archive_bytes: 512,
             manifest_sha256: format!("sha256:{}", "b".repeat(64)),
@@ -3421,13 +3460,20 @@ pub(super) fn reacquire_saved_local_chat_adapter(
 pub(super) fn reacquire_saved_orchestration_pack(
     inspection: &NativeArtifactInspection<NativeApplicationSources>,
     proof: &VerifiedRegistryLaunch,
+    caller: SavedOrchestrationCaller,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<VerifiedPack> {
     let source = proof
         .orchestration
         .as_ref()
-        .context("admitted launch has no verified Saved Orchestration source")?;
+        .filter(|source| source.permits(caller))
+        .context("admitted launch has no verified Saved Orchestration source for the caller")?;
     let app_root = registry_pack_root(inspection, proof)?;
+    if let (SavedOrchestrationCaller::Calendar, Some(bundle)) = (caller, &source.calendar) {
+        checkpoint()?;
+        inspection.with_source(|sources| bundle.require_source(sources))??;
+        bundle.revalidate(inspection.allocation_budget()?, &checkpoint)?;
+    }
     registry_pack_receipt::verify_installed_with_orchestration(
         &app_root,
         REGISTRY_RECEIPT_SHA256,
@@ -3847,6 +3893,27 @@ fn verify_saved_orchestration_source(
     input: &mut dyn io::Read,
     checkpoint: impl Fn() -> Result<()>,
 ) -> Result<Option<VerifiedSavedOrchestrationSource>> {
+    let ordinary = verify_ordinary_saved_orchestration_bundle(inspection, active, &checkpoint)?;
+    let calendar = verify_calendar_saved_orchestration_bundle(inspection, active, &checkpoint)?;
+    if ordinary.is_none() && calendar.is_none() {
+        return Ok(None);
+    }
+    let pack = verify_registry_archive(inspection, receipt, input)?;
+    require_saved_orchestration_declaration(&pack)?;
+    Ok(Some(VerifiedSavedOrchestrationSource {
+        ordinary,
+        calendar,
+        archive_sha256: receipt.archive_sha256().to_owned(),
+        archive_bytes: receipt.archive_bytes(),
+        manifest_sha256: receipt.manifest_sha256().to_owned(),
+    }))
+}
+
+fn verify_ordinary_saved_orchestration_bundle(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<[VerifiedLegacyRoutePin; 2]>> {
     let budget = inspection.allocation_budget()?;
     let Some(choice) = OriginalSavedOrchestrationChoice::select(active, budget)? else {
         return Ok(None);
@@ -3855,14 +3922,21 @@ fn verify_saved_orchestration_source(
         sources.saved_orchestration_bundle(choice.pins().each_ref(), budget)
     })??;
     locked.verify(checkpoint)?;
-    let pack = verify_registry_archive(inspection, receipt, input)?;
-    require_saved_orchestration_declaration(&pack)?;
-    Ok(Some(VerifiedSavedOrchestrationSource {
-        route: choice.pins().each_ref().map(Into::into),
-        archive_sha256: receipt.archive_sha256().to_owned(),
-        archive_bytes: receipt.archive_bytes(),
-        manifest_sha256: receipt.manifest_sha256().to_owned(),
-    }))
+    Ok(Some(choice.pins().each_ref().map(Into::into)))
+}
+
+fn verify_calendar_saved_orchestration_bundle(
+    inspection: &NativeArtifactInspection<NativeApplicationSources>,
+    active: &OriginalActiveProfile,
+    checkpoint: impl Fn() -> Result<()>,
+) -> Result<Option<Box<VerifiedOrdinarySavedBundle>>> {
+    let budget = inspection.allocation_budget()?;
+    let Some(choice) = OriginalCalendarSavedOrchestrationChoice::select(active, budget)? else {
+        return Ok(None);
+    };
+    let locked = inspection
+        .with_source(|sources| sources.calendar_saved_orchestration_bundle(&choice, budget))??;
+    Ok(Some(Box::new(locked.verify(checkpoint)?)))
 }
 
 fn verify_saved_local_chat_source(
@@ -6521,7 +6595,8 @@ mod tests {
                 start.permits_saved_input_for(SavedInputCaller::CalendarStatus),
                 caller == SavedTurnStartCaller::Calendar
             );
-            assert!(!start.permits_saved_orchestration());
+            assert!(!start.permits_saved_orchestration(SavedOrchestrationCaller::Ordinary));
+            assert!(!start.permits_saved_orchestration(SavedOrchestrationCaller::Calendar));
             assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
                 identity.clone(),
                 revision

@@ -60,11 +60,12 @@ use super::{
         reacquire_saved_receipt_pack, reacquire_stream_result_pack, reacquire_tool_intents_pack,
         reacquire_turn_read_pack, reacquire_turn_settlement_pack, reacquire_turn_start_pack_for,
         reacquire_usage_cost_pack, saved_local_chat_dispatch_bundle, ApplicationPresentationRole,
-        ConversationAppendCaller, ConversationReadCaller, SavedInputCaller, SavedTurnStartCaller,
-        SettlementCaller, VerifiedRegistryLaunch, AI_ROUTING_OPERATION, AI_ROUTING_SHAPE,
-        FAILOVER_OPERATION, FAILOVER_SHAPE, GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE,
-        GATEWAY_RESULT_OPERATION, GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION,
-        PROVIDER_ADAPTER_SHAPE, PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
+        ConversationAppendCaller, ConversationReadCaller, SavedInputCaller,
+        SavedOrchestrationCaller, SavedTurnStartCaller, SettlementCaller, VerifiedRegistryLaunch,
+        AI_ROUTING_OPERATION, AI_ROUTING_SHAPE, FAILOVER_OPERATION, FAILOVER_SHAPE,
+        GATEWAY_POLICY_OPERATION, GATEWAY_POLICY_SHAPE, GATEWAY_RESULT_OPERATION,
+        GATEWAY_RESULT_SHAPE, PROVIDER_ADAPTER_OPERATION, PROVIDER_ADAPTER_SHAPE,
+        PROVIDER_POLICY_ADAPTER_VERSION, PROVIDER_POLICY_OPERATION,
         PROVIDER_REQUEST_ADAPTER_VERSION, PROVIDER_REQUEST_OPERATION, PROVIDER_REQUEST_SHAPE,
         REGISTRY_VERIFICATION_BYTES, REQUEST_PREPARE_OPERATION, REQUEST_PREPARE_SHAPE,
         STREAM_RESULT_OPERATION, STREAM_RESULT_SHAPE, TOOL_INTENTS_OPERATION, TOOL_INTENTS_SHAPE,
@@ -304,6 +305,7 @@ pub(crate) enum NativeRegistryRequest {
         result_reference: String,
     },
     SavedOrchestration {
+        caller: SavedOrchestrationCaller,
         input: Vec<u8>,
     },
     ApplicationPresentation {
@@ -359,7 +361,7 @@ impl NativeRegistryRequest {
             Self::TurnStart { caller, .. } => proof.permits_turn_start_for(*caller),
             Self::SavedInput { caller, .. } => proof.permits_saved_input_for(*caller),
             Self::TurnSettlement { caller, .. } => proof.permits_turn_settlement(*caller),
-            Self::SavedOrchestration { .. } => proof.permits_saved_orchestration(),
+            Self::SavedOrchestration { caller, .. } => proof.permits_saved_orchestration(*caller),
             Self::ApplicationPresentation { role, .. } => {
                 proof.permits_application_presentation(*role)
             }
@@ -450,7 +452,7 @@ impl NativeRegistryRequest {
                 phase.check_input_size(*input_bytes)?;
                 return Ok(*input_bytes);
             }
-            Self::SavedOrchestration { input } | Self::AiGatewayData { input, .. } => {
+            Self::SavedOrchestration { input, .. } | Self::AiGatewayData { input, .. } => {
                 let limit = if matches!(self, Self::AiGatewayData { .. }) {
                     AI_GATEWAY_DATA_LIMIT
                 } else {
@@ -1810,10 +1812,11 @@ async fn run(
                         projected_local_chat: false,
                     });
                 }
-                NativeRegistryRequest::SavedOrchestration { input } => {
+                NativeRegistryRequest::SavedOrchestration { caller, input } => {
                     let pack = reacquire_saved_orchestration_pack(
                         &inspection,
                         listener.verified_source(),
+                        caller,
                         checkpoint,
                     )?;
                     revalidate()?;
@@ -3196,31 +3199,52 @@ mod tests {
             activation_id: "activation:fixture".into(),
             plan_digest: "sha256:fixture".into(),
         };
-        let proof =
-            VerifiedRegistryLaunch::test_saved_orchestration_proof(identity.clone(), "catalog");
-        let append = VerifiedRegistryLaunch::test_conversation_append_proof(identity, "catalog");
-        let input = |size| {
+        let request = |caller, size| {
             let mut input = Vec::with_capacity(size);
             input.extend_from_slice(b"{}");
-            NativeRegistryRequest::SavedOrchestration { input }
+            NativeRegistryRequest::SavedOrchestration { caller, input }
         };
-        let request = input(SAVED_ORCHESTRATION_FRAME_LIMIT);
-        assert!(request.has_launch_proof(&proof));
-        assert!(!request.has_launch_proof(&append));
-        assert!(!request.requires_publication_permit());
+        let callers = [
+            SavedOrchestrationCaller::Ordinary,
+            SavedOrchestrationCaller::Calendar,
+        ];
+        for granted in [None, Some(callers[0]), Some(callers[1])] {
+            let proof = match granted {
+                Some(caller) => VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
+                    identity.clone(),
+                    "catalog",
+                    caller,
+                ),
+                None => VerifiedRegistryLaunch::test_conversation_append_proof(
+                    identity.clone(),
+                    "catalog",
+                ),
+            };
+            for caller in callers {
+                let job = request(caller, SAVED_ORCHESTRATION_FRAME_LIMIT);
+                assert_eq!(job.has_launch_proof(&proof), Some(caller) == granted);
+                assert!(!job.requires_publication_permit());
+                assert_eq!(
+                    job.input_capacity().unwrap(),
+                    SAVED_ORCHESTRATION_FRAME_LIMIT
+                );
+            }
+        }
         assert_eq!(
-            request.input_capacity().unwrap(),
-            SAVED_ORCHESTRATION_FRAME_LIMIT
-        );
-        assert_eq!(
-            input(SAVED_ORCHESTRATION_FRAME_LIMIT + 1)
-                .input_capacity()
-                .unwrap_err()
-                .downcast::<SavedOrchestrationStepError>()
-                .unwrap(),
+            request(
+                SavedOrchestrationCaller::Calendar,
+                SAVED_ORCHESTRATION_FRAME_LIMIT + 1
+            )
+            .input_capacity()
+            .unwrap_err()
+            .downcast::<SavedOrchestrationStepError>()
+            .unwrap(),
             SavedOrchestrationStepError::Capacity
         );
-        let empty = NativeRegistryRequest::SavedOrchestration { input: Vec::new() };
+        let empty = NativeRegistryRequest::SavedOrchestration {
+            caller: SavedOrchestrationCaller::Calendar,
+            input: Vec::new(),
+        };
         assert_eq!(
             empty
                 .input_capacity()

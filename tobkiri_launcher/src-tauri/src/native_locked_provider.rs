@@ -16,8 +16,8 @@ use tobkiri_core::{
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 use tobkiri_harness_native::{
     OriginalAiRoutingSelection, OriginalApplicationPresentationChoice,
-    OriginalCalendarSavedDispatchChoice, OriginalConversationAppendChoice,
-    OriginalConversationCompleteChoice, OriginalFailoverChoice,
+    OriginalCalendarSavedDispatchChoice, OriginalCalendarSavedOrchestrationChoice,
+    OriginalConversationAppendChoice, OriginalConversationCompleteChoice, OriginalFailoverChoice,
     OriginalGatewayProviderHealthChoice, OriginalGatewayProviderSnapshotChoice,
     OriginalModelAccessProviderSnapshotSelection, OriginalModelSaveSelection,
     OriginalQueryProviderSnapshotSelection, OriginalRequestPrepareChoice,
@@ -69,12 +69,13 @@ pub(crate) struct LockedTurnStartBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Signed Bundle documents for an automatic or manual Calendar dispatch chain.
+/// Signed Bundle documents for a Calendar job's original caller chain.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-pub(crate) struct LockedCalendarSavedDispatchBundle<'pin> {
+pub(crate) struct LockedCalendarSavedJobBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
     manager: Option<LockedRegistryRoute<'pin>>,
     routes: [LockedRegistryRoute<'pin>; 4],
+    target_effect: &'static str,
     budget: Arc<dyn AllocationBudget>,
 }
 
@@ -805,9 +806,32 @@ impl NativeApplicationSources {
         &self,
         selection: &'pin OriginalCalendarSavedDispatchChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
-    ) -> Result<LockedCalendarSavedDispatchBundle<'pin>> {
-        let [scheduler, broker, adapter, lifecycle] = selection.pins();
-        let manager = selection.manager();
+    ) -> Result<LockedCalendarSavedJobBundle<'pin>> {
+        self.calendar_saved_job_bundle(selection.pins(), selection.manager(), "privileged", budget)
+    }
+
+    /// Capture the signed automatic Calendar chain to the pure saved-complete operation.
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    pub(crate) fn calendar_saved_orchestration_bundle<'pin>(
+        &self,
+        selection: &'pin OriginalCalendarSavedOrchestrationChoice<'_>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedCalendarSavedJobBundle<'pin>> {
+        ensure!(
+            selection.manager().is_none(),
+            "expected automatic Calendar caller"
+        );
+        self.calendar_saved_job_bundle(selection.pins(), None, "pure", budget)
+    }
+
+    #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
+    fn calendar_saved_job_bundle<'pin>(
+        &self,
+        [scheduler, broker, adapter, target]: &'pin [OriginalRoutePin; 4],
+        manager: Option<&'pin OriginalRoutePin>,
+        target_effect: &'static str,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<LockedCalendarSavedJobBundle<'pin>> {
         if let Some(manager) = manager {
             ensure!(
                 manager.caller_function_id() == self.authority.shell_provider_id
@@ -816,15 +840,16 @@ impl NativeApplicationSources {
             );
         }
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
-        Ok(LockedCalendarSavedDispatchBundle {
+        Ok(LockedCalendarSavedJobBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
             manager: manager.map(from_lock).transpose()?,
             routes: [
                 from_lock(scheduler)?,
                 from_lock(broker)?,
                 from_lock(adapter)?,
-                from_lock(lifecycle)?,
+                from_lock(target)?,
             ],
+            target_effect,
             budget: Arc::clone(budget),
         })
     }
@@ -1223,26 +1248,32 @@ impl LockedTurnStartBundle<'_> {
 }
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
-impl LockedCalendarSavedDispatchBundle<'_> {
-    /// Verify every privileged operation against the accepted Bundle.
+impl LockedCalendarSavedJobBundle<'_> {
+    /// Verify each operation's effects and retain its signed Bundle documents.
     pub(crate) fn verify(
         self,
         checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedOrdinarySavedBundle> {
         if let Some(manager) = self.manager {
-            let [scheduler, broker, adapter, lifecycle] = self.routes;
+            let [scheduler, broker, adapter, target] = self.routes;
             self.source.verify_routes(
-                &[Some([manager, scheduler, broker, adapter, lifecycle])],
+                &[Some([manager, scheduler, broker, adapter, target])],
                 &self.budget,
                 checkpoint,
-                ["privileged"; 5],
+                [
+                    "privileged",
+                    "privileged",
+                    "privileged",
+                    "privileged",
+                    self.target_effect,
+                ],
             )
         } else {
             self.source.verify_routes(
                 &[Some(self.routes)],
                 &self.budget,
                 checkpoint,
-                ["privileged"; 4],
+                ["privileged", "privileged", "privileged", self.target_effect],
             )
         }
     }
