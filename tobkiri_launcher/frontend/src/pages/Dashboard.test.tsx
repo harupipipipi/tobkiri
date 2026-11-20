@@ -647,7 +647,8 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
       ]) {
         assert.ok(container.querySelector(`[data-profile-card="${profileId}"]`), profileId);
       }
-      assert.match(container.textContent ?? '', /Tobkiri Defaults/);
+      assert.match(container.textContent ?? '', /Tobkiri Harness/);
+      assert.doesNotMatch(container.textContent ?? '', /Tobkiri Defaults/);
       assert.match(container.textContent ?? '', /No active execution Profile/);
       assert.doesNotMatch(container.textContent ?? '', /unsupported v4 definition/i);
       assert.ok(container.querySelector('input[aria-label="Search Profiles"]'));
@@ -656,7 +657,7 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
       ));
 
       for (const displayName of [
-        'Tobkiri Defaults',
+        'Tobkiri Harness',
         'Default Profile',
         'New custom profile',
         'New custom profile 2',
@@ -674,6 +675,16 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
       assert.notEqual(activate.getAttribute('aria-disabled'), 'true');
       assert.notEqual(activate.getAttribute('tabindex'), '-1');
       assert.equal(buttonByLabel(container, 'Launch New custom profile').disabled, true);
+
+      await act(async () => {
+        buttonByLabel(container, 'Open actions for New custom profile').click();
+        buttonByLabel(container, 'Open actions for Tobkiri Harness').click();
+      });
+      const rename = document.querySelector<HTMLButtonElement>('button[title="Rename Tobkiri Harness"]');
+      assert.ok(rename);
+      await act(async () => rename.click());
+      const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for defaults"]');
+      assert.equal(nameInput?.value, 'Tobkiri Defaults');
     } finally {
       await act(async () => root.unmount());
       dom.window.close();

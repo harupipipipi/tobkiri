@@ -5,6 +5,8 @@ import type {NamedProfileRecord} from './profileRegistry';
 import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
+  namedProfileDisplayName,
+  namedProfileStoredName,
 } from './profileRegistryView';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -99,6 +101,25 @@ test('Profile search covers IDs, names, base Packs, and original recommended ord
     filterAndSortNamedProfiles(profiles, '', 'recent', null).map((entry) => entry.profile_id),
     ['unresolved', 'ready-work', 'ready-defaults'],
   );
+});
+
+test('the legacy bundled Profile shows as Harness while preserving its stored display name', () => {
+  const legacy = profileRecord('defaults', 'Tobkiri Defaults', 'resolved', 0, 1);
+  assert.equal(buildNamedProfileView(legacy).displayName, 'Tobkiri Harness');
+  assert.equal(namedProfileStoredName(legacy), 'Tobkiri Defaults');
+  for (const query of ['Tobkiri Harness', 'Tobkiri Defaults']) {
+    assert.deepEqual(filterAndSortNamedProfiles([legacy], query, 'name', null), [legacy]);
+  }
+  legacy.profile.base = {pack_id: 'defaults-basepack'};
+  assert.equal(namedProfileDisplayName(legacy), 'Tobkiri Harness');
+  legacy.profile.base = {pack_id: 'custom-base'};
+  assert.equal(namedProfileDisplayName(legacy), 'Tobkiri Defaults');
+  assert.equal(namedProfileDisplayName(
+    profileRecord('custom', 'Tobkiri Defaults', 'resolved', 0, 1),
+  ), 'Tobkiri Defaults');
+  assert.equal(namedProfileDisplayName(
+    profileRecord('defaults', 'My renamed Profile', 'resolved', 0, 1),
+  ), 'My renamed Profile');
 });
 
 test('an active Profile with newly saved changes must be reviewed before launch', () => {

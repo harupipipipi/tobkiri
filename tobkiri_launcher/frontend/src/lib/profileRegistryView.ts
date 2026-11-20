@@ -28,8 +28,20 @@ function resolvedReference(value: unknown): boolean {
   return isDigest(value);
 }
 
-export function namedProfileDisplayName(entry: NamedProfileRecord): string {
+export function namedProfileStoredName(entry: NamedProfileRecord): string {
   return nonEmptyString(entry.profile.display_name) ?? entry.profile_id;
+}
+
+export function namedProfileDisplayName(entry: NamedProfileRecord): string {
+  const name = namedProfileStoredName(entry);
+  const base = entry.profile.base;
+  if (
+    entry.profile_id === 'defaults' && name === 'Tobkiri Defaults' && isRecord(base)
+    && (base.pack_id === 'defaultspack' || base.pack_id === 'defaults-basepack')
+  ) {
+    return 'Tobkiri Harness';
+  }
+  return name;
 }
 
 function profileError(
@@ -162,6 +174,7 @@ export function filterAndSortNamedProfiles(
     const view = buildNamedProfileView(entry);
     const haystack = [
       view.displayName,
+      namedProfileStoredName(entry),
       entry.profile_id,
       view.basePackId ?? '',
       ...view.packIds,

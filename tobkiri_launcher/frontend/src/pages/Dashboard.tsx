@@ -41,6 +41,7 @@ import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
   namedProfileDisplayName,
+  namedProfileStoredName,
   type NamedProfileSortMode,
 } from '@/src/lib/profileRegistryView';
 import {useAppStore} from '@/src/store';
@@ -424,7 +425,7 @@ export function Dashboard() {
       entry.profile_id,
       registry.profiles.map((profile) => profile.profile_id),
     );
-    const displayName = `${namedProfileDisplayName(entry)} Copy`;
+    const displayName = `${namedProfileStoredName(entry)} Copy`;
     const duplicated = await commitProfileMutation(
       `duplicate:${entry.profile_id}`,
       () => duplicateNamedProfile({
@@ -795,7 +796,7 @@ export function Dashboard() {
                       onDuplicate={(profile) => void duplicateProfile(profile)}
                       onEdit={(profile) => {
                         setEditingProfileId(profile.profile_id);
-                        setEditingProfileName(namedProfileDisplayName(profile));
+                        setEditingProfileName(namedProfileStoredName(profile));
                       }}
                       onEditingNameChange={setEditingProfileName}
                       onLaunch={(profile) => void launchProfile(profile)}
