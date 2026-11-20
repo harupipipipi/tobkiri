@@ -6339,6 +6339,7 @@ def test_connection_status_reads_canonical_registry_without_writing(
             "credential_handle": "opaque:connection-secret",
             "endpoint": "https://api.openai.com",
             "enabled": True,
+            "metadata": {"catalog_provider_id": "openai"},
         },
         expected_revision=0,
     )
@@ -6377,9 +6378,11 @@ def test_connection_status_reads_canonical_registry_without_writing(
             "health_status": "unverified",
             "reachability": "unknown",
             "observed_at": None,
+            "catalog_provider_id": "openai",
         }],
     }
     assert "connection-secret" not in json.dumps(payload)
+    assert "https://api.openai.com" not in json.dumps(payload)
     assert registry.path.read_bytes() == before
     for query in ("profile_id=other", "approved=true", "path=/tmp/registry"):
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())

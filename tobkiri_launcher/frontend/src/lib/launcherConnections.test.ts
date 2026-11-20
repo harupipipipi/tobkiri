@@ -85,6 +85,20 @@ test('active Profile context requires the verified activation id shape', () => {
 test('connections snapshot requires the exact published shape', () => {
   assert.equal(isLauncherConnectionsSnapshot(connectionsSnapshot()), true);
   assert.equal(
+    isLauncherConnectionsSnapshot(
+      connectionsSnapshot({providers: [providerEntry({catalog_provider_id: 'openrouter'})]}),
+    ),
+    true,
+  );
+  for (const catalog_provider_id of [null, 7, '', '  ']) {
+    assert.equal(
+      isLauncherConnectionsSnapshot(
+        connectionsSnapshot({providers: [providerEntry({catalog_provider_id})]}),
+      ),
+      false,
+    );
+  }
+  assert.equal(
     isLauncherConnectionsSnapshot(connectionsSnapshot({extra: true})),
     false,
   );
@@ -318,7 +332,9 @@ test('model profile save reads current revisions and posts the six allowed keys'
     registry_revision: 8,
   });
   const {invoker, calls} = recordingInvoker({
-    'GET /api/connections/status': connectionsSnapshot(),
+    'GET /api/connections/status': connectionsSnapshot({
+      providers: [providerEntry({catalog_provider_id: 'openai'})],
+    }),
     'GET /api/ai/profiles': modelList(),
     'POST /api/ai/profiles': saved,
   });

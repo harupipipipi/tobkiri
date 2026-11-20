@@ -146,6 +146,7 @@ export interface LauncherProviderConnectionStatus {
   readonly health_status: 'verified' | 'unverified';
   readonly reachability: 'available' | 'unavailable' | 'unknown';
   readonly observed_at: number | null;
+  readonly catalog_provider_id?: string;
 }
 
 export interface LauncherConnectionsSnapshot {
@@ -167,14 +168,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Strictly validate one provider entry: exactly the seven published keys. */
+/** Validate the public status fields and its optional catalog identity. */
 export function isLauncherProviderConnectionStatus(
   value: unknown,
 ): value is LauncherProviderConnectionStatus {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
-  if (keys.length !== CONNECTION_STATUS_KEYS.length) return false;
   if (!CONNECTION_STATUS_KEYS.every((key) => keys.includes(key))) return false;
+  if (keys.some((key) => key !== 'catalog_provider_id' && !CONNECTION_STATUS_KEYS.includes(key))) {
+    return false;
+  }
   return (
     isNonEmptyId(value.provider_instance_id)
     && typeof value.display_name === 'string'
@@ -186,6 +189,9 @@ export function isLauncherProviderConnectionStatus(
     && typeof value.reachability === 'string'
     && CONNECTION_REACHABILITY_STATUSES.has(value.reachability)
     && (typeof value.observed_at === 'number' || value.observed_at === null)
+    && (!keys.includes('catalog_provider_id') || (
+      typeof value.catalog_provider_id === 'string' && value.catalog_provider_id.trim().length > 0
+    ))
   );
 }
 
