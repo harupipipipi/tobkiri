@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
@@ -28,7 +28,13 @@ struct Entry {
     directory: Arc<File>,
     filename: String,
     quota: Option<GuestRegistration>,
-    read_only: bool,
+    owner: OwnerAccess,
+}
+
+enum OwnerAccess {
+    Standard,
+    Migration,
+    ReadOnly(Arc<AtomicBool>),
 }
 fn registry() -> &'static Mutex<BTreeMap<String, Entry>> {
     static REGISTRY: OnceLock<Mutex<BTreeMap<String, Entry>>> = OnceLock::new();
@@ -103,14 +109,28 @@ pub(crate) fn register(
     directory: File,
     filename: &str,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
-    register_mode(directory, filename, None, false)
+    register_mode(directory, filename, None, OwnerAccess::Standard)
+}
+
+pub(crate) fn register_migration(
+    directory: File,
+    filename: &str,
+) -> Result<(PathBuf, DatabaseGuard), StoreError> {
+    register_mode(directory, filename, None, OwnerAccess::Migration)
 }
 
 pub(crate) fn register_read_only(
     directory: File,
     filename: &str,
-) -> Result<(PathBuf, DatabaseGuard), StoreError> {
-    register_mode(directory, filename, None, true)
+) -> Result<(PathBuf, DatabaseGuard, Arc<AtomicBool>), StoreError> {
+    let refused_sidecar = Arc::new(AtomicBool::new(false));
+    let (path, guard) = register_mode(
+        directory,
+        filename,
+        None,
+        OwnerAccess::ReadOnly(refused_sidecar.clone()),
+    )?;
+    Ok((path, guard, refused_sidecar))
 }
 
 pub(crate) fn register_guest_data(
@@ -119,7 +139,12 @@ pub(crate) fn register_guest_data(
     policy: crate::StoreDiskPolicy,
     custody: Arc<crate::data_custody::DataCustody>,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
-    register_mode(directory, filename, Some((policy, custody)), false)
+    register_mode(
+        directory,
+        filename,
+        Some((policy, custody)),
+        OwnerAccess::Standard,
+    )
 }
 
 fn register_mode(
@@ -129,7 +154,7 @@ fn register_mode(
         crate::StoreDiskPolicy,
         Arc<crate::data_custody::DataCustody>,
     )>,
-    read_only: bool,
+    owner: OwnerAccess,
 ) -> Result<(PathBuf, DatabaseGuard), StoreError> {
     install()?;
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -160,7 +185,7 @@ fn register_mode(
                 directory: directory.clone(),
                 filename: filename.into(),
                 quota: quota.clone(),
-                read_only,
+                owner,
             },
         );
     let path = PathBuf::from(&key).join(filename);
@@ -176,7 +201,8 @@ fn register_mode(
 
 enum Access {
     Owner,
-    ReadOnly { sidecar: bool },
+    Migration,
+    ReadOnly { sidecar: Option<Arc<AtomicBool>> },
     Guest(GuestRegistration),
 }
 
@@ -218,12 +244,17 @@ unsafe fn route(path: *const libc::c_char) -> Route {
             }
             return match CString::new(name) {
                 Ok(name) => {
-                    let access = match &entry.quota {
-                        Some(guest) => Access::Guest(guest.clone()),
-                        None if entry.read_only => Access::ReadOnly {
-                            sidecar: name.as_bytes() != entry.filename.as_bytes(),
+                    let access = match (&entry.quota, &entry.owner) {
+                        (Some(guest), _) => Access::Guest(guest.clone()),
+                        (None, OwnerAccess::ReadOnly(refused_sidecar)) => Access::ReadOnly {
+                            sidecar: if name.as_bytes() == entry.filename.as_bytes() {
+                                None
+                            } else {
+                                Some(refused_sidecar.clone())
+                            },
                         },
-                        None => Access::Owner,
+                        (None, OwnerAccess::Migration) => Access::Migration,
+                        (None, OwnerAccess::Standard) => Access::Owner,
                     };
                     Route::Cap(entry.directory.clone(), Some(name), access)
                 }
@@ -278,13 +309,22 @@ unsafe fn cap_open_impl(
             }
         }
         Route::Cap(directory, Some(name), access) => {
-            match access {
+            match &access {
                 // SQLite can write SHM and change sidecar ownership even through
                 // a read-only connection. Keep their existence visible but
                 // leave their actual opens to the database owner.
-                Access::ReadOnly { sidecar }
-                    if sidecar
-                        || flags & (libc::O_ACCMODE | libc::O_CREAT | libc::O_TRUNC) != 0 =>
+                Access::ReadOnly {
+                    sidecar: Some(refused),
+                } => {
+                    if crate::secure::stat_entry(&directory, &name).is_ok_and(|stat| {
+                        stat.st_mode & libc::S_IFMT == libc::S_IFREG && stat.st_nlink == 1
+                    }) {
+                        refused.store(true, Ordering::Relaxed);
+                    }
+                    return denied();
+                }
+                Access::ReadOnly { .. }
+                    if flags & (libc::O_ACCMODE | libc::O_CREAT | libc::O_TRUNC) != 0 =>
                 {
                     return denied();
                 }
@@ -292,17 +332,30 @@ unsafe fn cap_open_impl(
                 Access::Guest(_) if flags & libc::O_TRUNC != 0 => return denied(),
                 _ => {}
             }
-            let read_only = matches!(access, Access::ReadOnly { .. });
-            let fd = unsafe {
+            let nonblocking = matches!(access, Access::ReadOnly { .. } | Access::Migration);
+            let open_at = |flags| unsafe {
                 libc::openat(
                     directory.as_raw_fd(),
                     name.as_ptr(),
                     flags
                         | libc::O_NOFOLLOW
                         | libc::O_CLOEXEC
-                        | if read_only { libc::O_NONBLOCK } else { 0 },
+                        | if nonblocking { libc::O_NONBLOCK } else { 0 },
                     0o600,
                 )
+            };
+            let fd = open_at(flags);
+            // Darwin can report ENOENT when two nofollow O_CREAT opens race.
+            // Try the winning inode without creation before SQLite retries read-only.
+            #[cfg(target_os = "macos")]
+            let fd = if fd < 0
+                && matches!(access, Access::Migration)
+                && flags & (libc::O_CREAT | libc::O_EXCL) == libc::O_CREAT
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT)
+            {
+                open_at(flags & !libc::O_CREAT)
+            } else {
+                fd
             };
             if fd < 0 || matches!(access, Access::Owner) {
                 return fd;
@@ -418,7 +471,7 @@ unsafe fn cap_unlink_impl(path: *const libc::c_char) -> libc::c_int {
             Ok(result) => result,
             Err(_) => denied(),
         },
-        Route::Cap(directory, Some(name), Access::Owner) => unsafe {
+        Route::Cap(directory, Some(name), Access::Owner | Access::Migration) => unsafe {
             libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0)
         },
         _ => denied(),

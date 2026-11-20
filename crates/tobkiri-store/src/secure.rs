@@ -781,7 +781,31 @@ impl DataRoot {
         &self,
         path: &Path,
     ) -> Result<(rusqlite::Connection, crate::vfs::DatabaseGuard), StoreError> {
-        self.database_mode(path, true)
+        #[cfg(unix)]
+        {
+            let (directory, filename) = self.parent(path, true)?;
+            // Inspect without opening a second database descriptor. Closing
+            // one would release this process's POSIX locks for the inode.
+            match stat_entry(&directory, &cstring(&filename)?) {
+                Ok(stat) if stat.st_mode & libc::S_IFMT != libc::S_IFREG => {
+                    return Err(StoreError::Denied("database is not a regular file".into()));
+                }
+                Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => (),
+                Err(error) => return Err(error),
+                Ok(_) => (),
+            }
+            let (virtual_path, guard) = crate::vfs::register(directory, &filename)?;
+            let connection = Self::open_writable_database(virtual_path, true)?;
+            connection.execute_batch("PRAGMA journal_mode=DELETE;")?;
+            Ok((connection, guard))
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            Err(StoreError::Unavailable(
+                "nofollow SQLite unavailable".into(),
+            ))
+        }
     }
     /// Run a trusted migration operation against an existing database, keeping
     /// SQLite and its descriptor-bound directory alive in that order.
@@ -795,19 +819,57 @@ impl DataRoot {
         path: &Path,
         run: impl FnOnce(&rusqlite::Connection) -> R,
     ) -> Result<R, StoreError> {
-        if self.file_len(path)?.is_none() {
+        self.with_migration_database(path, false, |connection, _| run(connection))
+    }
+
+    /// Open or create a trusted migration database without changing its journal
+    /// mode. The caller owns any schema initialization and its commit guard.
+    ///
+    /// The size check stays bound to the opened directory. Use it while holding
+    /// the SQLite writer lock and check the schema in the same transaction.
+    #[cfg(unix)]
+    pub fn with_creatable_database<R>(
+        &self,
+        path: &Path,
+        run: impl FnOnce(&rusqlite::Connection, &dyn Fn() -> Result<bool, StoreError>) -> R,
+    ) -> Result<R, StoreError> {
+        self.with_migration_database(path, true, run)
+    }
+
+    #[cfg(unix)]
+    fn with_migration_database<R>(
+        &self,
+        path: &Path,
+        create: bool,
+        run: impl FnOnce(&rusqlite::Connection, &dyn Fn() -> Result<bool, StoreError>) -> R,
+    ) -> Result<R, StoreError> {
+        let (directory, filename) = self.parent(path, create).map_err(existing_source_error)?;
+        let exists = Self::file_len_at(&directory, &filename)?.is_some();
+        if !exists && !create {
             return Err(StoreError::NotFound);
         }
-        let name = path
-            .file_name()
-            .ok_or_else(|| StoreError::Invalid("database filename is missing".into()))?;
         for suffix in ["-journal", "-wal", "-shm"] {
-            let mut sidecar = name.to_owned();
-            sidecar.push(suffix);
-            self.file_len(path.with_file_name(sidecar))?;
+            let sidecar = format!("{filename}{suffix}");
+            if Self::file_len_at(&directory, &sidecar)?.is_some()
+                && !exists
+                && Self::file_len_at(&directory, &filename)?.is_none()
+            {
+                return Err(StoreError::Denied(
+                    "SQLite sidecar has no main database".into(),
+                ));
+            }
         }
-        let database = self.database_mode(path, false)?;
-        Ok(run(&database.0))
+        let (virtual_path, _guard) =
+            crate::vfs::register_migration(directory.try_clone()?, &filename)?;
+        let connection = Self::open_writable_database(virtual_path, create && !exists)?;
+        if connection.is_readonly("main")? {
+            return Err(StoreError::Denied("SQLite database is read-only".into()));
+        }
+        let is_empty = || match Self::file_len_at(&directory, &filename)? {
+            Some(len) => Ok(len == 0),
+            None => Err(existing_source_changed()),
+        };
+        Ok(run(&connection, &is_empty))
     }
 
     /// Open an existing rollback-journal database through its pinned directory.
@@ -821,6 +883,17 @@ impl DataRoot {
         path: &Path,
         run: impl FnOnce(&rusqlite::Connection) -> R,
     ) -> Result<R, StoreError> {
+        self.with_existing_read_only_database_sidecar_status(path, |connection, _| run(connection))
+    }
+
+    /// Run an existing, read-only migration operation and expose whether its
+    /// WAL database was refused access to a regular single-link sidecar.
+    #[cfg(unix)]
+    pub fn with_existing_read_only_database_sidecar_status<R>(
+        &self,
+        path: &Path,
+        run: impl FnOnce(&rusqlite::Connection, &dyn Fn() -> bool) -> R,
+    ) -> Result<R, StoreError> {
         let (directory, filename) = self.parent(path, false).map_err(existing_source_error)?;
         if Self::file_len_at(&directory, &filename)?.is_none() {
             return Err(StoreError::NotFound);
@@ -828,7 +901,8 @@ impl DataRoot {
         for suffix in ["-journal", "-wal", "-shm"] {
             Self::file_len_at(&directory, &format!("{filename}{suffix}"))?;
         }
-        let (virtual_path, _guard) = crate::vfs::register_read_only(directory, &filename)?;
+        let (virtual_path, _guard, refused_sidecar) =
+            crate::vfs::register_read_only(directory, &filename)?;
         let connection = rusqlite::Connection::open_with_flags(
             virtual_path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
@@ -839,7 +913,41 @@ impl DataRoot {
         connection.execute_batch(
             "PRAGMA trusted_schema=OFF; PRAGMA temp_store=MEMORY; PRAGMA query_only=ON;",
         )?;
-        Ok(run(&connection))
+        Ok(run(&connection, &|| {
+            refused_sidecar.load(std::sync::atomic::Ordering::Relaxed)
+                && Self::has_wal_database_header(&connection)
+        }))
+    }
+
+    #[cfg(unix)]
+    fn has_wal_database_header(connection: &rusqlite::Connection) -> bool {
+        use rusqlite::ffi as sqlite;
+        let mut file = std::ptr::null_mut::<sqlite::sqlite3_file>();
+        // The connection owns this file and its lifetime. There is no second
+        // descriptor to close and disturb another SQLite connection's locks.
+        let status = unsafe {
+            sqlite::sqlite3_file_control(
+                connection.handle(),
+                c"main".as_ptr(),
+                sqlite::SQLITE_FCNTL_FILE_POINTER,
+                (&raw mut file).cast(),
+            )
+        };
+        if status != sqlite::SQLITE_OK || file.is_null() {
+            return false;
+        }
+        let Some(read) = (unsafe { (*file).pMethods.as_ref() }).and_then(|methods| methods.xRead)
+        else {
+            return false;
+        };
+        let mut header = [0_u8; 100];
+        let status = unsafe { read(file, header.as_mut_ptr().cast(), header.len() as i32, 0) };
+        let page_size = u16::from_be_bytes([header[16], header[17]]);
+        status == sqlite::SQLITE_OK
+            && header.starts_with(b"SQLite format 3\0")
+            && (page_size == 1 || (page_size >= 512 && page_size.is_power_of_two()))
+            && header[18..20] == [2, 2]
+            && header[21..24] == [64, 32, 32]
     }
 
     #[cfg(unix)]
@@ -860,62 +968,23 @@ impl DataRoot {
         Ok(Some(stat.st_size as u64))
     }
 
-    fn database_mode(
-        &self,
-        path: &Path,
+    #[cfg(unix)]
+    fn open_writable_database(
+        virtual_path: PathBuf,
         create: bool,
-    ) -> Result<(rusqlite::Connection, crate::vfs::DatabaseGuard), StoreError> {
-        #[cfg(unix)]
-        {
-            let (dir, last) = self.parent(path, create)?;
-            // Inspect the pathname without opening a second database descriptor:
-            // closing any descriptor for an inode drops this process's POSIX
-            // locks, including locks retained by another SQLite connection.
-            let name = cstring(&last)?;
-            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-            if unsafe {
-                libc::fstatat(
-                    dir.as_raw_fd(),
-                    name.as_ptr(),
-                    stat.as_mut_ptr(),
-                    libc::AT_SYMLINK_NOFOLLOW,
-                )
-            } == 0
-            {
-                let stat = unsafe { stat.assume_init() };
-                if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
-                    return Err(StoreError::Denied("database is not a regular file".into()));
-                }
-            } else {
-                let error = std::io::Error::last_os_error();
-                if !create || error.kind() != std::io::ErrorKind::NotFound {
-                    return Err(error.into());
-                }
-            }
-            let (virtual_path, guard) = crate::vfs::register(dir, &last)?;
-            let mut flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | rusqlite::OpenFlags::from_bits_retain(0x01000000);
-            if create {
-                flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
-            }
-            let conn = rusqlite::Connection::open_with_flags(virtual_path, flags)?;
-            conn.busy_timeout(std::time::Duration::from_secs(2))?;
-            if create {
-                conn.execute_batch("PRAGMA journal_mode=DELETE;")?;
-            }
-            conn.execute_batch(
-                "PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA temp_store=MEMORY;",
-            )?;
-            Ok((conn, guard))
+    ) -> Result<rusqlite::Connection, StoreError> {
+        let mut flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+            | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW;
+        if create {
+            flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
         }
-        #[cfg(not(unix))]
-        {
-            let _ = (path, create);
-            Err(StoreError::Unavailable(
-                "nofollow SQLite unavailable".into(),
-            ))
-        }
+        let connection = rusqlite::Connection::open_with_flags(virtual_path, flags)?;
+        connection.busy_timeout(std::time::Duration::from_secs(2))?;
+        connection.execute_batch(
+            "PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA temp_store=MEMORY;",
+        )?;
+        Ok(connection)
     }
 }
 

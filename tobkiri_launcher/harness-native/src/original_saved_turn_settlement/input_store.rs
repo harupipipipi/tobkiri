@@ -21,6 +21,23 @@ mod tests;
 
 const SAVED_INPUT_CAPACITY: i64 = 10_000;
 const SELECT_SCHEMA: &str = "SELECT type FROM main.sqlite_schema WHERE name = 'saved_inputs'";
+const SELECT_ANY_SCHEMA: &str = "SELECT 1 FROM main.sqlite_schema LIMIT 1";
+// Keep the on-disk schema aligned with DurableTurnRuntime._connect_write.
+const ORIGINAL_SCHEMA: &str = "
+    CREATE TABLE main.turns (
+        id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
+        updated_at INTEGER NOT NULL, body TEXT NOT NULL
+    );
+    CREATE TABLE main.saved_inputs (
+        id TEXT PRIMARY KEY, source_digest TEXT NOT NULL,
+        accepted_digest TEXT NOT NULL, context TEXT NOT NULL
+    );
+    CREATE TABLE main.message_deliveries (
+        id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, body TEXT NOT NULL
+    );
+    CREATE TABLE main.message_interrupts (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+    CREATE TABLE main.calendar_preparations (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+";
 const SELECT_INPUT: &str = "SELECT id, source_digest, accepted_digest, context,
     EXISTS(SELECT 1 FROM main.saved_inputs WHERE id = ?1 LIMIT 1 OFFSET 1)
     FROM main.saved_inputs WHERE id = ?1 LIMIT 1";
@@ -60,9 +77,9 @@ pub struct OriginalSavedInputRow<'a> {
 pub enum OriginalSavedInputOutcome {
     /// Fully recovered canonical accepted input funded by the active owner.
     Accepted(CoreBuffer),
-    /// The initialized original database has no row for this exact Turn.
+    /// The original database is absent, uninitialized, or has no exact Turn row.
     Missing,
-    /// The original writer must initialize the schema or rebind a prepared Turn.
+    /// An existing incompatible schema or prepared Turn needs the original writer.
     LegacyFallback,
 }
 
@@ -85,7 +102,7 @@ pub fn read_legacy_saved_input_from_admitted_port(
     let _sqlite_funding = TemporaryCharge::new(budget, SQLITE_WORK_BYTES)?;
     let lock_deadline = (Instant::now() + SQLITE_LOCK_TIMEOUT).min(deadline);
     let path = database_path(profile);
-    let opened = root.with_existing_read_only_database(&path, |connection| {
+    let read = |connection: &Connection, refused: &dyn Fn() -> bool| {
         let mut prepared = false;
         loop {
             live()?;
@@ -93,7 +110,7 @@ pub fn read_legacy_saved_input_from_admitted_port(
             let snapshot = (|| {
                 if !prepared {
                     cap_connection(connection, deadline)?;
-                    authorize(connection, false)?;
+                    authorize(connection, false, false)?;
                     prepared = true;
                 }
                 let transaction =
@@ -103,13 +120,26 @@ pub fn read_legacy_saved_input_from_admitted_port(
             })();
             let (transaction, schema) = match snapshot {
                 Err(error) if retry_busy(&error, lock_deadline) => continue,
+                Err(error)
+                    if error.sqlite_error_code() == Some(ErrorCode::CannotOpen) && refused() =>
+                {
+                    live()?;
+                    return Ok(OriginalSavedInputOutcome::LegacyFallback);
+                }
                 Err(error) => return Err(read_sql(error)),
                 Ok(snapshot) => snapshot,
             };
             if !schema? {
+                let pages: i64 = prepare(&transaction, "PRAGMA main.page_count")?
+                    .query_row([], |row| row.get(0))
+                    .map_err(read_sql)?;
                 live()?;
                 transaction.rollback().map_err(read_sql)?;
-                return Ok(OriginalSavedInputOutcome::LegacyFallback);
+                return Ok(if pages == 0 {
+                    OriginalSavedInputOutcome::Missing
+                } else {
+                    OriginalSavedInputOutcome::LegacyFallback
+                });
             }
             let mut select = prepare(&transaction, SELECT_INPUT)?;
             let mut rows = select.query([turn_id]).map_err(read_sql)?;
@@ -129,9 +159,13 @@ pub fn read_legacy_saved_input_from_admitted_port(
             transaction.rollback().map_err(read_sql)?;
             return Ok(accepted);
         }
-    });
+    };
+    let opened = root.with_existing_read_only_database_sidecar_status(&path, read);
     live()?;
-    stored_result(opened)
+    match opened {
+        Err(StoreError::NotFound) => Ok(OriginalSavedInputOutcome::Missing),
+        result => stored_result(result),
+    }
 }
 
 /// Retain the first accepted input for this exact source under the writer lock.
@@ -154,7 +188,7 @@ pub fn capture_legacy_saved_input_from_admitted_port(
     let _sqlite_funding = TemporaryCharge::new(budget, SQLITE_WORK_BYTES)?;
     let lock_deadline = (Instant::now() + SQLITE_LOCK_TIMEOUT).min(deadline);
     let path = database_path(profile);
-    stored_result(root.with_existing_database(&path, |connection| {
+    let opened = root.with_creatable_database(&path, |connection, is_empty_file| {
         let mut live = || check(OriginalSavedTurnCheck::Live);
         loop {
             live()?;
@@ -165,10 +199,24 @@ pub fn capture_legacy_saved_input_from_admitted_port(
             }
             break;
         }
-        authorize(connection, true).map_err(read_sql)?;
+        authorize(connection, true, false).map_err(read_sql)?;
         let transaction = begin_immediate(connection, lock_deadline, &mut live)?;
         live()?;
-        if !input_schema_present(&transaction).map_err(read_sql)??
+        // BEGIN IMMEDIATE makes the synthetic first SQLite page visible to
+        // PRAGMA page_count. Check the physical file and the locked schema
+        // before deciding whether this database still needs initialization.
+        if is_empty_file().map_err(|_| Error::Storage)?
+            && !prepare(&transaction, SELECT_ANY_SCHEMA)?
+                .exists([])
+                .map_err(read_sql)?
+        {
+            live()?;
+            authorize(connection, true, true).map_err(read_sql)?;
+            transaction
+                .execute_batch(ORIGINAL_SCHEMA)
+                .map_err(read_sql)?;
+            authorize(connection, true, false).map_err(read_sql)?;
+        } else if !input_schema_present(&transaction).map_err(read_sql)??
             || !super::start::schema_present(&transaction)?
         {
             live()?;
@@ -232,7 +280,8 @@ pub fn capture_legacy_saved_input_from_admitted_port(
             check(OriginalSavedTurnCheck::Publish)
         })?;
         Ok(OriginalSavedInputOutcome::Accepted(accepted))
-    }))
+    });
+    stored_result(opened)
 }
 
 fn check_current(deadline: Instant, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
@@ -373,7 +422,6 @@ fn stored_result(
 ) -> Result<OriginalSavedInputOutcome> {
     match result {
         Ok(result) => result,
-        Err(StoreError::NotFound) => Ok(OriginalSavedInputOutcome::LegacyFallback),
         Err(StoreError::Sql(error)) => Err(read_sql(error)),
         Err(_) => Err(Error::Storage),
     }
@@ -397,7 +445,7 @@ fn retry_busy(error: &rusqlite::Error, lock_deadline: Instant) -> bool {
     error.sqlite_error_code() == Some(ErrorCode::DatabaseBusy) && Instant::now() < lock_deadline
 }
 
-fn authorize(connection: &Connection, writable: bool) -> rusqlite::Result<()> {
+fn authorize(connection: &Connection, writable: bool, initialize: bool) -> rusqlite::Result<()> {
     connection.authorizer(Some(move |context: AuthContext<'_>| {
         if context.accessor.is_some() {
             return Authorization::Deny;
@@ -408,7 +456,14 @@ fn authorize(connection: &Connection, writable: bool) -> rusqlite::Result<()> {
                 Some("main"),
                 AuthAction::Read {
                     table_name: "sqlite_master" | "sqlite_schema",
-                    column_name: "type" | "name",
+                    column_name: "type" | "name" | "",
+                },
+            )
+            | (
+                Some("main"),
+                AuthAction::Pragma {
+                    pragma_name: "page_count",
+                    pragma_value: None,
                 },
             )
             | (
@@ -441,6 +496,43 @@ fn authorize(connection: &Connection, writable: bool) -> rusqlite::Result<()> {
                     table_name: "saved_inputs",
                 },
             ) if writable => Authorization::Allow,
+            (
+                Some("main"),
+                AuthAction::CreateTable {
+                    table_name:
+                        "turns"
+                        | "saved_inputs"
+                        | "message_deliveries"
+                        | "message_interrupts"
+                        | "calendar_preparations",
+                }
+                | AuthAction::CreateIndex {
+                    index_name:
+                        "sqlite_autoindex_turns_1"
+                        | "sqlite_autoindex_turns_2"
+                        | "sqlite_autoindex_saved_inputs_1"
+                        | "sqlite_autoindex_message_deliveries_1"
+                        | "sqlite_autoindex_message_interrupts_1"
+                        | "sqlite_autoindex_calendar_preparations_1",
+                    ..
+                }
+                | AuthAction::Insert {
+                    table_name: "sqlite_master" | "sqlite_schema",
+                }
+                | AuthAction::Update {
+                    table_name: "sqlite_master" | "sqlite_schema",
+                    column_name: "type" | "name" | "tbl_name" | "rootpage" | "sql",
+                }
+                | AuthAction::Read {
+                    table_name: "sqlite_master" | "sqlite_schema",
+                    column_name: "ROWID",
+                }
+                | AuthAction::Read {
+                    table_name:
+                        "message_deliveries" | "message_interrupts" | "calendar_preparations",
+                    column_name: "id",
+                },
+            ) if initialize => Authorization::Allow,
             _ => Authorization::Deny,
         }
     }))

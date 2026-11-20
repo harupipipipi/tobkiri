@@ -3,8 +3,13 @@ use super::*;
 use serde_json::{Value, json};
 use std::{
     fs,
+    os::unix::fs::{PermissionsExt, symlink},
     path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        Barrier,
+        atomic::{AtomicUsize, Ordering},
+    },
+    thread,
     time::Duration,
 };
 use tobkiri_pack_saved_turn_runtime_rust::{
@@ -217,38 +222,209 @@ fn denied_publication_leaves_no_accepted_input() {
 }
 
 #[test]
-fn missing_database_and_uninitialized_schema_fall_back_before_evaluating() {
+fn missing_database_read_creates_nothing_and_first_capture_initializes_owner_schema() {
     let store = Store::new();
     assert!(matches!(
         store.read(SOURCE),
-        Ok(OriginalSavedInputOutcome::LegacyFallback)
+        Ok(OriginalSavedInputOutcome::Missing)
     ));
-    assert!(matches!(
-        store.capture(b"must not prepare", deny_publication),
-        Ok(OriginalSavedInputOutcome::LegacyFallback)
-    ));
-    assert!(!store.path.exists());
+    assert!(!store.path.parent().unwrap().exists());
 
+    let candidate = projected_candidate();
+    let first = accepted(store.capture(&candidate, |_| Ok(())));
+    assert_eq!(
+        first.as_bytes(),
+        prepare_saved_input(SOURCE, &candidate).unwrap().accepted
+    );
+    assert_eq!(accepted(store.read(SOURCE)).as_bytes(), first.as_bytes());
+    assert_eq!(
+        fs::metadata(&store.path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    let schema = |connection: &Connection| {
+        let mut statement = connection
+            .prepare("SELECT type, name, tbl_name, sql FROM main.sqlite_schema ORDER BY name")
+            .unwrap();
+        statement
+            .query_map([], |row| {
+                let sql: Option<String> = row.get(3)?;
+                let normalized =
+                    sql.map(|sql| sql.split_whitespace().collect::<Vec<_>>().join(" "));
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    normalized,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let original = Connection::open_in_memory().unwrap();
+    original.execute_batch(LEGACY_SCHEMA).unwrap();
+    assert_eq!(schema(&store.sqlite()), schema(&original));
+}
+
+#[test]
+fn refused_first_publication_rolls_back_schema_and_allows_a_fresh_retry() {
+    let store = Store::new();
+    let publish = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&publish);
+    assert!(matches!(
+        store.capture(SOURCE, move |phase| {
+            if phase == OriginalSavedTurnCheck::Publish {
+                observed.fetch_add(1, Ordering::SeqCst);
+            }
+            deny_publication(phase)
+        }),
+        Err(Error::Revoked)
+    ));
+    assert_eq!(publish.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        store.read(SOURCE),
+        Ok(OriginalSavedInputOutcome::Missing)
+    ));
+    let count: i64 = store
+        .sqlite()
+        .query_row("SELECT count(*) FROM main.sqlite_schema", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(count, 0);
+    assert!(!store.path.with_extension("sqlite3-journal").exists());
+    assert_eq!(
+        accepted(store.capture(SOURCE, |_| Ok(()))).as_bytes(),
+        accepted(store.read(SOURCE)).as_bytes()
+    );
+}
+
+#[test]
+fn concurrent_first_captures_publish_one_projection() {
+    let store = Store::new();
+    let start = Barrier::new(2);
+    let publish = Arc::new(AtomicUsize::new(0));
+    let candidate = projected_candidate();
+    let capture = |candidate: &[u8]| {
+        let publish = Arc::clone(&publish);
+        start.wait();
+        accepted(store.capture(candidate, move |phase| {
+            if phase == OriginalSavedTurnCheck::Publish {
+                publish.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(())
+        }))
+    };
+    thread::scope(|scope| {
+        let first = scope.spawn(|| capture(SOURCE));
+        let second = scope.spawn(|| capture(&candidate));
+        assert_eq!(
+            first.join().unwrap().as_bytes(),
+            second.join().unwrap().as_bytes()
+        );
+    });
+    assert_eq!(publish.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn populated_unsupported_and_initialized_empty_schemas_fall_back_before_evaluating() {
+    let store = Store::new();
     fs::create_dir_all(store.path.parent().unwrap()).unwrap();
     let sqlite = store.sqlite();
-    sqlite
-        .execute_batch("CREATE TABLE unrelated (id TEXT PRIMARY KEY)")
+    sqlite.execute_batch("PRAGMA user_version=0").unwrap();
+    assert!(fs::metadata(&store.path).unwrap().len() > 0);
+    for schema in ["", "CREATE TABLE unrelated (id TEXT PRIMARY KEY)"] {
+        sqlite.execute_batch(schema).unwrap();
+        assert!(matches!(
+            store.read(SOURCE),
+            Ok(OriginalSavedInputOutcome::LegacyFallback)
+        ));
+        assert!(matches!(
+            store.capture(b"must not prepare", deny_publication),
+            Ok(OriginalSavedInputOutcome::LegacyFallback)
+        ));
+    }
+    assert!(
+        !sqlite
+            .prepare("SELECT 1 FROM main.sqlite_schema WHERE name = 'saved_inputs'")
+            .unwrap()
+            .exists([])
+            .unwrap()
+    );
+}
+
+#[test]
+fn capture_preserves_the_original_wal_database_mode() {
+    let store = Store::new();
+    fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+    let sqlite = store.sqlite();
+    sqlite.execute_batch("PRAGMA journal_mode=WAL").unwrap();
+    sqlite.execute_batch(LEGACY_SCHEMA).unwrap();
+    accepted(store.capture(SOURCE, |_| Ok(())));
+    let mode: String = sqlite
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
         .unwrap();
+    assert_eq!(mode, "wal");
+    let count: i64 = sqlite
+        .query_row("SELECT count(*) FROM saved_inputs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+    let files = [
+        store.path.clone(),
+        store.path.with_extension("sqlite3-wal"),
+        store.path.with_extension("sqlite3-shm"),
+    ];
+    let original = files.each_ref().map(|path| fs::read(path).unwrap());
     assert!(matches!(
         store.read(SOURCE),
         Ok(OriginalSavedInputOutcome::LegacyFallback)
     ));
-    assert!(matches!(
-        store.capture(b"must not prepare", deny_publication),
-        Ok(OriginalSavedInputOutcome::LegacyFallback)
-    ));
-    assert!(
-        !sqlite
-            .query_row(
-                "SELECT 1 FROM main.sqlite_schema WHERE name = 'saved_inputs'",
-                [],
-                |_| Ok(())
-            )
-            .is_ok()
+    assert_eq!(
+        files.each_ref().map(|path| fs::read(path).unwrap()),
+        original
     );
+}
+
+#[test]
+fn a_regular_sidecar_does_not_mask_a_corrupt_main_database() {
+    let store = Store::new();
+    fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+    fs::write(&store.path, b"invalid database header").unwrap();
+    fs::write(store.path.with_extension("sqlite3-wal"), b"not a WAL").unwrap();
+    assert!(matches!(
+        store.read(SOURCE),
+        Err(Error::InvalidRecord | Error::Storage)
+    ));
+}
+
+#[test]
+fn first_capture_rejects_redirected_or_orphaned_database_paths() {
+    let store = Store::new();
+    fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+    let outside = store.root.path().join("outside");
+    fs::write(&outside, []).unwrap();
+    symlink(&outside, &store.path).unwrap();
+    assert!(matches!(
+        store.capture(SOURCE, |_| Ok(())),
+        Err(Error::Storage)
+    ));
+    fs::remove_file(&store.path).unwrap();
+
+    fs::hard_link(&outside, &store.path).unwrap();
+    assert!(matches!(
+        store.capture(SOURCE, |_| Ok(())),
+        Err(Error::Storage)
+    ));
+    fs::remove_file(&store.path).unwrap();
+
+    let journal = store.path.with_extension("sqlite3-journal");
+    fs::write(&journal, b"orphan").unwrap();
+    assert!(matches!(
+        store.capture(SOURCE, |_| Ok(())),
+        Err(Error::Storage)
+    ));
+    assert!(!store.path.exists());
+    assert_eq!(fs::read(&journal).unwrap(), b"orphan");
+    assert_eq!(fs::metadata(&outside).unwrap().len(), 0);
 }

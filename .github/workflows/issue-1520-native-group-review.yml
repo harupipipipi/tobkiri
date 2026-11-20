@@ -7,6 +7,8 @@ on:
       - 'crates/tobkiri-core/src/lib.rs'
       - 'crates/tobkiri-core/src/core.rs'
       - 'crates/tobkiri-core/src/native_profile_review_tests.rs'
+      - 'crates/tobkiri-store/src/secure.rs'
+      - 'crates/tobkiri-store/src/vfs.rs'
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
       - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
@@ -24,6 +26,7 @@ on:
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat/**'
+      - 'tobkiri_launcher/harness-native/src/original_saved_turn_settlement/**'
       - 'tobkiri_launcher/src-tauri/src/native_setup_review*.rs'
       - 'tobkiri_launcher/src-tauri/src/native_setup_commands.rs'
       - 'tobkiri_launcher/src-tauri/capabilities/native-first-setup.json'
@@ -85,6 +88,8 @@ jobs:
         run: cargo test --locked -p tobkiri-harness-native --lib bootstrap_runtime::activation_decision::tests
       - name: Verify local Provider policy and physical request dispatch
         run: cargo test --locked -p tobkiri-harness-native --lib original_local_chat::tests
+      - name: Verify atomic saved input in the original SQLite owner
+        run: cargo test --locked -p tobkiri-harness-native --lib original_saved_turn_settlement::input_store::tests
   actual-macos-host:
     runs-on: macos-15
     timeout-minutes: 50

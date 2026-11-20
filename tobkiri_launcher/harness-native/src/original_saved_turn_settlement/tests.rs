@@ -1121,7 +1121,8 @@ fn initialize_saved_input_store(original: &OriginalStore) -> anyhow::Result<Conn
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the source-built saved-turn component with the input port"]
-async fn actual_wasm_captures_and_recovers_the_original_saved_input() -> anyhow::Result<()> {
+async fn actual_wasm_initializes_the_original_store_and_recovers_saved_input() -> anyhow::Result<()>
+{
     use std::collections::BTreeMap;
     use tobkiri_canon::ids::{OpName, ShapeRef};
     use tobkiri_core::pack::{generate_manifest, verify_directory, verify_tpk};
@@ -1172,7 +1173,7 @@ async fn actual_wasm_captures_and_recovers_the_original_saved_input() -> anyhow:
     let account = ledger.native_setup_account(&control, || Ok(Arc::new(Proof)))?;
     let engine = WasmEngine::new_with_control(&control)?;
     let original = OriginalStore::new();
-    drop(initialize_saved_input_store(&original)?);
+    assert!(!original.database.parent().unwrap().exists());
     let source = json!({"request": {
         "conversation_id": CONVERSATION, "conversation_revision": 7,
         "turn_id": TURN, "content": "日本語で答えて"
