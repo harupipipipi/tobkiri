@@ -6553,6 +6553,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [先行のステージングCI](https://github.com/harupipipipi/tobkiri/actions/runs/44611033606) は
   署名済みWasmを使ったLauncherのテストで、Side Chatのフィルターが名前の異なる2件目を
   選ばず、成功1件と期待2件の不一致で停止した。現在は2件の完全名を指定し、実行件数も照合する。
+- [次のDMGステージング](https://github.com/harupipipipi/tobkiri/actions/runs/44656834240/job/136037440623) は
+  デバッグビルドのSide Chat・Provider Snapshotの証明テストでスタックが溢れた。証明を一件ずつ
+  生成・検証し、ケースと期待値を維持した。実行する2件をmacOSのグループ検証にも追加し、
+  DMGステージングでスタック設定を変えずに確認する。
 - インストールしたコピーの検証は、Launcherの正常終了とKernel・Broker両ポートの解放も
   待つ。Kernelは別のプロセスグループで動くため、アプリの終了処理が完了しなかった場合は
   失敗を返し、実行に使ったコピーとデータを保持する。引き継いだ終了予算内で待ち、実行が

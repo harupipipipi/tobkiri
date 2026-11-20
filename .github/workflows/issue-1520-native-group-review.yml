@@ -165,6 +165,8 @@ jobs:
           turn_start_evidence_is_specific_to_its_caller_and_operation
           saved_input_wire_separates_read_and_publication saved_input_job_checks_mode_proof_and_funded_body
           saved_input_environment_requires_the_current_proof_for_each_caller
+          sealed_python::tests::side_chat_append_environment_requires_its_own_launch_proof
+          sealed_python::tests::side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs
           saved_request_markers_are_allowed_for_defaultspack_only
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
           malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

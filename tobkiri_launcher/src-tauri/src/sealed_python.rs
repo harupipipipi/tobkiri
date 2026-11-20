@@ -4831,8 +4831,11 @@ mod tests {
     #[test]
     fn side_chat_turn_start_and_provider_snapshot_markers_use_independent_launch_proofs() {
         use tobkiri_harness_native::{
-            OriginalModelResolveRole, OriginalProviderSnapshotRole, OriginalSavedLocalChatRole,
-            OriginalWorkflowSnapshotCaller, OriginalWorkflowSnapshotEntry,
+            OriginalModelResolveRole::{Generate, QuoteGenerate, QuoteStream, Stream},
+            OriginalProviderSnapshotRole as SnapshotRole, OriginalReviewerHealthRole,
+            OriginalSavedLocalChatRole, OriginalWorkflowHealthCaller,
+            OriginalWorkflowSnapshotCaller as WorkflowCaller,
+            OriginalWorkflowSnapshotEntry::{Advance, StepExecute},
         };
 
         use crate::host_contract::ExecutionProfileIdentity;
@@ -4840,241 +4843,227 @@ mod tests {
             ConversationAppendCaller, SavedTurnStartCaller, VerifiedRegistryLaunch,
         };
 
-        let identity = ExecutionProfileIdentity {
-            profile_id: "profile".into(),
-            profile_revision: digest('c'),
-            activation_id: "activation".into(),
-            plan_digest: digest('d'),
-        };
-        let append = VerifiedRegistryLaunch::test_conversation_append_proof_for(
-            identity.clone(),
-            "catalog",
-            ConversationAppendCaller::SideChat,
-        );
-        let saved_turn = VerifiedRegistryLaunch::test_turn_start_proof_for(
-            identity.clone(),
-            "catalog",
-            SavedTurnStartCaller::SavedTurn,
-        );
-        let side_chat = VerifiedRegistryLaunch::test_turn_start_proof_for(
-            identity,
-            "catalog",
-            SavedTurnStartCaller::SideChat,
-        );
-        let snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::Adapter(OriginalSavedLocalChatRole::SideChatStream),
-        );
-        let gateway_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::Gateway {
-                role: OriginalModelResolveRole::QuoteGenerate,
-                side_chat: false,
-            },
-        );
-        let side_chat_gateway_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::Gateway {
-                role: OriginalModelResolveRole::QuoteStream,
-                side_chat: true,
-            },
-        );
-        let shell_settings_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::ShellSettings,
-        );
-        let model_save_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::ModelSave,
-        );
-        let model_search_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::ModelSearch,
-        );
-        let command_datasource_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::CommandDatasource,
-        );
-        let workflow_snapshot = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::Workflow {
-                caller: OriginalWorkflowSnapshotCaller::Text,
-                entry: OriginalWorkflowSnapshotEntry::StepExecute,
-            },
-        );
-        let [workflow_text_health, workflow_messages_health] =
-            tobkiri_harness_native::OriginalWorkflowHealthCaller::ALL.map(|caller| {
-                VerifiedRegistryLaunch::test_provider_snapshot_proof(
-                    side_chat.identity.clone(),
-                    "catalog",
-                    OriginalProviderSnapshotRole::WorkflowHealth {
-                        caller,
-                        entry: OriginalWorkflowSnapshotEntry::Advance,
-                    },
-                )
-            });
-        let workflow_snapshot_and_health =
-            VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
-                side_chat.identity.clone(),
-                "catalog",
-                [
-                    OriginalProviderSnapshotRole::Workflow {
-                        caller: OriginalWorkflowSnapshotCaller::Text,
-                        entry: OriginalWorkflowSnapshotEntry::Advance,
-                    },
-                    OriginalProviderSnapshotRole::WorkflowHealth {
-                        caller: tobkiri_harness_native::OriginalWorkflowHealthCaller::Text,
-                        entry: OriginalWorkflowSnapshotEntry::Advance,
-                    },
-                ],
-            );
-        let complete_health = VerifiedRegistryLaunch::test_provider_snapshot_proof(
-            side_chat.identity.clone(),
-            "catalog",
-            OriginalProviderSnapshotRole::ConversationCompleteHealth,
-        );
-        let [reviewer_quote, reviewer_generate] =
-            tobkiri_harness_native::OriginalReviewerHealthRole::ALL.map(|role| {
-                VerifiedRegistryLaunch::test_provider_snapshot_proof(
-                    side_chat.identity.clone(),
-                    "catalog",
-                    OriginalProviderSnapshotRole::ReviewerHealth(role),
-                )
-            });
-        let reviewer_snapshot_and_health =
-            VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
-                side_chat.identity.clone(),
-                "catalog",
-                [
-                    OriginalProviderSnapshotRole::ShellSettings,
-                    OriginalProviderSnapshotRole::ReviewerHealth(
-                        tobkiri_harness_native::OriginalReviewerHealthRole::Quote,
-                    ),
-                ],
-            );
-        let complete_snapshot_and_health =
-            VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
-                side_chat.identity.clone(),
-                "catalog",
-                [
-                    OriginalProviderSnapshotRole::ShellSettings,
-                    OriginalProviderSnapshotRole::ConversationCompleteHealth,
-                ],
-            );
-        let [workflow_text_adapter_snapshot, workflow_messages_adapter_snapshot] = [
-            OriginalWorkflowSnapshotCaller::TextAdapter,
-            OriginalWorkflowSnapshotCaller::MessagesAdapter,
-        ]
-        .map(|caller| {
-            VerifiedRegistryLaunch::test_provider_snapshot_proof(
-                side_chat.identity.clone(),
-                "catalog",
-                OriginalProviderSnapshotRole::Workflow {
-                    caller,
-                    entry: OriginalWorkflowSnapshotEntry::StepExecute,
-                },
-            )
-        });
-        let [model_access_read_snapshot, model_access_catalog_snapshot] = [
-            OriginalProviderSnapshotRole::ModelAccessRead,
-            OriginalProviderSnapshotRole::ModelAccessCatalog,
-        ]
-        .map(|role| {
-            VerifiedRegistryLaunch::test_provider_snapshot_proof(
-                side_chat.identity.clone(),
-                "catalog",
-                role,
-            )
-        });
-        let [model_access_read_projection, model_access_catalog_projection, unrelated_projection] =
-            [
-                OriginalProviderSnapshotRole::ModelAccessRead,
-                OriginalProviderSnapshotRole::ModelAccessCatalog,
-                OriginalProviderSnapshotRole::ShellSettings,
-            ]
-            .map(|role| {
-                VerifiedRegistryLaunch::test_model_access_projection_proof(
-                    side_chat.identity.clone(),
-                    "catalog",
-                    role,
-                )
-            });
-        let health_proof = |role, via_side_chat| {
-            VerifiedRegistryLaunch::test_provider_snapshot_proof(
-                side_chat.identity.clone(),
-                "catalog",
-                OriginalProviderSnapshotRole::GatewayHealth {
-                    role,
-                    side_chat: via_side_chat,
-                },
-            )
-        };
-        use tobkiri_harness_native::OriginalModelResolveRole::{
-            Generate, QuoteGenerate, QuoteStream, Stream,
-        };
-        let health_generate = health_proof(Generate, false);
-        let health_stream = health_proof(Stream, false);
-        let side_chat_health_generate = health_proof(Generate, true);
-        let side_chat_health_stream = health_proof(Stream, true);
-        let quote_health_generate = health_proof(QuoteGenerate, false);
-        let quote_health_stream = health_proof(QuoteStream, false);
-        let side_chat_quote_health_generate = health_proof(QuoteGenerate, true);
-        let side_chat_quote_health_stream = health_proof(QuoteStream, true);
-        for (proof, expected_turn_start, expected_snapshot) in [
-            (None, false, None),
-            (Some(&append), false, None),
-            (Some(&saved_turn), false, None),
-            (Some(&side_chat), true, None),
-            (Some(&snapshot), false, Some("1")),
-            (Some(&gateway_snapshot), false, Some("2")),
-            (Some(&side_chat_gateway_snapshot), false, Some("2")),
-            (Some(&shell_settings_snapshot), false, Some("3")),
-            (Some(&model_save_snapshot), false, Some("3")),
-            (Some(&model_search_snapshot), false, Some("4")),
-            (Some(&command_datasource_snapshot), false, Some("4")),
-            (Some(&workflow_snapshot), false, Some("5")),
-            (Some(&workflow_text_adapter_snapshot), false, Some("6")),
-            (Some(&workflow_messages_adapter_snapshot), false, Some("6")),
-            (Some(&model_access_read_snapshot), false, Some("7")),
-            (Some(&model_access_catalog_snapshot), false, Some("7")),
-            (Some(&model_access_read_projection), false, Some("8")),
-            (Some(&model_access_catalog_projection), false, Some("8")),
-            (Some(&unrelated_projection), false, Some("3")),
-            (Some(&health_generate), false, Some("9")),
-            (Some(&health_stream), false, Some("9")),
-            (Some(&side_chat_health_generate), false, Some("10")),
-            (Some(&side_chat_health_stream), false, Some("10")),
-            (Some(&quote_health_generate), false, Some("11")),
-            (Some(&quote_health_stream), false, Some("11")),
-            (Some(&side_chat_quote_health_generate), false, Some("11")),
-            (Some(&side_chat_quote_health_stream), false, Some("11")),
-            (Some(&workflow_text_health), false, Some("12-health-only")),
-            (
-                Some(&workflow_messages_health),
-                false,
-                Some("12-health-only"),
-            ),
-            (Some(&workflow_snapshot_and_health), false, Some("12")),
-            (Some(&complete_health), false, Some("13-health-only")),
-            (Some(&complete_snapshot_and_health), false, Some("13")),
-            (Some(&reviewer_quote), false, Some("14-health-only")),
-            (Some(&reviewer_generate), false, Some("14-health-only")),
-            (Some(&reviewer_snapshot_and_health), false, Some("14")),
-        ] {
+        // Keep each large registry proof in its own call frame. The debug test
+        // runs on the default libtest stack during DMG staging.
+        #[inline(never)]
+        fn assert_with_proof(
+            build: impl FnOnce() -> VerifiedRegistryLaunch,
+            expected_turn_start: bool,
+            expected_snapshot: Option<&str>,
+        ) {
+            let proof = build();
+            assert_markers(Some(&proof), expected_turn_start, expected_snapshot);
+        }
+
+        fn assert_markers(
+            proof: Option<&VerifiedRegistryLaunch>,
+            expected_turn_start: bool,
+            expected_snapshot: Option<&str>,
+        ) {
             let (_, environment) = RoleArguments::defaultspack([OsString::from("serve")])
                 .unwrap()
                 .with_native_registry_admission(proof)
                 .split_native_registry_environment();
             assert_eq!(environment.side_chat_saved_turn_start, expected_turn_start);
             assert_eq!(environment.provider_snapshot_version, expected_snapshot);
+        }
+
+        let identity = ExecutionProfileIdentity {
+            profile_id: "profile".into(),
+            profile_revision: digest('c'),
+            activation_id: "activation".into(),
+            plan_digest: digest('d'),
+        };
+        assert_markers(None, false, None);
+        assert_with_proof(
+            || {
+                VerifiedRegistryLaunch::test_conversation_append_proof_for(
+                    identity.clone(),
+                    "catalog",
+                    ConversationAppendCaller::SideChat,
+                )
+            },
+            false,
+            None,
+        );
+        for (caller, expected) in [
+            (SavedTurnStartCaller::SavedTurn, false),
+            (SavedTurnStartCaller::SideChat, true),
+        ] {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_turn_start_proof_for(
+                        identity.clone(),
+                        "catalog",
+                        caller,
+                    )
+                },
+                expected,
+                None,
+            );
+        }
+
+        let snapshot_cases: &[(&[SnapshotRole], &str)] = &[
+            (
+                &[SnapshotRole::Adapter(
+                    OriginalSavedLocalChatRole::SideChatStream,
+                )],
+                "1",
+            ),
+            (
+                &[SnapshotRole::Gateway {
+                    role: QuoteGenerate,
+                    side_chat: false,
+                }],
+                "2",
+            ),
+            (
+                &[SnapshotRole::Gateway {
+                    role: QuoteStream,
+                    side_chat: true,
+                }],
+                "2",
+            ),
+            (&[SnapshotRole::ShellSettings], "3"),
+            (&[SnapshotRole::ModelSave], "3"),
+            (&[SnapshotRole::ModelSearch], "4"),
+            (&[SnapshotRole::CommandDatasource], "4"),
+            (
+                &[SnapshotRole::Workflow {
+                    caller: WorkflowCaller::Text,
+                    entry: StepExecute,
+                }],
+                "5",
+            ),
+            (
+                &[SnapshotRole::Workflow {
+                    caller: WorkflowCaller::TextAdapter,
+                    entry: StepExecute,
+                }],
+                "6",
+            ),
+            (
+                &[SnapshotRole::Workflow {
+                    caller: WorkflowCaller::MessagesAdapter,
+                    entry: StepExecute,
+                }],
+                "6",
+            ),
+            (&[SnapshotRole::ModelAccessRead], "7"),
+            (&[SnapshotRole::ModelAccessCatalog], "7"),
+            (
+                &[
+                    SnapshotRole::Workflow {
+                        caller: WorkflowCaller::Text,
+                        entry: Advance,
+                    },
+                    SnapshotRole::WorkflowHealth {
+                        caller: OriginalWorkflowHealthCaller::Text,
+                        entry: Advance,
+                    },
+                ],
+                "12",
+            ),
+            (
+                &[SnapshotRole::ConversationCompleteHealth],
+                "13-health-only",
+            ),
+            (
+                &[
+                    SnapshotRole::ShellSettings,
+                    SnapshotRole::ConversationCompleteHealth,
+                ],
+                "13",
+            ),
+            (
+                &[
+                    SnapshotRole::ShellSettings,
+                    SnapshotRole::ReviewerHealth(OriginalReviewerHealthRole::Quote),
+                ],
+                "14",
+            ),
+        ];
+        for &(roles, expected) in snapshot_cases {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_provider_snapshot_proof_with_roles(
+                        identity.clone(),
+                        "catalog",
+                        roles.iter().copied(),
+                    )
+                },
+                false,
+                Some(expected),
+            );
+        }
+
+        for (role, expected) in [
+            (SnapshotRole::ModelAccessRead, "8"),
+            (SnapshotRole::ModelAccessCatalog, "8"),
+            (SnapshotRole::ShellSettings, "3"),
+        ] {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_model_access_projection_proof(
+                        identity.clone(),
+                        "catalog",
+                        role,
+                    )
+                },
+                false,
+                Some(expected),
+            );
+        }
+        for (role, side_chat, expected) in [
+            (Generate, false, "9"),
+            (Stream, false, "9"),
+            (Generate, true, "10"),
+            (Stream, true, "10"),
+            (QuoteGenerate, false, "11"),
+            (QuoteStream, false, "11"),
+            (QuoteGenerate, true, "11"),
+            (QuoteStream, true, "11"),
+        ] {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                        identity.clone(),
+                        "catalog",
+                        SnapshotRole::GatewayHealth { role, side_chat },
+                    )
+                },
+                false,
+                Some(expected),
+            );
+        }
+        for caller in OriginalWorkflowHealthCaller::ALL {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                        identity.clone(),
+                        "catalog",
+                        SnapshotRole::WorkflowHealth {
+                            caller,
+                            entry: Advance,
+                        },
+                    )
+                },
+                false,
+                Some("12-health-only"),
+            );
+        }
+        for role in OriginalReviewerHealthRole::ALL {
+            assert_with_proof(
+                || {
+                    VerifiedRegistryLaunch::test_provider_snapshot_proof(
+                        identity.clone(),
+                        "catalog",
+                        SnapshotRole::ReviewerHealth(role),
+                    )
+                },
+                false,
+                Some("14-health-only"),
+            );
         }
     }
 
