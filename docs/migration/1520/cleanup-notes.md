@@ -6671,3 +6671,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 実Launcherの回帰をグループCIに追加した。配布候補では同じ実行で構築したアーカイブと
   CPython 3.13での比較を通してから同梱する。
   [実Launcherの検証](https://github.com/harupipipipi/tobkiri/actions/runs/44677115883)
+- `600ac6b29` は開発Profileのビルド対象を、成果物を使う12 Packに絞った。従来のworkspace一括ビルドは
+  純粋なWorkflowゲストにもWASIのリンカーを使い、1B検証が推論開始前に停止した。
+  Workflowは配布ステージングでno-WASIの既存手順を使う。1Bの構造化ツール試験が使うHarness Turnは
+  試験の直前に明示的にビルドする。12 PackのWASIビルドとCI契約の静的検査56件が通過した。
+  [先行の1B検証](https://github.com/harupipipipi/tobkiri/actions/runs/44677115829)
