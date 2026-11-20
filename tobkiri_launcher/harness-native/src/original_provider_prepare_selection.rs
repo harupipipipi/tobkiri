@@ -1277,6 +1277,64 @@ impl<'a> OriginalCalendarSavedDispatchChoice<'a> {
     }
 }
 
+/// The original Calendar path to the saved conversation computation.
+///
+/// Its final grant is distinct from Turn Lifecycle. Static pins by themselves
+/// do not prove an active dispatch or a retained status invocation.
+pub struct OriginalCalendarSavedOrchestrationChoice<'a> {
+    _active: &'a OriginalActiveProfile,
+    manager: Option<OriginalRoutePin>,
+    pins: [OriginalRoutePin; 4],
+}
+
+impl<'a> OriginalCalendarSavedOrchestrationChoice<'a> {
+    /// Select the original automatic Calendar chain including saved_complete.
+    /// Verify every pin against the signed Bundle before use.
+    pub fn select(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Self::select_entry(active, budget, false)
+    }
+
+    /// Select the original manual Calendar chain including saved_complete.
+    /// Verify every pin against the signed Bundle before use.
+    pub fn select_manual(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Self::select_entry(active, budget, true)
+    }
+
+    fn select_entry(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        manual: bool,
+    ) -> Result<Option<Self>> {
+        Ok(select_calendar_saved_job_records(
+            active.records(),
+            budget,
+            manual,
+            &SAVED_ORCHESTRATION,
+        )?
+        .map(|(manager, pins)| Self {
+            _active: active,
+            manager,
+            pins,
+        }))
+    }
+
+    /// The initial Shell-to-Calendar Manage grant for a manual dispatch.
+    pub fn manager(&self) -> Option<&OriginalRoutePin> {
+        self.manager.as_ref()
+    }
+
+    /// The ordered Scheduler, Broker, saved job adapter and saved guest grants.
+    pub fn pins(&self) -> &[OriginalRoutePin; 4] {
+        &self.pins
+    }
+}
+
 /// The signed chain from the selected Shell through Saved Turn to Turn Lifecycle.
 pub struct OriginalSavedTurnStartChoice<'a> {
     _active: &'a OriginalActiveProfile,
@@ -2693,6 +2751,15 @@ fn select_calendar_saved_dispatch_records(
     budget: &Arc<dyn AllocationBudget>,
     manual: bool,
 ) -> Result<Option<CalendarSavedDispatchPins>> {
+    select_calendar_saved_job_records(active, budget, manual, &TURN_LIFECYCLE)
+}
+
+fn select_calendar_saved_job_records(
+    active: (&CoreValue, &CoreValue, &CoreValue),
+    budget: &Arc<dyn AllocationBudget>,
+    manual: bool,
+    adapter_target: &'static Route,
+) -> Result<Option<CalendarSavedDispatchPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
@@ -2720,8 +2787,8 @@ fn select_calendar_saved_dispatch_records(
         return Ok(None);
     };
     Ok(records
-        .select_route(adapter.function_id(), &TURN_LIFECYCLE)?
-        .map(|lifecycle| (manager, [scheduler, broker, adapter, lifecycle])))
+        .select_route(adapter.function_id(), adapter_target)?
+        .map(|target| (manager, [scheduler, broker, adapter, target])))
 }
 
 fn select_saved_turn_settlement_records(
@@ -5817,6 +5884,71 @@ mod tests {
         );
         assert!(select(&automatic, false).unwrap().is_some());
         assert!(select(&automatic, true).unwrap().is_none());
+    }
+
+    #[test]
+    fn calendar_saved_orchestration_requires_its_own_guest_grant_and_entry() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value, manual, target| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_calendar_saved_job_records((&profile, &lock, &plan), &budget, manual, target)
+        };
+        for manual in [false, true] {
+            let mut fixture = records();
+            let scheduler_caller = if manual {
+                add_fixture_grant(&mut fixture, TURN_SHELL_CALLER, &CALENDAR_MANAGE, &budget);
+                CALENDAR_MANAGE.function
+            } else {
+                SCHEDULER_CLOCK_CALLER
+            };
+            let recovery_chain = [
+                (scheduler_caller, &SCHEDULER_CONTROL),
+                (SCHEDULER_CONTROL.function, &JOB_ACTION_BROKER),
+                (JOB_ACTION_BROKER.function, &CHAT_SAVED_JOB_ADAPTER),
+                (CHAT_SAVED_JOB_ADAPTER.function, &TURN_LIFECYCLE),
+            ];
+            for (caller, route) in recovery_chain {
+                add_fixture_grant(&mut fixture, caller, route, &budget);
+            }
+            assert!(
+                select(&fixture, manual, &SAVED_ORCHESTRATION)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(select_saved_orchestration(&fixture).unwrap().is_some());
+
+            let guest_row = fixture["plan"]["bindings"].as_array().unwrap().len();
+            add_fixture_grant(
+                &mut fixture,
+                CHAT_SAVED_JOB_ADAPTER.function,
+                &SAVED_ORCHESTRATION,
+                &budget,
+            );
+            let (manager, pins) = select(&fixture, manual, &SAVED_ORCHESTRATION)
+                .unwrap()
+                .unwrap();
+            assert_eq!(manager.is_some(), manual);
+            assert_eq!(pins[0].caller_function_id(), scheduler_caller);
+            let guest = &pins[3];
+            assert_eq!(guest.caller_function_id(), CHAT_SAVED_JOB_ADAPTER.function);
+            assert_eq!(guest.function_id(), SAVED_ORCHESTRATION.function);
+            assert_eq!(guest.operation_id(), SAVED_ORCHESTRATION.operation);
+            assert_eq!(guest.variant_id(), SAVED_ORCHESTRATION.variant);
+            assert_eq!(guest.execution_kind(), "pack_vm");
+            assert!(
+                select(&fixture, !manual, &SAVED_ORCHESTRATION)
+                    .unwrap()
+                    .is_none()
+            );
+
+            set_grant_interactive_only(&mut fixture, guest_row);
+            assert!(
+                select(&fixture, manual, &SAVED_ORCHESTRATION)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(select(&fixture, manual, &TURN_LIFECYCLE).unwrap().is_some());
+        }
     }
 
     #[test]
