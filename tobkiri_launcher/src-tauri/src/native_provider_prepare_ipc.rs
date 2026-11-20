@@ -1042,6 +1042,7 @@ where
         "saved-turn" => Ok(SavedInputCaller::SavedTurn),
         "calendar" => Ok(SavedInputCaller::Calendar),
         "calendar-manual" => Ok(SavedInputCaller::CalendarManual),
+        "calendar-status" => Ok(SavedInputCaller::CalendarStatus),
         _ => Err(de::Error::custom("unknown saved input caller")),
     }
 }
@@ -1061,6 +1062,7 @@ where
         "side-chat" => Ok(SavedTurnStartCaller::SideChat),
         "calendar" => Ok(SavedTurnStartCaller::Calendar),
         "calendar-manual" => Ok(SavedTurnStartCaller::CalendarManual),
+        "calendar-status" => Ok(SavedTurnStartCaller::CalendarStatus),
         _ => Err(de::Error::custom("unknown Turn start caller")),
     }
 }
@@ -2861,6 +2863,7 @@ mod tests {
         for (name, expected) in [
             ("calendar", SavedInputCaller::Calendar),
             ("calendar-manual", SavedInputCaller::CalendarManual),
+            ("calendar-status", SavedInputCaller::CalendarStatus),
         ] {
             let calendar = start_frame(&format!(
                 r#","saved_input":{{"caller":"{name}","mode":"bind","input_bytes":1}}"#
@@ -2881,7 +2884,9 @@ mod tests {
             ),
             r#","saved_input":{"mode":"read","input_bytes":1}"#.to_owned(),
             r#","saved_input":{"caller":"side-chat","mode":"bind","input_bytes":1}"#.to_owned(),
-            r#","saved_input":{"caller":"calendar-status","mode":"bind","input_bytes":1}"#
+            r#","saved_input":{"caller":"calendar_status","mode":"bind","input_bytes":1}"#
+                .to_owned(),
+            r#","saved_input":{"caller":"calendar-manual-status","mode":"bind","input_bytes":1}"#
                 .to_owned(),
             r#","saved_input":{"caller":null,"mode":"bind","input_bytes":1}"#.to_owned(),
             r#","saved_input":{"mode":"restore","input_bytes":1,"publication":true}"#.to_owned(),
@@ -5368,6 +5373,10 @@ mod tests {
                 r#""caller":"calendar-manual""#,
                 SavedTurnStartCaller::CalendarManual,
             ),
+            (
+                r#""caller":"calendar-status""#,
+                SavedTurnStartCaller::CalendarStatus,
+            ),
         ] {
             let frame = message(field);
             let start = parse_start(START, frame.as_bytes()).unwrap();
@@ -5380,7 +5389,8 @@ mod tests {
             r#""caller":"side_chat""#,
             r#""caller":"saved-reconcile""#,
             r#""caller":"calendar_manual""#,
-            r#""caller":"calendar-status""#,
+            r#""caller":"calendar_status""#,
+            r#""caller":"calendar-manual-status""#,
             r#""caller":"Calendar""#,
             r#""caller":null"#,
             r#""caller":"side-chat","caller":"saved-turn""#,

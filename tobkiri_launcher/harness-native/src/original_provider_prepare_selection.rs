@@ -1209,6 +1209,8 @@ pub enum SavedTurnStartCaller {
     Calendar,
     /// The selected Shell starts a fresh Calendar dispatch through Calendar Manage.
     CalendarManual,
+    /// The Scheduler Clock recovers the saved Turn of an expired Calendar dispatch.
+    CalendarStatus,
 }
 
 /// The signed entry point behind a Saved Input request.
@@ -1220,6 +1222,8 @@ pub enum SavedInputCaller {
     Calendar,
     /// The selected Shell starts a fresh Calendar dispatch through Calendar Manage.
     CalendarManual,
+    /// The Scheduler Clock recovers saved input for an expired Calendar dispatch.
+    CalendarStatus,
 }
 
 /// The signed automatic or manual Calendar dispatch chain for saved input and Turn start.
@@ -2667,7 +2671,9 @@ fn select_saved_turn_start_records(
     let via_side_chat = match caller {
         SavedTurnStartCaller::SavedTurn => false,
         SavedTurnStartCaller::SideChat => true,
-        SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarManual => return Ok(None),
+        SavedTurnStartCaller::Calendar
+        | SavedTurnStartCaller::CalendarManual
+        | SavedTurnStartCaller::CalendarStatus => return Ok(None),
     };
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
@@ -5667,11 +5673,16 @@ mod tests {
         };
         let mut fixture = records();
         assert!(select(&fixture).unwrap().is_none());
-        assert!(
-            select_saved_turn_start_for(&fixture, SavedTurnStartCaller::Calendar)
-                .unwrap()
-                .is_none()
-        );
+        for caller in [
+            SavedTurnStartCaller::Calendar,
+            SavedTurnStartCaller::CalendarStatus,
+        ] {
+            assert!(
+                select_saved_turn_start_for(&fixture, caller)
+                    .unwrap()
+                    .is_none()
+            );
+        }
         let first_row = fixture["plan"]["bindings"].as_array().unwrap().len();
         let chain = [
             (SCHEDULER_CLOCK_CALLER, &SCHEDULER_CONTROL),

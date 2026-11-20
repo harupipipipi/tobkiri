@@ -46,9 +46,11 @@ _SAVED_TURN_START_ENV = "TOBKIRI_NATIVE_SAVED_TURN_START"
 _SAVED_INPUT_ENV = "TOBKIRI_NATIVE_SAVED_INPUT"
 _CALENDAR_SAVED_INPUT_ENV = "TOBKIRI_NATIVE_CALENDAR_SAVED_INPUT"
 _CALENDAR_MANUAL_SAVED_INPUT_ENV = "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_INPUT"
+_CALENDAR_STATUS_SAVED_INPUT_ENV = "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_INPUT"
 _SIDE_CHAT_START_ENV = "TOBKIRI_NATIVE_SIDE_CHAT_SAVED_TURN_START"
 _CALENDAR_START_ENV = "TOBKIRI_NATIVE_CALENDAR_SAVED_TURN_START"
 _CALENDAR_MANUAL_START_ENV = "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_TURN_START"
+_CALENDAR_STATUS_START_ENV = "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_TURN_START"
 _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
@@ -440,7 +442,7 @@ class NativeSavedTurnReadRequest:
 
 
 SavedTurnStartAction = Literal["begin", "claim"]
-CalendarSavedCaller = Literal["calendar", "calendar-manual"]
+CalendarSavedCaller = Literal["calendar", "calendar-manual", "calendar-status"]
 SavedTurnStartCaller = Literal["saved-turn", "side-chat"] | CalendarSavedCaller
 
 
@@ -1049,6 +1051,8 @@ def capture_launcher_saved_input_writer(caller: SavedInputCaller = "saved-turn")
         marker = _CALENDAR_SAVED_INPUT_ENV
     elif caller == "calendar-manual":
         marker = _CALENDAR_MANUAL_SAVED_INPUT_ENV
+    elif caller == "calendar-status":
+        marker = _CALENDAR_STATUS_SAVED_INPUT_ENV
     else:
         raise _ProtocolError("native Saved Turn input caller is invalid")
     if os.environ.get(marker) != "1":
@@ -1244,6 +1248,13 @@ def capture_launcher_manual_calendar_turn_start_writer() -> (
 ):
     """Capture the endpoint separately admitted for a manual Calendar trigger."""
     return _capture_saved_turn_start_writer(_CALENDAR_MANUAL_START_ENV, "calendar-manual")
+
+
+def capture_launcher_calendar_status_turn_start_writer() -> (
+    Callable[[NativeSavedTurnStartRequest], Mapping[str, Any]] | None
+):
+    """Capture the endpoint admitted for persisted Calendar status recovery."""
+    return _capture_saved_turn_start_writer(_CALENDAR_STATUS_START_ENV, "calendar-status")
 
 
 def _capture_saved_turn_start_writer(
@@ -1447,7 +1458,7 @@ def _start_payload(
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Turn input size is invalid")
         if type(borrow.caller) is not str or borrow.caller not in (
-            "saved-turn", "calendar", "calendar-manual",
+            "saved-turn", "calendar", "calendar-manual", "calendar-status",
         ):
             raise _ProtocolError("native Saved Turn input caller is invalid")
         frame["saved_input"] = {
@@ -1817,7 +1828,9 @@ def _bounded_revision(value: object, minimum: int) -> bool:
 
 def _turn_start_payload(borrow: NativeSavedTurnStartRequest) -> dict[str, Any]:
     if (
-        borrow.caller not in ("saved-turn", "side-chat", "calendar", "calendar-manual")
+        borrow.caller not in (
+            "saved-turn", "side-chat", "calendar", "calendar-manual", "calendar-status",
+        )
         or type(borrow.action) is not str
         or borrow.action not in ("begin", "claim")
         or not is_native_saved_turn_start_identifier(borrow.turn_id)

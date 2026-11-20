@@ -3278,7 +3278,11 @@ mod tests {
                 mode == SavedInputMode::Bind
             );
             assert_eq!(job.input_capacity().unwrap(), SAVED_INPUT_FRAME_LIMIT);
-            for caller in [SavedInputCaller::Calendar, SavedInputCaller::CalendarManual] {
+            for caller in [
+                SavedInputCaller::Calendar,
+                SavedInputCaller::CalendarManual,
+                SavedInputCaller::CalendarStatus,
+            ] {
                 let calendar = NativeRegistryRequest::SavedInput {
                     caller,
                     mode,
@@ -3289,7 +3293,10 @@ mod tests {
                 assert!(!calendar.has_launch_proof(&side));
                 assert_eq!(
                     calendar.has_launch_proof(&calendar_proof),
-                    caller == SavedInputCaller::Calendar
+                    matches!(
+                        caller,
+                        SavedInputCaller::Calendar | SavedInputCaller::CalendarStatus
+                    )
                 );
                 assert_eq!(
                     calendar.has_launch_proof(&manual_proof),
@@ -4202,7 +4209,10 @@ mod tests {
                 "catalog:fixture",
                 granted,
             );
-            for caller in callers {
+            for caller in callers
+                .into_iter()
+                .chain([SavedTurnStartCaller::CalendarStatus])
+            {
                 for action in [SavedTurnStartAction::Begin, SavedTurnStartAction::Claim] {
                     let [turn_id, conversation_id, input_digest, source_digest] =
                         ["turn", "conv", "input", "source"].map(str::to_owned);
@@ -4220,7 +4230,10 @@ mod tests {
                         input_digest,
                         source_digest,
                     };
-                    assert_eq!(request.has_launch_proof(&proof), caller == granted);
+                    let expected = caller == granted
+                        || (caller == SavedTurnStartCaller::CalendarStatus
+                            && granted == SavedTurnStartCaller::Calendar);
+                    assert_eq!(request.has_launch_proof(&proof), expected);
                     assert!(!request.has_launch_proof(&append));
                     assert!(input_only
                         .iter()

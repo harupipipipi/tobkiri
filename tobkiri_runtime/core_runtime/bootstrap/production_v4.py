@@ -363,6 +363,17 @@ class _CalendarSavedJobRoute:
 
 
 @dataclass(frozen=True)
+class _CalendarStatusBorrow:
+    """One retained occurrence emitted by the original live Job Broker."""
+
+    parent: CapturedInvocationScopeV4
+    route: _CalendarSavedJobRoute
+    occurrence_digest: str
+    claimed: Callable[[], bool]
+    closed: threading.Event
+
+
+@dataclass(frozen=True)
 class _CalendarSavedInputExchange:
     """One child invocation's input, retained only inside Host dispatch."""
 
@@ -398,6 +409,9 @@ class _SavedLocalChatRoute:
 
 _PRESENTATION_OPERATION = (
     "tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read",
+)
+_CALENDAR_STATUS_BROKER_ARTIFACT = (
+    "sha256:f1415993d9f045421361a3047e23fc33c842c4efc4dbb3c5b31c3767e073cba6"
 )
 _PRESENTATION_FUNCTION = "defaultspack.application-presentation"
 _PRESENTATION_IMPLEMENTATION = (
@@ -2046,6 +2060,7 @@ def capture_production_dispatch(
         capture_launcher_ai_usage_cost_calculator,
         capture_launcher_application_presentation,
         capture_launcher_calendar_turn_start_writer,
+        capture_launcher_calendar_status_turn_start_writer,
         capture_launcher_conversation_append_writer,
         capture_launcher_conversation_complete,
         capture_launcher_conversation_confirmation_writer,
@@ -2115,6 +2130,7 @@ def capture_production_dispatch(
     ] = {
         "calendar": capture_launcher_saved_input_writer(caller="calendar"),
         "calendar-manual": capture_launcher_saved_input_writer(caller="calendar-manual"),
+        "calendar-status": capture_launcher_saved_input_writer(caller="calendar-status"),
     }
     native_saved_receipt_reader = capture_launcher_saved_receipt_reader()
     native_saved_step = capture_launcher_saved_orchestration_step()
@@ -2134,6 +2150,7 @@ def capture_production_dispatch(
         "side-chat": capture_launcher_side_chat_turn_start_writer(),
         "calendar": capture_launcher_calendar_turn_start_writer(),
         "calendar-manual": capture_launcher_manual_calendar_turn_start_writer(),
+        "calendar-status": capture_launcher_calendar_status_turn_start_writer(),
     }
 
     authority_path = authority_store.path.resolve()
@@ -3100,6 +3117,10 @@ def capture_production_dispatch(
                 return None
             route.append(edge)
             caller_ids = {edge.target.principal_id}
+        if caller == "calendar-status" and (
+            route[1].resolved_binding.artifact.digest != _CALENDAR_STATUS_BROKER_ARTIFACT
+        ):
+            return None
         return _CalendarSavedJobRoute(caller, tuple(reversed(route)))
 
     native_saved_execution: NativeWasmBinding | None = None
@@ -4121,6 +4142,12 @@ def capture_production_dispatch(
         (*edge.binding_key[1:], edge.target.principal_id)
         for route in calendar_saved_job_routes for edge in route.edges
     )
+    calendar_status_route = next((
+        route for route in calendar_saved_job_routes if route.caller == "calendar-status"
+    ), None)
+    calendar_status_borrow: contextvars.ContextVar[_CalendarStatusBorrow | None] = (
+        contextvars.ContextVar("calendar_status_borrow", default=None)
+    )
     calendar_saved_input_exchange: contextvars.ContextVar[
         _CalendarSavedInputExchange | None
     ] = contextvars.ContextVar("calendar_saved_input_exchange", default=None)
@@ -4402,6 +4429,9 @@ def capture_production_dispatch(
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
             scope = capture_invocation_scope(self._envelope)
             scope.assert_current()
+            status_borrow = capture_calendar_status_borrow(
+                scope, contract_id, operation_id, payload,
+            )
             independent_saved_cancellation = None
             if (
                 (self._envelope.contract_id, self._envelope.operation_id)
@@ -4443,6 +4473,9 @@ def capture_production_dispatch(
                 self._presentation_owner,
                 parent_invocation=scope,
             )
+            status_token = (
+                calendar_status_borrow.set(status_borrow) if status_borrow is not None else None
+            )
             try:
                 result = dispatch_holder[0].invoke(
                     contract_id,
@@ -4477,6 +4510,9 @@ def capture_production_dispatch(
                 log_nested_dispatch_failure(contract_id, operation_id, error)
                 raise
             finally:
+                if status_token is not None:
+                    status_borrow.closed.set()
+                    calendar_status_borrow.reset(status_token)
                 release_nested_session(nested_session_id, nested_authority_session_id)
 
     class _HostInvocation(HostProviderInvocationContextV4):
@@ -4540,20 +4576,44 @@ def capture_production_dispatch(
             envelope = self._envelope
             adapter = route.edges[1]
             ancestors = match_captured_ancestors(self.parent_invocation, route.edges[2:])
+            operation = "status" if route.caller == "calendar-status" else "dispatch"
             if (
                 ancestors is None
                 or not matches_captured_edge(envelope, adapter)
-                or envelope.payload.get("operation") != "dispatch"
+                or envelope.payload.get("operation") != operation
             ):
                 return None
             owner = (
                 self.presentation_owner_principal_id, self.presentation_owner_session_id,
             )
             if (
-                not calendar_saved_job_origin_matches(route.caller, envelope, ancestors)
+                not calendar_saved_job_origin_matches(route.caller, envelope.payload, ancestors)
                 or any(presentation_owner_for(item) != owner for item in ancestors)
             ):
                 return None
+            if operation == "status":
+                status = calendar_status_borrow.get()
+                if status is None or status.route is not route:
+                    return None
+                if (
+                    status.parent.envelope is not ancestors[0]
+                    or envelope.cancellation_requested is not status.parent.envelope.cancellation_requested
+                    or canonical_digest(self._scope.public_payload()) != status.occurrence_digest
+                    or not status.claimed()
+                ):
+                    raise AuthorityDenied("retained Calendar status occurrence changed")
+                assert_calendar_saved_job_chain((envelope, *ancestors), route.edges[1:])
+
+                def guard_retained_status() -> None:
+                    self.assert_current()
+                    require_retained_ancestors(envelope, ancestors)
+                    if calendar_status_borrow.get() is not status or status.closed.is_set():
+                        raise AuthorityDenied("retained Calendar status has ended")
+                    status.parent.assert_current()
+
+                guard_retained_status()
+                return guard_retained_status
+
             proof = nested_cancellation_proof_for(envelope, *owner)
             witness = getattr(proof, "_calendar_execution_witness", None)
             if not callable(witness) or getattr(proof, "_envelope", None) is not envelope:
@@ -6609,7 +6669,7 @@ def capture_production_dispatch(
 
     def calendar_saved_job_origin_matches(
         caller: CalendarSavedCaller,
-        envelope: RequestEnvelope,
+        occurrence: Mapping[str, Any],
         ancestors: tuple[RequestEnvelope, ...],
     ) -> bool:
         broker, scheduler = ancestors[:2]
@@ -6619,19 +6679,64 @@ def capture_production_dispatch(
         if caller == "calendar":
             return scheduler_payload == {"operation": "tick", "limit": 20}
 
-        schedule_id = envelope.payload.get("schedule_id")
-        lease_id = envelope.payload.get("lease_id")
-        if not isinstance(schedule_id, str) or not isinstance(lease_id, str):
+        schedule_id = occurrence.get("schedule_id")
+        lease_id = occurrence.get("lease_id")
+        key = occurrence.get("idempotency_key")
+        if (
+            not isinstance(schedule_id, str) or not isinstance(lease_id, str)
+            or key != f"{schedule_id}:{lease_id}"
+        ):
             return False
+        broker_payload = {
+            field: value for field, value in broker.payload.items() if field != "_session_id"
+        }
+        if caller == "calendar-status":
+            return (
+                scheduler_payload == {"operation": "tick", "limit": 20}
+                and broker_payload == {
+                    "operation": "status", "profile_id": profile_id, "idempotency_key": key,
+                }
+            )
         manage = ancestors[2]
         trigger = {"operation": "trigger", "profile_id": profile_id, "schedule_id": schedule_id}
         return (
             scheduler_payload == trigger
             and {key: value for key, value in manage.payload.items() if key != "_session_id"}
             == trigger
-            and envelope.payload.get("idempotency_key") == f"{schedule_id}:{lease_id}"
-            and {key: value for key, value in broker.payload.items() if key != "_session_id"}
-            == {key: value for key, value in envelope.payload.items() if key != "_session_id"}
+            and broker_payload == {
+                field: value for field, value in occurrence.items() if field != "_session_id"
+            }
+        )
+
+    def capture_calendar_status_borrow(
+        source: CapturedInvocationScopeV4, contract_id: str, operation_id: str,
+        payload: Mapping[str, Any],
+    ) -> _CalendarStatusBorrow | None:
+        route = calendar_status_route
+        if route is None or payload.get("operation") != "status":
+            return None
+        if (contract_id, operation_id) != route.edges[1].binding_key[1:]:
+            return None
+        ancestors = match_captured_ancestors(source, route.edges[2:])
+        if ancestors is None or not calendar_saved_job_origin_matches(route.caller, payload, ancestors):
+            return None
+        # The pinned original Broker and its retained-envelope module check the
+        # stored occurrence and current provider before emitting this call.
+        # Its Host-bound session can enroll that exact child only once.
+        if (
+            calendar_status_borrow.get() is not None
+            or set(payload) != {"operation", "profile_id", "action_id", "payload",
+                                "schedule_id", "lease_id", "idempotency_key"}
+            or payload["profile_id"] != profile_id
+            or payload["action_id"] != "chat.saved"
+            or not isinstance(payload["payload"], Mapping)
+        ):
+            raise AuthorityDenied("retained Calendar status invocation changed")
+        source.assert_current()
+        claim = threading.Lock()
+        return _CalendarStatusBorrow(
+            source, route, canonical_digest(payload),
+            lambda: claim.acquire(blocking=False), threading.Event(),
         )
 
     def assert_calendar_saved_job_chain(
@@ -6902,6 +7007,8 @@ def capture_production_dispatch(
                 "completed", "failed", "cancelled",
             }:
                 return known
+            if route.caller == "calendar-status" and ledger.recover_source(key, turn_id) is None:
+                return {"status": "reconciliation_required", "idempotency_key": key}
             client = invocation.contract_client(
                 allowed_contract_ids=consumed_contracts,
                 consumer_pack_id=turn_pack,

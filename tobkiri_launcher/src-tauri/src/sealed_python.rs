@@ -73,10 +73,14 @@ pub(crate) const SIDE_CHAT_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_SIDE_CHA
 pub(crate) const CALENDAR_SAVED_TURN_START_ENV: &str = "TOBKIRI_NATIVE_CALENDAR_SAVED_TURN_START";
 pub(crate) const CALENDAR_MANUAL_SAVED_TURN_START_ENV: &str =
     "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_TURN_START";
+pub(crate) const CALENDAR_STATUS_SAVED_TURN_START_ENV: &str =
+    "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_TURN_START";
 pub(crate) const SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_SAVED_INPUT";
 pub(crate) const CALENDAR_SAVED_INPUT_ENV: &str = "TOBKIRI_NATIVE_CALENDAR_SAVED_INPUT";
 pub(crate) const CALENDAR_MANUAL_SAVED_INPUT_ENV: &str =
     "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_INPUT";
+pub(crate) const CALENDAR_STATUS_SAVED_INPUT_ENV: &str =
+    "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_INPUT";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PythonRole {
@@ -136,9 +140,11 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) side_chat_saved_turn_start: bool,
     pub(crate) calendar_saved_turn_start: bool,
     pub(crate) calendar_manual_saved_turn_start: bool,
+    pub(crate) calendar_status_saved_turn_start: bool,
     pub(crate) saved_input: bool,
     pub(crate) calendar_saved_input: bool,
     pub(crate) calendar_manual_saved_input: bool,
+    pub(crate) calendar_status_saved_input: bool,
 }
 
 impl RoleArguments {
@@ -293,6 +299,11 @@ impl RoleArguments {
                     crate::native_harness_bootstrap::SavedTurnStartCaller::CalendarManual,
                 )
             }),
+            calendar_status_saved_turn_start: proof.is_some_and(|proof| {
+                proof.permits_turn_start_for(
+                    crate::native_harness_bootstrap::SavedTurnStartCaller::CalendarStatus,
+                )
+            }),
             saved_input: proof.is_some_and(|proof| proof.permits_saved_input()),
             calendar_saved_input: proof.is_some_and(|proof| {
                 proof.permits_saved_input_for(
@@ -302,6 +313,11 @@ impl RoleArguments {
             calendar_manual_saved_input: proof.is_some_and(|proof| {
                 proof.permits_saved_input_for(
                     crate::native_harness_bootstrap::SavedInputCaller::CalendarManual,
+                )
+            }),
+            calendar_status_saved_input: proof.is_some_and(|proof| {
+                proof.permits_saved_input_for(
+                    crate::native_harness_bootstrap::SavedInputCaller::CalendarStatus,
                 )
             }),
         };
@@ -464,9 +480,11 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             | SIDE_CHAT_SAVED_TURN_START_ENV
             | CALENDAR_SAVED_TURN_START_ENV
             | CALENDAR_MANUAL_SAVED_TURN_START_ENV
+            | CALENDAR_STATUS_SAVED_TURN_START_ENV
             | SAVED_INPUT_ENV
             | CALENDAR_SAVED_INPUT_ENV
             | CALENDAR_MANUAL_SAVED_INPUT_ENV
+            | CALENDAR_STATUS_SAVED_INPUT_ENV
             | crate::native_provider_prepare_service::LINKED_CONVERSATION_READ_ENV
             | crate::native_provider_prepare_service::TURN_START_ENV
             | crate::native_provider_prepare_service::SAVED_LOCAL_CHAT_ENV
@@ -5145,6 +5163,14 @@ mod tests {
                 ),
                 expected
             );
+            let (_, _, automatic, _) = expected;
+            assert_eq!(
+                [
+                    environment.calendar_status_saved_input,
+                    environment.calendar_status_saved_turn_start,
+                ],
+                automatic
+            );
         }
     }
 
@@ -5165,9 +5191,11 @@ mod tests {
             SIDE_CHAT_SAVED_TURN_START_ENV,
             CALENDAR_SAVED_TURN_START_ENV,
             CALENDAR_MANUAL_SAVED_TURN_START_ENV,
+            CALENDAR_STATUS_SAVED_TURN_START_ENV,
             SAVED_INPUT_ENV,
             CALENDAR_SAVED_INPUT_ENV,
             CALENDAR_MANUAL_SAVED_INPUT_ENV,
+            CALENDAR_STATUS_SAVED_INPUT_ENV,
             LINKED_CONVERSATION_READ_ENV,
             TURN_START_ENV,
             SAVED_LOCAL_CHAT_ENV,

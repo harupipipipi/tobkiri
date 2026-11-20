@@ -432,12 +432,7 @@ impl VerifiedRegistryLaunch {
             source.ports.input
                 && match caller {
                     SavedInputCaller::SavedTurn => source.start.saved_turn.is_some(),
-                    SavedInputCaller::Calendar => {
-                        source.calendar_saved_dispatch.automatic.is_some()
-                    }
-                    SavedInputCaller::CalendarManual => {
-                        source.calendar_saved_dispatch.manual.is_some()
-                    }
+                    _ => source.calendar_saved_dispatch.for_input(caller).is_some(),
                 }
         })
     }
@@ -798,6 +793,28 @@ impl VerifiedCalendarSavedDispatchRoles {
     fn is_empty(&self) -> bool {
         self.automatic.is_none() && self.manual.is_none()
     }
+
+    // Status recovery uses the same signed Bundle routes as an automatic dispatch.
+    // The Host checks the retained dispatch authority before sending a status request.
+    fn for_input(&self, caller: SavedInputCaller) -> Option<&VerifiedOrdinarySavedBundle> {
+        match caller {
+            SavedInputCaller::Calendar | SavedInputCaller::CalendarStatus => {
+                self.automatic.as_ref()
+            }
+            SavedInputCaller::CalendarManual => self.manual.as_ref(),
+            SavedInputCaller::SavedTurn => None,
+        }
+    }
+
+    fn for_start(&self, caller: SavedTurnStartCaller) -> Option<&VerifiedOrdinarySavedBundle> {
+        match caller {
+            SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarStatus => {
+                self.automatic.as_ref()
+            }
+            SavedTurnStartCaller::CalendarManual => self.manual.as_ref(),
+            SavedTurnStartCaller::SavedTurn | SavedTurnStartCaller::SideChat => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -836,7 +853,7 @@ impl VerifiedTurnStartRoles {
         match caller {
             SavedTurnStartCaller::SavedTurn => self.saved_turn.as_ref(),
             SavedTurnStartCaller::SideChat => self.side_chat.as_ref(),
-            SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarManual => None,
+            _ => None,
         }
     }
 }
@@ -964,15 +981,13 @@ struct VerifiedGatewayProviderSnapshotEntry {
 impl VerifiedTurnSource {
     fn permits_start(&self, caller: SavedTurnStartCaller) -> bool {
         match caller {
-            SavedTurnStartCaller::Calendar => {
-                self.ports.supports_calendar_start()
-                    && self.calendar_saved_dispatch.automatic.is_some()
+            SavedTurnStartCaller::SavedTurn | SavedTurnStartCaller::SideChat => {
+                self.ports.start && self.start.bundle(caller).is_some()
             }
-            SavedTurnStartCaller::CalendarManual => {
+            _ => {
                 self.ports.supports_calendar_start()
-                    && self.calendar_saved_dispatch.manual.is_some()
+                    && self.calendar_saved_dispatch.for_start(caller).is_some()
             }
-            _ => self.ports.start && self.start.bundle(caller).is_some(),
         }
     }
 
@@ -1720,7 +1735,7 @@ impl VerifiedRegistryLaunch {
             SavedTurnStartCaller::SideChat => {
                 start.side_chat = Some(VerifiedTurnEntryBundle::fixture(true));
             }
-            SavedTurnStartCaller::Calendar => {
+            SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarStatus => {
                 calendar_saved_dispatch.automatic = Some(VerifiedOrdinarySavedBundle::fixture());
             }
             SavedTurnStartCaller::CalendarManual => {
@@ -3231,10 +3246,10 @@ pub(super) fn reacquire_turn_start_pack_for(
 ) -> Result<VerifiedPack> {
     let source = revalidate_turn_start_source(inspection, proof, caller, &checkpoint)?;
     let declaration: fn(&VerifiedPack) -> Result<()> = match caller {
-        SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarManual => {
-            require_calendar_turn_start_declaration
+        SavedTurnStartCaller::SavedTurn | SavedTurnStartCaller::SideChat => {
+            require_turn_start_declaration
         }
-        _ => require_turn_start_declaration,
+        _ => require_calendar_turn_start_declaration,
     };
     reacquire_turn_archive(inspection, proof, source, checkpoint, declaration)
         .context("bundled Turn start archive verification failed")
@@ -3261,14 +3276,9 @@ pub(super) fn reacquire_saved_input_pack(
                 &checkpoint,
             )?;
         }
-        SavedInputCaller::Calendar => revalidate_calendar_saved_dispatch(
+        _ => revalidate_calendar_saved_dispatch(
             inspection,
-            source.calendar_saved_dispatch.automatic.as_ref(),
-            &checkpoint,
-        )?,
-        SavedInputCaller::CalendarManual => revalidate_calendar_saved_dispatch(
-            inspection,
-            source.calendar_saved_dispatch.manual.as_ref(),
+            source.calendar_saved_dispatch.for_input(caller),
             &checkpoint,
         )?,
     }
@@ -3294,21 +3304,7 @@ fn revalidate_turn_start_source<'proof>(
         .filter(|source| source.permits_start(caller))
         .context("admitted launch has no verified Turn start source for the caller")?;
     match caller {
-        SavedTurnStartCaller::Calendar => {
-            revalidate_calendar_saved_dispatch(
-                inspection,
-                source.calendar_saved_dispatch.automatic.as_ref(),
-                checkpoint,
-            )?;
-        }
-        SavedTurnStartCaller::CalendarManual => {
-            revalidate_calendar_saved_dispatch(
-                inspection,
-                source.calendar_saved_dispatch.manual.as_ref(),
-                checkpoint,
-            )?;
-        }
-        _ => {
+        SavedTurnStartCaller::SavedTurn | SavedTurnStartCaller::SideChat => {
             let start = source
                 .start
                 .bundle(caller)
@@ -3317,6 +3313,11 @@ fn revalidate_turn_start_source<'proof>(
             inspection.with_source(|sources| start.require_source(sources))??;
             start.revalidate(inspection.allocation_budget()?, checkpoint)?;
         }
+        _ => revalidate_calendar_saved_dispatch(
+            inspection,
+            source.calendar_saved_dispatch.for_start(caller),
+            checkpoint,
+        )?,
     }
     Ok(source)
 }
@@ -3778,7 +3779,7 @@ fn verify_turn_source(
     };
     let has_read = !read.is_empty();
     let has_settlement = selections.iter().any(Option::is_some);
-    if !has_settlement && !has_read && start.is_empty() && calendar_saved_dispatch.is_none() {
+    if !has_settlement && !has_read && start.is_empty() && calendar_saved_dispatch.is_empty() {
         return Ok(None);
     }
     let mut settlement = [None, None, None, None];
@@ -6503,6 +6504,10 @@ mod tests {
             for requested in callers {
                 assert_eq!(start.permits_turn_start_for(requested), requested == caller);
             }
+            assert_eq!(
+                start.permits_turn_start_for(SavedTurnStartCaller::CalendarStatus),
+                caller == SavedTurnStartCaller::Calendar
+            );
             assert!(!start.permits_saved_input_for(SavedInputCaller::SavedTurn));
             assert_eq!(
                 start.permits_saved_input_for(SavedInputCaller::Calendar),
@@ -6511,6 +6516,10 @@ mod tests {
             assert_eq!(
                 start.permits_saved_input_for(SavedInputCaller::CalendarManual),
                 caller == SavedTurnStartCaller::CalendarManual
+            );
+            assert_eq!(
+                start.permits_saved_input_for(SavedInputCaller::CalendarStatus),
+                caller == SavedTurnStartCaller::Calendar
             );
             assert!(!start.permits_saved_orchestration());
             assert!(!VerifiedRegistryLaunch::test_saved_orchestration_proof(
@@ -6564,6 +6573,11 @@ mod tests {
             );
             assert!(input_only.permits_saved_input_for(input_caller));
             assert!(!input_only.permits_turn_start_for(caller));
+            assert_eq!(
+                input_only.permits_saved_input_for(SavedInputCaller::CalendarStatus),
+                caller == SavedTurnStartCaller::Calendar
+            );
+            assert!(!input_only.permits_turn_start_for(SavedTurnStartCaller::CalendarStatus));
             let mut old = VerifiedRegistryLaunch::test_turn_start_proof_for(
                 identity.clone(),
                 revision,
@@ -6571,6 +6585,8 @@ mod tests {
             );
             old.turn.as_mut().unwrap().ports.input = false;
             assert!(!old.permits_turn_start_for(caller));
+            assert!(!old.permits_saved_input_for(SavedInputCaller::CalendarStatus));
+            assert!(!old.permits_turn_start_for(SavedTurnStartCaller::CalendarStatus));
         }
     }
 
