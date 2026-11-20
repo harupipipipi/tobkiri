@@ -65,10 +65,11 @@ jobs:
             node sdk/js/wrap-pi.mjs "$pack"
           done
       - name: Replay unchanged extensions through the actual adapter and Gate
+        # Each case cold-starts a Profile with a componentized JavaScript extension.
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/pi-replay.log" --expected-passed 2 --
-          cargo test --locked -p tobkiri-e2e --test pi -- --ignored --nocapture original_
+          cargo test --locked -p tobkiri-e2e --test pi -- --ignored --nocapture --test-threads=1 original_
       - name: Build the opt-in inventory adapter and the unchanged pinned wrapper
         run: |
           python3 -B packs/build.py --pi-discovery --target-dir "$CARGO_TARGET_DIR"
