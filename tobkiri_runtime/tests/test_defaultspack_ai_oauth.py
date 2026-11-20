@@ -29,6 +29,29 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         }
         """
 
+    def test_oauth_client_config_uses_host_contract_and_ignores_dotenv_files(self):
+        from domain.ai_client.oauth_store import load_provider_client_config
+
+        client_id_key = "RUMI_DEFAULTSPACK_GOOGLE_OAUTH_CLIENT_ID"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            parent = Path(tmpdir)
+            pack_root = parent / "pack"
+            oauth_env = pack_root / "config" / "settings_control_center" / "oauth.env"
+            oauth_env.parent.mkdir(parents=True)
+            for path in (parent / ".env", pack_root / ".env", oauth_env):
+                path.write_text(f"{client_id_key}=untrusted-local-client\n", encoding="utf-8")
+
+            env = {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(parent / "secrets")}
+            with patch.dict(os.environ, env, clear=True), patch(
+                "core_runtime.host_contract.host_contract_value", return_value="",
+            ) as host_value:
+                self.assertIsNone(load_provider_client_config("google", pack_root=pack_root))
+                host_value.side_effect = {client_id_key: "host-client"}.get
+                config = load_provider_client_config("google", pack_root=pack_root)
+
+        assert config is not None
+        self.assertEqual(config["client_id"], "host-client")
+
     def test_google_oauth_status_tracks_client_and_connection(self):
         from domain.ai_client.oauth_store import (
             disconnect_provider_oauth,
@@ -572,6 +595,8 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         from domain.ai_client.oauth_store import provider_oauth_statuses
         from domain.connections.store import import_connection_bundle, resolve_capabilities_for_provider
         from domain.frontend.registry import FrontendRegistry
+        from domain.frontend_settings_store import defaultspack_frontend_settings_path
+        from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
         manifest = {
             "schema": "rumi.connection.provider.v1",
@@ -621,7 +646,10 @@ class TestDefaultspackAiOauth(unittest.TestCase):
             with patch.dict(os.environ, env, clear=True), patch("domain.frontend.registry.AIClient") as mock_client:
                 mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
                 statuses = provider_oauth_statuses(pack_root=pack_root)
-                settings = FrontendRegistry(pack_root=pack_root).get_settings()["values"]
+                owner = FrontendSettingsStore(defaultspack_frontend_settings_path(pack_root))
+                settings = FrontendRegistry(
+                    pack_root=pack_root, settings_owner=owner,
+                ).get_settings()["values"]
                 imported_read = import_connection_bundle(
                     {
                         "schema": "rumi.connection.credential_bundle.v1",
@@ -658,7 +686,9 @@ class TestDefaultspackAiOauth(unittest.TestCase):
                 )
                 manifest_path.unlink()
                 statuses_after_delete = provider_oauth_statuses(pack_root=pack_root)
-                settings_after_delete = FrontendRegistry(pack_root=pack_root).get_settings()["values"]
+                settings_after_delete = FrontendRegistry(
+                    pack_root=pack_root, settings_owner=owner,
+                ).get_settings()["values"]
                 resolved_after_delete = resolve_capabilities_for_provider(
                     "dummy",
                     {
@@ -749,6 +779,8 @@ class TestDefaultspackAiOauth(unittest.TestCase):
     def test_connection_import_from_env_token_keeps_settings_json_secret_free(self):
         from domain.connections.store import import_connection_bundle
         from domain.frontend.registry import FrontendRegistry
+        from domain.frontend_settings_store import defaultspack_frontend_settings_path
+        from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
         raw_token = "cloudflare-settings-secret-token"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -762,7 +794,10 @@ class TestDefaultspackAiOauth(unittest.TestCase):
                     provider_id="cloudflare",
                     pack_root=pack_root,
                 )
-                settings = FrontendRegistry(pack_root=pack_root).get_settings()
+                owner = FrontendSettingsStore(defaultspack_frontend_settings_path(pack_root))
+                settings = FrontendRegistry(
+                    pack_root=pack_root, settings_owner=owner,
+                ).get_settings()
 
         self.assertTrue(imported["success"], imported)
         self.assertEqual(imported["capabilities"], ["cloudflare.account.read"])

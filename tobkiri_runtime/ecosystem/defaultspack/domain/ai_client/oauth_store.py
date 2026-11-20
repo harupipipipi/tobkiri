@@ -249,57 +249,6 @@ def _connection_provider_ids(*, pack_root: Path | None = None) -> set[str]:
     }
 
 
-def _dotenv_candidates(pack_root: Path | None = None) -> list[Path]:
-    root = pack_root or _pack_root()
-    candidates = [
-        root / ".env",
-        root / "config" / "settings_control_center" / "oauth.env",
-    ]
-    candidates.extend(parent / ".env" for parent in root.parents[:4])
-    seen: set[Path] = set()
-    ordered: list[Path] = []
-    for candidate in candidates:
-        # Do not resolve filesystem links merely to deduplicate a fixed list
-        # of dotenv candidates.  ``resolve()`` can traverse a symlinked or
-        # unavailable mount and block provider discovery for every model.
-        lexical_path = candidate.expanduser().absolute()
-        if lexical_path in seen:
-            continue
-        seen.add(lexical_path)
-        ordered.append(candidate)
-    return ordered
-
-
-def _parse_dotenv_file(path: Path) -> dict[str, str]:
-    try:
-        if path.is_symlink() or not path.is_file():
-            return {}
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return {}
-    values: dict[str, str] = {}
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[7:].lstrip()
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key:
-            continue
-        value = value.strip()
-        quoted = len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}
-        if quoted:
-            value = value[1:-1]
-        else:
-            value = value.split(" #", 1)[0].strip()
-        values[key] = value
-    return values
-
-
 def _env_value(name: str, *, pack_root: Path | None = None) -> str:
     name = str(name or "").strip()
     if not name:
