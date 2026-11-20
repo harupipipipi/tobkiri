@@ -30,7 +30,8 @@ use tobkiri_harness_native::{
     invoke_original_saved_turn_begin_port, invoke_original_saved_turn_claim_port,
     invoke_original_saved_turn_port, invoke_original_saved_turn_read_port,
     observe_original_local_chat_policy, post_original_local_chat, project_original_local_chat,
-    read_legacy_saved_turn, settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
+    read_legacy_saved_input_from_admitted_port, read_legacy_saved_turn,
+    settle_legacy_saved_turn_from_admitted_port, LegacyLocalChatSelection,
     LegacySavedTurnSettlementError, LegacySavedTurnSettlementRequest, LegacySavedTurnStartRequest,
     OriginalLocalChatCheck, OriginalLocalChatError, OriginalLocalChatPolicy,
     OriginalLocalChatRequest, OriginalProviderSnapshotRole, OriginalSavedInputIdentity,
@@ -2435,7 +2436,7 @@ fn decode_saved_input_request<'a>(
             Some(OriginalSavedInputProjection {
                 identity: OriginalSavedInputIdentity {
                     turn_id: identity.turn_id.share(),
-                    source_digest: identity.source_digest,
+                    source_digest: identity.source_digest.clone(),
                 },
                 accepted_digest: Digest::parse(projected.accepted_digest)
                     .map_err(|_| SavedInputError::InvalidRequest)?,

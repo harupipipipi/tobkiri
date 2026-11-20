@@ -477,6 +477,7 @@ impl Start<'_> {
         match self.request_start()? {
             RequestStart::Inline(operation) => Ok(operation),
             RequestStart::SavedOrchestration { .. }
+            | RequestStart::SavedInput(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
             | RequestStart::ModelAccessProjection { .. }
@@ -2793,10 +2794,9 @@ mod tests {
             let start = start_frame(&format!(
                 r#","saved_input":{{"mode":"{name}","input_bytes":{SAVED_INPUT_FRAME_LIMIT}}}"#
             ));
-            let request = serde_json::from_str::<Start<'_>>(&start)
-                .unwrap()
-                .request_start()
-                .unwrap();
+            let descriptor = serde_json::from_str::<Start<'_>>(&start).unwrap();
+            assert!(descriptor.operation().is_err());
+            let request = descriptor.request_start().unwrap();
             assert!(matches!(request, RequestStart::SavedInput(saved)
                 if saved.mode == mode && saved.input_bytes == SAVED_INPUT_FRAME_LIMIT));
             let role = ReplyRole::SavedInput(mode);
