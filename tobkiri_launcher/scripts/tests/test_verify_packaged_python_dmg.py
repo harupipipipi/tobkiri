@@ -6,6 +6,7 @@ import json
 import os
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -963,6 +964,98 @@ def test_installed_boot_uses_the_verified_copy_after_detach(
     assert events == ["verify-mount", "ditto", "verify-mount", "detach", "codesign", "python"]
     assert installed_paths[0].parent.name == "Applications"
     assert installed_paths[0].exists() is not shutdown_verified
+
+
+@pytest.mark.parametrize("mode", ["fresh", "setup", "chat", "failed", "changed"])
+def test_installed_dmg_receipt_records_only_completed_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str,
+) -> None:
+    dmg = tmp_path / "fixture.dmg"
+    image = b"verified image fixture"
+    dmg.write_bytes(image)
+    diagnostics = tmp_path / "diagnostics"
+    diagnostics.mkdir()
+    receipt = diagnostics / MODULE.INSTALLED_BOOT_RECEIPT
+    app = tmp_path / "mounted" / "Launcher.app"
+    events = []
+
+    class Mount:
+        def __init__(self, source):
+            assert source == dmg
+
+        def attach(self):
+            events.append("attach")
+
+        def application_bundle(self):
+            return app
+
+        def verify_mounted(self):
+            pass
+
+        def verify_native_setup_component(self, bundle, size, digest):
+            assert (bundle, size, digest) == (app, 12, "c" * 64)
+
+        def verify_native_registry_packs(self, bundle, digest):
+            assert (bundle, digest) == (app, "d" * 64)
+
+        def cleanup(self):
+            assert not receipt.exists()
+            events.append("cleanup")
+
+        def close(self):
+            events.append("close")
+
+    def boot(*_):
+        assert not receipt.exists()
+        events.append("boot")
+        if mode == "failed":
+            raise MODULE.DmgVerificationError("installed Launcher verification failed")
+        if mode == "changed":
+            dmg.write_bytes(image + b" changed")
+
+    monkeypatch.setattr(MODULE, "MountedDmg", Mount)
+    monkeypatch.setattr(MODULE, "_resolve_executable", lambda name: name)
+    monkeypatch.setattr(MODULE, "_bind_executable", lambda _path, label: label)
+    monkeypatch.setattr(MODULE, "_run", lambda *args: subprocess.CompletedProcess(args, 0))
+    monkeypatch.setattr(MODULE, "_verify_no_packvm_assets", lambda bundle: events.append("no-packvm"))
+    monkeypatch.setattr(MODULE, "_cold_boot_installed_launcher", boot)
+    args = MODULE.argparse.Namespace(
+        dmg=dmg, repo_root=ROOT, target="aarch64-apple-darwin",
+        expected_manifest_sha256="b" * 64,
+        expected_native_setup_component_sha256="c" * 64,
+        expected_native_setup_component_bytes=12,
+        expected_native_registry_packs_receipt_sha256="d" * 64,
+        installed_boot_diagnostics_dir=diagnostics,
+        expect_packvm_disabled=True, expect_no_packvm=True,
+        wait_for_user_setup_seconds=60.0 if mode in {"setup", "chat"} else None,
+        wait_for_user_chat=["60", "private-provider", "private-model"] if mode == "chat" else None,
+    )
+    if mode in {"failed", "changed"}:
+        with pytest.raises(MODULE.DmgVerificationError, match="verification failed|DMG changed"):
+            MODULE.verify_dmg(args)
+        assert not receipt.exists()
+    else:
+        MODULE.verify_dmg(args)
+        checks = [
+            "mounted_bundle_signature", "installed_copy_signature", "fresh_setup_reachable",
+            "installed_launcher_clean_shutdown", "mounted_packvm_assets_absent",
+            "installed_packvm_disabled",
+        ]
+        if mode in {"setup", "chat"}:
+            checks.append("setup_activation_verified")
+        if mode == "chat":
+            checks.append("saved_chat_verified")
+        assert json.loads(receipt.read_text(encoding="utf-8")) == {
+            "schema": "io.tobkiri.launcher.installed-dmg.v1",
+            "target": "aarch64-apple-darwin",
+            "dmg": {"sha256": hashlib.sha256(image).hexdigest(), "bytes": len(image)},
+            "sealed_python_manifest_sha256": "b" * 64,
+            "native_setup_wasm": {"sha256": "c" * 64, "bytes": 12},
+            "native_registry_receipt_sha256": "d" * 64,
+            "checks": checks,
+        }
+        assert stat.S_IMODE(receipt.stat().st_mode) == 0o600
+    assert events == ["attach", "no-packvm", "boot", "cleanup", "close"]
 
 
 def tempfile_parent_value() -> str:

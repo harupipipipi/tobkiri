@@ -24,6 +24,7 @@ from types import FrameType
 
 
 MOUNT_PREFIX = ".tobkiri-dmg-verify."
+INSTALLED_BOOT_RECEIPT = "launcher-installed-dmg.v1.json"
 DEVICE_PATTERN = re.compile(r"^/dev/disk[0-9]+(?:s[0-9]+)?$")
 NATIVE_SETUP_COMPONENT = Path("Contents/Resources/app/native-setup/component.wasm")
 MAX_NATIVE_SETUP_COMPONENT_BYTES = 32 * 1024 * 1024
@@ -729,6 +730,65 @@ def _verify_no_packvm_assets(app_bundle: Path) -> None:
         raise DmgVerificationError(f"PackVM-free DMG includes an unexpected asset: {relative}")
 
 
+def _dmg_metadata(metadata: os.stat_result) -> tuple[Identity, int, int, int, int]:
+    return (
+        Identity.from_stat(metadata), metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
+
+
+def _fingerprint_dmg(dmg: Path) -> tuple[str, os.stat_result]:
+    descriptor = os.open(dmg, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size <= 0:
+            raise DmgVerificationError("DMG must be a nonempty regular file")
+        digest = hashlib.sha256()
+        for block in _file_blocks(descriptor, metadata.st_size, "DMG"):
+            digest.update(block)
+        if _dmg_metadata(os.fstat(descriptor)) != _dmg_metadata(metadata):
+            raise DmgVerificationError("DMG changed while hashing")
+        if _dmg_metadata(dmg.lstat()) != _dmg_metadata(metadata):
+            raise DmgVerificationError("DMG path changed while hashing")
+        return digest.hexdigest(), metadata
+    finally:
+        os.close(descriptor)
+
+
+def _write_installed_boot_receipt(
+    directory: Path, args: argparse.Namespace, dmg_sha256: str, dmg_bytes: int,
+) -> None:
+    checks = [
+        "mounted_bundle_signature", "installed_copy_signature", "fresh_setup_reachable",
+        "installed_launcher_clean_shutdown",
+    ]
+    if args.expect_no_packvm:
+        checks.append("mounted_packvm_assets_absent")
+    if args.expect_packvm_disabled:
+        checks.append("installed_packvm_disabled")
+    if args.wait_for_user_setup_seconds is not None:
+        checks.append("setup_activation_verified")
+    if args.wait_for_user_chat is not None:
+        checks.append("saved_chat_verified")
+    receipt = {
+        "schema": "io.tobkiri.launcher.installed-dmg.v1",
+        "target": args.target,
+        "dmg": {"sha256": dmg_sha256, "bytes": dmg_bytes},
+        "sealed_python_manifest_sha256": args.expected_manifest_sha256,
+        "native_setup_wasm": {
+            "sha256": args.expected_native_setup_component_sha256,
+            "bytes": args.expected_native_setup_component_bytes,
+        },
+        "native_registry_receipt_sha256": args.expected_native_registry_packs_receipt_sha256,
+        "checks": checks,
+    }
+    with tempfile.TemporaryDirectory(dir=directory) as staging:
+        staged = Path(staging) / INSTALLED_BOOT_RECEIPT
+        staged.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        staged.chmod(0o600)
+        os.replace(staged, directory / INSTALLED_BOOT_RECEIPT)
+
+
 def verify_dmg(args: argparse.Namespace) -> None:
     """Mount, verify, codesign-check, detach, and safely remove one mountpoint."""
     dmg = _canonical_regular_file(args.dmg, "DMG")
@@ -739,10 +799,15 @@ def verify_dmg(args: argparse.Namespace) -> None:
     )
     python = _bind_executable(Path(sys.executable), "verification Python")
     codesign = _resolve_executable("codesign")
+    diagnostics = args.installed_boot_diagnostics_dir
+    if diagnostics is not None:
+        dmg_sha256, dmg_metadata = _fingerprint_dmg(dmg)
     mount = MountedDmg(dmg)
     primary_error: BaseException | None = None
     try:
         mount.attach()
+        if diagnostics is not None and _dmg_metadata(dmg.lstat()) != _dmg_metadata(dmg_metadata):
+            raise DmgVerificationError("DMG changed during attach")
         app_bundle = mount.application_bundle()
         if args.expect_no_packvm:
             _verify_no_packvm_assets(app_bundle)
@@ -792,9 +857,9 @@ def verify_dmg(args: argparse.Namespace) -> None:
                     f"mounted DMG verification command failed: {executable.path.name}"
                 )
             mount.verify_mounted()
-        if args.installed_boot_diagnostics_dir is not None:
+        if diagnostics is not None:
             _cold_boot_installed_launcher(
-                mount, app_bundle, args.installed_boot_diagnostics_dir, python, codesign,
+                mount, app_bundle, diagnostics, python, codesign,
                 args.wait_for_user_setup_seconds,
                 args.wait_for_user_chat,
                 args.expect_packvm_disabled,
@@ -814,6 +879,10 @@ def verify_dmg(args: argparse.Namespace) -> None:
             )
         finally:
             mount.close()
+    if diagnostics is not None:
+        if _dmg_metadata(dmg.lstat()) != _dmg_metadata(dmg_metadata):
+            raise DmgVerificationError("DMG changed during installed boot verification")
+        _write_installed_boot_receipt(diagnostics, args, dmg_sha256, dmg_metadata.st_size)
     print(f"Verified mounted DMG packaged Python: {dmg}")
     if args.expected_native_setup_component_sha256 is not None:
         print(f"Verified mounted DMG native Setup Wasm: {dmg}")

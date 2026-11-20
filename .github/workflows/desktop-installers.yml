@@ -344,10 +344,11 @@ jobs:
       - name: Install locked runtime and test dependencies
         run: python .github/scripts/install_locked_python_test_dependencies.py
 
-      - name: Test macOS Launcher cold-boot verifier contract
+      - name: Test macOS Launcher installer verifier contracts
         run: >-
           python -m pytest
-          tobkiri_launcher/scripts/tests/test_verify_macos_launcher_cold_boot.py -q
+          tobkiri_launcher/scripts/tests/test_verify_macos_launcher_cold_boot.py
+          tobkiri_launcher/scripts/tests/test_verify_packaged_python_dmg.py -q
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -744,6 +745,14 @@ jobs:
         with:
           name: tobkiri-non-publishable-ci-e2e${{ inputs.native_setup && '-native-setup' || '' }}${{ inputs.native_packvm_disabled && '-packvm-disabled' || '' }}-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
           path: ${{ steps.verified_dmg.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload installed native Setup DMG verification receipt
+        if: runner.os == 'macOS' && inputs.native_setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: tobkiri-${{ matrix.artifact_suffix }}-installed-dmg-verification-${{ steps.checked_out_source.outputs.source_revision }}
+          path: ${{ runner.temp }}/tobkiri-launcher-cold-boot-${{ matrix.target }}/launcher-installed-dmg.v1.json
           if-no-files-found: error
 
       - name: Destroy ephemeral macOS CI signing identity
