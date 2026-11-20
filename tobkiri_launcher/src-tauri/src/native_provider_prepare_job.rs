@@ -3204,11 +3204,9 @@ mod tests {
             input.extend_from_slice(b"{}");
             NativeRegistryRequest::SavedOrchestration { caller, input }
         };
-        let callers = [
-            SavedOrchestrationCaller::Ordinary,
-            SavedOrchestrationCaller::Calendar,
-        ];
-        for granted in [None, Some(callers[0]), Some(callers[1])] {
+        for granted in
+            std::iter::once(None).chain(SavedOrchestrationCaller::ALL.into_iter().map(Some))
+        {
             let proof = match granted {
                 Some(caller) => VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
                     identity.clone(),
@@ -3220,7 +3218,7 @@ mod tests {
                     "catalog",
                 ),
             };
-            for caller in callers {
+            for caller in SavedOrchestrationCaller::ALL {
                 let job = request(caller, SAVED_ORCHESTRATION_FRAME_LIMIT);
                 assert_eq!(job.has_launch_proof(&proof), Some(caller) == granted);
                 assert!(!job.requires_publication_permit());

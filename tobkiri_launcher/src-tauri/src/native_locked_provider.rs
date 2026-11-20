@@ -810,18 +810,14 @@ impl NativeApplicationSources {
         self.calendar_saved_job_bundle(selection.pins(), selection.manager(), "privileged", budget)
     }
 
-    /// Capture the signed automatic Calendar chain to the pure saved-complete operation.
+    /// Capture the signed Calendar chain to the pure saved-complete operation.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn calendar_saved_orchestration_bundle<'pin>(
         &self,
         selection: &'pin OriginalCalendarSavedOrchestrationChoice<'_>,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedCalendarSavedJobBundle<'pin>> {
-        ensure!(
-            selection.manager().is_none(),
-            "expected automatic Calendar caller"
-        );
-        self.calendar_saved_job_bundle(selection.pins(), None, "pure", budget)
+        self.calendar_saved_job_bundle(selection.pins(), selection.manager(), "pure", budget)
     }
 
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]

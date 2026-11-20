@@ -172,6 +172,7 @@ jobs:
           saved_orchestration_start_requires_a_bounded_length_and_no_other_operation
           saved_orchestration_uses_its_own_proof_and_funds_transport_capacity
           saved_orchestration_admission_carries_the_exact_manifest_for_defaultspack
+          calendar_status_orchestration_also_requires_the_turn_start_port
           saved_request_markers_are_allowed_for_defaultspack_only
           no_active_profile_publishes_only_a_distinct_bootstrap_contract
           malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap

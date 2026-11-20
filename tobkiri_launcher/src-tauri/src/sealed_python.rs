@@ -66,6 +66,10 @@ pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
 pub(crate) const CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST";
+pub(crate) const CALENDAR_MANUAL_SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
+    "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_ORCHESTRATION_MANIFEST";
+pub(crate) const CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
+    "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST";
 pub(crate) const PROVIDER_SNAPSHOT_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT";
 pub(crate) const APPLICATION_PRESENTATION_ENV: &str = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION";
 pub(crate) const CONVERSATION_COMPLETE_ENV: &str = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE";
@@ -135,6 +139,8 @@ pub(crate) struct NativeRegistryEnvironment {
     pub(crate) provider_snapshot_version: Option<&'static str>,
     pub(crate) saved_orchestration_manifest: Option<String>,
     pub(crate) calendar_saved_orchestration_manifest: Option<String>,
+    pub(crate) calendar_manual_saved_orchestration_manifest: Option<String>,
+    pub(crate) calendar_status_saved_orchestration_manifest: Option<String>,
     pub(crate) application_presentation_manifest: Option<String>,
     pub(crate) conversation_complete_manifest: Option<String>,
     pub(crate) conversation_side_chat_append: bool,
@@ -279,6 +285,16 @@ impl RoleArguments {
             calendar_saved_orchestration_manifest: proof
                 .and_then(|proof| {
                     proof.saved_orchestration_manifest(SavedOrchestrationCaller::Calendar)
+                })
+                .map(str::to_owned),
+            calendar_manual_saved_orchestration_manifest: proof
+                .and_then(|proof| {
+                    proof.saved_orchestration_manifest(SavedOrchestrationCaller::CalendarManual)
+                })
+                .map(str::to_owned),
+            calendar_status_saved_orchestration_manifest: proof
+                .and_then(|proof| {
+                    proof.saved_orchestration_manifest(SavedOrchestrationCaller::CalendarStatus)
                 })
                 .map(str::to_owned),
             application_presentation_manifest: proof
@@ -486,6 +502,8 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         PROVIDER_SNAPSHOT_ENV
             | SAVED_ORCHESTRATION_MANIFEST_ENV
             | CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV
+            | CALENDAR_MANUAL_SAVED_ORCHESTRATION_MANIFEST_ENV
+            | CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV
             | APPLICATION_PRESENTATION_ENV
             | CONVERSATION_COMPLETE_ENV
             | CONVERSATION_SIDE_CHAT_APPEND_ENV
@@ -4694,12 +4712,11 @@ mod tests {
         };
         let expected = format!("sha256:{}", digest('b'));
 
-        for (include_proof, caller) in [
-            (false, None),
-            (true, None),
-            (true, Some(SavedOrchestrationCaller::Ordinary)),
-            (true, Some(SavedOrchestrationCaller::Calendar)),
-        ] {
+        for (include_proof, caller) in [(false, None), (true, None)].into_iter().chain(
+            SavedOrchestrationCaller::ALL
+                .into_iter()
+                .map(|caller| (true, Some(caller))),
+        ) {
             let proof = include_proof.then(|| match caller {
                 Some(caller) => VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
                     identity.clone(),
@@ -4712,14 +4729,18 @@ mod tests {
                 .unwrap()
                 .with_native_registry_admission(proof.as_ref())
                 .split_native_registry_environment();
-            assert_eq!(
-                environment.saved_orchestration_manifest.as_deref(),
-                (caller == Some(SavedOrchestrationCaller::Ordinary)).then_some(expected.as_str()),
-            );
-            assert_eq!(
-                environment.calendar_saved_orchestration_manifest.as_deref(),
-                (caller == Some(SavedOrchestrationCaller::Calendar)).then_some(expected.as_str()),
-            );
+            let manifests = [
+                environment.saved_orchestration_manifest,
+                environment.calendar_saved_orchestration_manifest,
+                environment.calendar_manual_saved_orchestration_manifest,
+                environment.calendar_status_saved_orchestration_manifest,
+            ];
+            for (role, manifest) in SavedOrchestrationCaller::ALL.into_iter().zip(manifests) {
+                assert_eq!(
+                    manifest.as_deref(),
+                    (caller == Some(role)).then_some(expected.as_str())
+                );
+            }
             assert!(environment.application_presentation_manifest.is_none());
             assert_eq!(args.into_values(), [OsString::from("serve")]);
         }
@@ -4727,6 +4748,8 @@ mod tests {
         for name in [
             SAVED_ORCHESTRATION_MANIFEST_ENV,
             CALENDAR_SAVED_ORCHESTRATION_MANIFEST_ENV,
+            CALENDAR_MANUAL_SAVED_ORCHESTRATION_MANIFEST_ENV,
+            CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST_ENV,
         ] {
             let key = OsStr::new(name);
             assert!(packaged_environment_key_allowed(

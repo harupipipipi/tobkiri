@@ -179,7 +179,10 @@ impl RequestStart {
             Self::ConversationComplete { .. }
             | Self::ModelAccessProjection { .. }
             | Self::SavedOrchestration {
-                caller: SavedOrchestrationCaller::Calendar,
+                caller:
+                    SavedOrchestrationCaller::Calendar
+                    | SavedOrchestrationCaller::CalendarManual
+                    | SavedOrchestrationCaller::CalendarStatus,
                 ..
             }
             | Self::SavedInput(_) => (FAILURE, b"denied"),
@@ -1371,6 +1374,8 @@ where
 {
     match String::deserialize(deserializer)?.as_str() {
         "calendar" => Ok(SavedOrchestrationCaller::Calendar),
+        "calendar-manual" => Ok(SavedOrchestrationCaller::CalendarManual),
+        "calendar-status" => Ok(SavedOrchestrationCaller::CalendarStatus),
         _ => Err(de::Error::custom("unknown Saved Orchestration caller")),
     }
 }
@@ -4555,6 +4560,14 @@ mod tests {
                 r#", "caller":"calendar""#,
                 SavedOrchestrationCaller::Calendar,
             ),
+            (
+                r#", "caller":"calendar-manual""#,
+                SavedOrchestrationCaller::CalendarManual,
+            ),
+            (
+                r#", "caller":"calendar-status""#,
+                SavedOrchestrationCaller::CalendarStatus,
+            ),
         ] {
             for input_bytes in [1, SAVED_ORCHESTRATION_FRAME_LIMIT] {
                 let frame = start(&format!(r#"{{"input_bytes":{input_bytes}{field}}}"#), "");
@@ -4581,8 +4594,6 @@ mod tests {
             r#"{"input_bytes":1,"caller":true}"#.to_owned(),
             r#"{"input_bytes":1,"caller":{"calendar":null}}"#.to_owned(),
             r#"{"input_bytes":1,"caller":"ordinary"}"#.to_owned(),
-            r#"{"input_bytes":1,"caller":"calendar-manual"}"#.to_owned(),
-            r#"{"input_bytes":1,"caller":"calendar-status"}"#.to_owned(),
             r#"{"input_bytes":1,"caller":"calendar","caller":"calendar"}"#.to_owned(),
             format!(
                 r#"{{"input_bytes":{}}}"#,
@@ -4621,31 +4632,24 @@ mod tests {
             activation_id: "activation".into(),
             plan_digest: "plan".into(),
         };
-        for granted in [
-            SavedOrchestrationCaller::Ordinary,
-            SavedOrchestrationCaller::Calendar,
-        ] {
+        for granted in SavedOrchestrationCaller::ALL {
             let proof = VerifiedRegistryLaunch::test_saved_orchestration_proof_for(
                 identity.clone(),
                 "catalog",
                 granted,
             );
-            for (caller, rejection) in [
-                (
-                    SavedOrchestrationCaller::Ordinary,
-                    (INAPPLICABLE, b"".as_slice()),
-                ),
-                (
-                    SavedOrchestrationCaller::Calendar,
-                    (FAILURE, b"denied".as_slice()),
-                ),
-            ] {
+            for caller in SavedOrchestrationCaller::ALL {
                 let request = RequestStart::SavedOrchestration {
                     caller,
                     input_bytes: 2,
                 };
                 assert_eq!(request.has_launch_proof(&proof), caller == granted);
                 if caller != granted {
+                    let rejection = if caller == SavedOrchestrationCaller::Ordinary {
+                        (INAPPLICABLE, b"".as_slice())
+                    } else {
+                        (FAILURE, b"denied".as_slice())
+                    };
                     let (mut client, mut server) = UnixStream::pair().unwrap();
                     let deadline = Instant::now() + FRAME_TIMEOUT;
                     request
