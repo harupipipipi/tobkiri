@@ -1048,6 +1048,7 @@ def test_canonical_host_inventory_admits_native_host_modules():
     assert Path("tobkiri_host/native_application_presentation.py") in files
     assert Path("tobkiri_host/native_conversation_complete.py") in files
     assert Path("tobkiri_host/native_wasm_invocation.py") in files
+    assert Path("tobkiri_host/native_workflow_messages.py") in files
 
 
 @pytest.mark.parametrize("change", ["missing", "unlisted"])

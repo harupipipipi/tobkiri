@@ -23,6 +23,7 @@ on:
       - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_job.rs'
       - 'tobkiri_launcher/src-tauri/src/native_launch_metadata.rs'
       - 'tobkiri_launcher/src-tauri/src/native_locked_provider.rs'
+      - 'tobkiri_runtime/tobkiri_host/canonical-files.v1.json'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
