@@ -89,6 +89,17 @@ fn main() {
         pump();
     }
 
+    fn wait_for_confirmation_enabled(view: &WKWebView, deadline: Instant) {
+        while !evaluate_boolean(
+            view,
+            "String(document.querySelector('button[data-native-setup-confirm]')?.disabled === false)",
+            deadline,
+        ) {
+            assert!(Instant::now() < deadline, "AppKit review click was not delivered");
+            pump();
+        }
+    }
+
     autoreleasepool(|_| {
         let mtm = MainThreadMarker::new().expect("WebKit smoke requires the main thread");
         let _application = NSApplication::sharedApplication(mtm);
@@ -213,14 +224,7 @@ fn main() {
             "input[data-native-setup-reviewed]",
             deadline,
         );
-        while !evaluate_boolean(
-            webview,
-            "String(document.querySelector('button[data-native-setup-confirm]')?.disabled === false)",
-            deadline,
-        ) {
-            assert!(Instant::now() < deadline, "AppKit review click was not delivered");
-            pump();
-        }
+        wait_for_confirmation_enabled(webview, deadline);
         press_space(
             &window,
             webview,
@@ -395,7 +399,8 @@ fn main() {
         let deadline = Instant::now() + Duration::from_secs(20);
         while !evaluate_boolean(
             &child,
-            "String(!!document.querySelector('input[data-native-setup-reviewed]'))",
+            "String(document.querySelector('input[data-native-setup-reviewed]')?.disabled === false &&
+             document.querySelector('button[data-native-setup-confirm]')?.disabled === true)",
             deadline,
         ) {
             assert!(
@@ -410,11 +415,7 @@ fn main() {
             "input[data-native-setup-reviewed]",
             deadline,
         );
-        assert!(evaluate_boolean(
-            &child,
-            "String(document.querySelector('button[data-native-setup-confirm]')?.disabled === false)",
-            deadline,
-        ));
+        wait_for_confirmation_enabled(&child, deadline);
         // Replace the parent candidate without refreshing the overlay first.
         // The real gesture in the old child must re-sample the parent itself.
         assert!(evaluate_boolean(
