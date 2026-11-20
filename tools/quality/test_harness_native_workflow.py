@@ -137,7 +137,8 @@ class NativeWorkflowContracts(unittest.TestCase):
             "inputs.verification == 'launcher-snapshot-staging' && inputs.package_launcher_dmg",
             "needs: [execute-original-native-bootstrap, build-native-registry-packs]",
             "uses: ./.github/workflows/desktop-installers.yml",
-            "native_setup: true", "needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256",
+            "native_setup: true", "native_packvm_disabled: ${{ inputs.packvm_disabled }}",
+            "needs.execute-original-native-bootstrap.outputs.launcher_receipt_sha256",
             "needs.build-native-registry-packs.outputs.receipt_sha256",
         ):
             self.assertIn(required, package)
@@ -206,7 +207,13 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn('report["launcher_component_receipt"]["sha256"] !=', bind)
         self.assertIn("--github-env \"$RUNNER_TEMP/harness-native-test.env\"", bind)
         app = step(installer, "Build non-publishable macOS CI/E2E application")
-        self.assertIn("--features native-first-setup", app)
+        self.assertIn("NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}", app)
+        self.assertIn('"$NATIVE_PACKVM_DISABLED" == true && "$NATIVE_SETUP" != true', app)
+        self.assertRegex(
+            app,
+            r'features=native-first-setup\s+if \[\[ "\$NATIVE_PACKVM_DISABLED" == true \]\]; then'
+            r'\s+features=native-packvm-disabled-probe\s+fi\s+build_args\+=\(--features "\$features"\)',
+        )
         self.assertIn("TOBKIRI_SETUP_COMPONENT_RECEIPT_SHA256", app)
         self.assertIn("TOBKIRI_REGISTRY_PACK_SOURCE_DIR", app)
         self.assertIn("TOBKIRI_REGISTRY_PACK_RECEIPT_SHA256", app)
@@ -220,9 +227,14 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("--expected-native-setup-component-sha256", mounted)
         self.assertIn("--expected-native-setup-component-bytes", mounted)
         self.assertIn("--expected-native-registry-packs-receipt-sha256", mounted)
+        self.assertRegex(
+            mounted,
+            r'if \[\[ "\$NATIVE_PACKVM_DISABLED" == true \]\]; then\s+verify_args\+=\(--expect-packvm-disabled\)',
+        )
         self.assertIn('>> "$GITHUB_OUTPUT"', mounted)
         upload = step(installer, "Upload desktop installer")
         self.assertIn("non-publishable-ci-e2e", upload)
+        self.assertIn("inputs.native_packvm_disabled && '-packvm-disabled'", upload)
         self.assertIn("steps.verified_dmg.outputs.path", upload)
 
     def test_app_diagnostic_uses_same_extension_and_only_the_actual_catalog_trace(self) -> None:
