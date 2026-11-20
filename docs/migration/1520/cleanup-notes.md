@@ -6638,7 +6638,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `b8ee278cb` は実AppKit/WebKitのSetup回帰で入力欄の有効化とキー操作の反映を待つ。
   [失敗した実行](https://github.com/harupipipipi/tobkiri/actions/runs/44672506567/job/136076512367)では、
   確認ボタンを有効にする前の状態を読み取っていた。実キー操作と差し替え済みの候補を拒否する
-  検査を使う。ローカルのSetup・確認の試験31件が通過し、[実WebKitの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44673436121)を起動した。
+  検査を使う。ローカルのSetup・確認の試験31件が通過した。macOSではAppKit/WebKitの隔離ビューを
+  実際に操作し、既存Launcherの確認処理とSetupコンポーネントの照合も通過した。
+  [実WebKitと既存Launcherの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44673436121/job/136079527511)
 
 ## 062 Launcherの既存Provider接続とモデル保存
 
