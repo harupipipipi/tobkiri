@@ -5930,6 +5930,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Profileへの束縛、再認証時のjournal引継ぎ、専用承認cookieの分離を既存テストで比較する。
   現在のRust側には配布用パネルの同一オリジンlistenerがないため、この接続が両Pythonプロセスの
   廃止に残る。原本の検証は `test_panel_auth_capture_fencing.py` と `test_pack_api_server.py` にある。
+  原本のコード交換・現在性・専用承認セッションを含む22件がローカルで通過した。
 - 現在のsealed Python起動がmacOS配布物内のPackVMマニフェストも照合するため、
   ゲストが未準備の配布物での起動と、PackVMを含まない配布物での起動は別の検証になる。
   `spawn_defaultspack_local_server` 付近の古いpack-shell表記も、実際の永続プロセス所有と
@@ -6721,6 +6722,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   照合するため、読み取り専用のPython observerが1か所残る。この照合を別のIPCへ移すには、
   待機中の要求に再入せず、同じ期限と永続化前の鮮度確認を維持できることが条件。
   旧writerの削除は、残りのCalendar経路を移し、配布Launcherで既存DBの再開と復旧を確認してから行う。
+- `bind_saved_input` の事前照合と入力の取得・保存後の照合は、先行IPCの完了後に既存の
+  `recover-source` で実行できる。`begin`／`claim` は同一接続で応答やコミット許可を待つため、
+  Rustの要求内で照合する。署名済みCalendar文脈から取り出した予約キーを、既存のTurn IDと
+  元入力のdigestに束縛し、Rustの同じ `DataRoot` から行を読む。WAL sidecarを作らない読取り、
+  厳密なJSONと元のdigest、期限、コミット許可前後の鮮度を維持する。
+  別の実装へ委譲できる応答のときも、IPC終了後に元入力を再照合してから従来経路へ渡す。
 - [macOS Launcher CI 44691018469](https://github.com/harupipipipi/tobkiri/actions/runs/44691018469)で
   CalendarのIPCとジョブの検査、既存Setupの実AppKit/WebKitを通過した。
 - [セキュリティCI 44690107214](https://github.com/harupipipipi/tobkiri/actions/runs/44690107214)は
