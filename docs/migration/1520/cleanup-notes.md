@@ -6650,3 +6650,24 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - Launcherの接続・モデル設定テスト29件、フロントエンドの型・生成契約検査が通過した。署名済みProfile
   の認証済みHTTPテストでは、実際にRegistryに保存したカタログIDを返し、接続先や鍵の参照を公開せず、
   保存状態も変更しないことを確認した。DMGから同じ操作を行う検証は別工程。
+
+## 063 Workflowのメッセージ組み立てをRust/Wasmに移す
+
+- `9d7ade40e` は、既存のWorkflowで使う `messages_build` を純粋なWasm Packに移した。
+  署名済みProfileの元の呼び出し元と権限、対象Packの固定値を確認する。
+  既存のWorkflow実行・再開で使う要求はWasmの実行先とdigestにも束縛し、
+  入力の受信前にLauncherが該当するPackと容量を確認する。承認と監査は元のBrokerを通る。
+- Registry receipt v8で新しいアーカイブを固定する。旧receiptを読み取る経路と、先行9個のPackの
+  アーカイブを維持した。v8はPackに固定したWIT、入出力それぞれ512 KiB、ゲストメモリ32 MiBを照合する。
+  10個の実アーカイブを入れた検証用DMGをマウントし、既存の検証器でファイル一覧とdigestを照合した。
+- 同じアーカイブを実Wasmで動かし、元のPython実装との比較78ケースをCPython 3.11と3.14で
+  通過した。選択分岐、所有者情報の解決条件、ツール履歴、時刻、画像の省略、最大入力と最大出力、
+  1バイト超過、実行後の容量解放を比較した。暦範囲外の入力は元の公開経路と同じ拒否に揃えた。
+  Python側のIPC試験816件と、PackVMなしで既存の署名済みFlowを実行するBroker試験も通過した。
+  このBroker試験はLauncher IPCをfixtureで代替し、実Wasmの比較とは別に実行した。
+- 元の `saved_messages.py` は `saved_tool_messages` を確認した後、
+  `saved_tool_logs` でも履歴を再検査する。Rustは一度の検査から両方を作る。
+  旧receiptおよび他のPython所有者が使う経路の確認が済んだ時点で、旧コードの削除範囲を再評価する。
+- 実Launcherの回帰をグループCIに追加した。配布候補では同じ実行で構築したアーカイブと
+  CPython 3.13での比較を通してから同梱する。
+  [実Launcherの検証](https://github.com/harupipipipi/tobkiri/actions/runs/44677115883)
