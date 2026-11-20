@@ -4658,7 +4658,7 @@ mod tests {
                 .unwrap()
                 .operation()
                 .unwrap(),
-            RequestStart::Inline(NativeRegistryRequest::ConversationList)
+            NativeRegistryRequest::ConversationList
         ));
         for value in [
             "null",

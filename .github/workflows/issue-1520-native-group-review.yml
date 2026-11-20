@@ -17,6 +17,7 @@ on:
       - 'tobkiri_launcher/src-tauri/src/python_env.rs'
       - 'tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs'
       - 'tobkiri_launcher/src-tauri/src/native_harness_dispatch*.rs'
+      - 'tobkiri_launcher/src-tauri/src/native_provider_prepare_ipc.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_activation_decision.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
       - 'tobkiri_launcher/harness-native/src/original_local_chat.rs'
