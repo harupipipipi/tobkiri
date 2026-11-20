@@ -64,6 +64,7 @@ jobs:
           tobkiri_runtime/tests/test_incremental_ai_stream.py
           tobkiri_runtime/tests/test_defaultspack_chat_filters_compact.py
           tobkiri_runtime/tests/test_defaultspack_desktop_access_exchange.py
+          tobkiri_runtime/tests/test_defaultspack_ai_oauth.py
           tobkiri_runtime/tests/test_defaultspack_self_improvement_runtime.py
           tobkiri_runtime/tests/test_defaultspack_tool_protocol_v2.py
           tobkiri_runtime/tests/test_defaultspack_coding_hardening.py

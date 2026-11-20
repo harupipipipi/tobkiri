@@ -940,6 +940,11 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                         no_source = observed[adapter_operation]
                         assert no_source is not previous_adapter
                         assert no_source.payload["operation"] == "status"
+            if not manual and schedules.get(destination)["status"] == "running":
+                # Keep this fixture occurrence pending across later, unrelated ticks.
+                # Recovery above expires exactly the lease under test. Real time spent
+                # verifying signed fixtures must not expire earlier cases as well.
+                set_lease_expiry(destination, schedules.clock() + 86400000)
         assert legacy == ([] if manual else ["legacy", "claim-unconfirmed"])
         # The legacy claim calls the idempotent begin internally.
         assert legacy_start == ([] if manual else [
