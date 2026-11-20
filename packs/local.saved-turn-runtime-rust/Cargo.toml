@@ -14,6 +14,7 @@ component = ["dep:wit-bindgen"]
 [dependencies]
 ordered-python-compat = { path = "../ordered-python-compat" }
 tobkiri-canon = { path = "../../crates/tobkiri-canon" }
+tobkiri-saved-input = { path = "../saved-input" }
 thiserror = "=2.0.21"
 wit-bindgen = { workspace = true, optional = true }
 

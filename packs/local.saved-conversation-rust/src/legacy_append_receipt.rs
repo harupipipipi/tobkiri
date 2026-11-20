@@ -1,11 +1,10 @@
 //! Content-free evidence for the original Conversation owner's saved append.
 
-mod input;
-
 use super::legacy_message_append::AppendError;
 use ordered_python_compat::{CodecError, PyValue, dumps_bounded, pytruthy};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use tobkiri_canon::{CanonValue, Digest, Variant};
+use tobkiri_saved_input::ValidationError;
 
 const MAX_TOOL_CALLS: usize = 8;
 const MAX_TOOL_TRACE_BYTES: usize = 40 * 1024;
@@ -20,7 +19,13 @@ pub(super) fn append(
     expected_revision: i64,
     message: &PyValue,
 ) -> Result<PyValue, AppendError> {
-    let (request, input_digest) = input::validate(initial)?;
+    let validated = tobkiri_saved_input::validate(initial).map_err(|error| match error {
+        ValidationError::Compatibility => AppendError::Compatibility,
+        ValidationError::Invalid | ValidationError::Limit => AppendError::Invalid,
+    })?;
+    let request = validated.request;
+    let input_digest = tobkiri_canon::digest(&validated.canonical, Variant::StrictV1)
+        .map_err(|_| AppendError::Invalid)?;
     let turn_id = string(request, "turn_id").ok_or(AppendError::Invalid)?;
     let initial_revision =
         integer(request.get("conversation_revision")).ok_or(AppendError::Invalid)?;

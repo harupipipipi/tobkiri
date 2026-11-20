@@ -951,6 +951,7 @@ dependencies = [
  "ordered-python-compat",
  "serde_json",
  "tobkiri-canon",
+ "tobkiri-saved-input",
  "wit-bindgen",
 ]
 
@@ -973,6 +974,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tobkiri-canon",
+ "tobkiri-saved-input",
  "wit-bindgen",
 ]
 
@@ -994,6 +996,14 @@ dependencies = [
  "serde_json",
  "tobkiri-guest-sdk",
  "wit-bindgen",
+]
+
+[[package]]
+name = "tobkiri-saved-input"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "tobkiri-canon",
 ]
 
 [[package]]

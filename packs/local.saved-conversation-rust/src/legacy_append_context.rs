@@ -3,10 +3,9 @@
 use super::legacy_message_append::AppendError;
 use crate::saved_model::valid_conversation_id;
 use ordered_python_compat::{CodecError, PyValue, dumps_bounded, pytruthy};
-use tobkiri_canon::{CanonError, CanonValue, Digest, Variant};
+use tobkiri_canon::{CanonError, CanonValue, Variant};
 
 const LINK_VERSION: &str = "tobkiri.conversation-context-link.v1";
-const BINDING_VERSION: &str = "tobkiri.conversation-context-binding.v1";
 const CONTEXT_FIELDS: [&str; 6] = [
     "model_reference",
     "system_prompt_id",
@@ -86,7 +85,7 @@ pub(super) fn verify(
     }
 
     let binding = request.get("context_binding").ok_or(AppendError::Invalid)?;
-    validate_context_binding(binding)?;
+    tobkiri_saved_input::validate_context_binding(binding).map_err(|_| AppendError::Invalid)?;
     let parent_id = identifier(parent.get("id"))?;
     let parent_revision = parent
         .get("conversation_revision")
@@ -170,31 +169,6 @@ pub(super) fn context_parent_id(conversation: &PyValue) -> Result<Option<&str>, 
     Ok(Some(parent))
 }
 
-/// Check the complete shape of the saved parent assertion.
-pub(super) fn validate_context_binding(value: &PyValue) -> Result<(), AppendError> {
-    if !has_exact_keys(
-        value,
-        &[
-            "version",
-            "profile_id",
-            "parent_conversation_id",
-            "parent_revision",
-            "context_digest",
-        ],
-    ) || value.get("version").and_then(PyValue::as_str) != Some(BINDING_VERSION)
-        || !positive_integer(value.get("parent_revision"))
-        || value
-            .get("context_digest")
-            .and_then(PyValue::as_str)
-            .is_none_or(|digest| Digest::parse(digest).is_err())
-    {
-        return Err(AppendError::Invalid);
-    }
-    identifier(value.get("profile_id"))?;
-    identifier(value.get("parent_conversation_id"))?;
-    Ok(())
-}
-
 fn inherited_context(
     parent: &PyValue,
     metadata: &[(String, PyValue)],
@@ -228,55 +202,8 @@ pub(super) fn inherited_fields(
     fields
 }
 
-/// Validate the original saved tool selection shape.
-pub(super) fn validate_tool_selection(value: &PyValue) -> Result<CanonValue, AppendError> {
-    let fields = value.as_object().ok_or(AppendError::Invalid)?;
-    let mode = value.get("mode").and_then(PyValue::as_str);
-    if !matches!(mode, Some("auto" | "manual" | "none"))
-        || fields.iter().any(|(key, _)| {
-            !["mode", "scope", "include", "exclude", "must_use"].contains(&key.as_str())
-        })
-        || value
-            .get("scope")
-            .is_some_and(|scope| !matches!(scope.as_str(), Some("turn" | "conversation")))
-        || value
-            .get("must_use")
-            .is_some_and(|required| !matches!(required, PyValue::Bool(_)))
-    {
-        return Err(AppendError::Invalid);
-    }
-    for targets in ["include", "exclude"]
-        .into_iter()
-        .filter_map(|key| value.get(key))
-    {
-        let targets = targets.as_array().ok_or(AppendError::Invalid)?;
-        if targets.len() > 256 {
-            return Err(AppendError::Invalid);
-        }
-        for target in targets {
-            let id = if matches!(target, PyValue::String(_)) {
-                target.as_str()
-            } else if has_exact_keys(target, &["kind", "id"])
-                && matches!(
-                    target.get("kind").and_then(PyValue::as_str),
-                    Some("tool" | "service")
-                )
-            {
-                target.get("id").and_then(PyValue::as_str)
-            } else {
-                None
-            };
-            if !id.is_some_and(valid_tool_identifier) {
-                return Err(AppendError::Invalid);
-            }
-        }
-    }
-    if mode == Some("none")
-        && (value.get("include").is_some_and(pytruthy)
-            || value.get("must_use") == Some(&PyValue::Bool(true)))
-    {
-        return Err(AppendError::Invalid);
-    }
+fn validate_tool_selection(value: &PyValue) -> Result<CanonValue, AppendError> {
+    tobkiri_saved_input::validate_tool_selection(value).map_err(|_| AppendError::Invalid)?;
     canonical(value)
 }
 
@@ -359,15 +286,6 @@ fn identifier(value: Option<&PyValue>) -> Result<&str, AppendError> {
         .and_then(PyValue::as_str)
         .filter(|value| valid_conversation_id(value))
         .ok_or(AppendError::Invalid)
-}
-
-fn valid_tool_identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    value.len() <= 256
-        && bytes
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphanumeric())
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }
 
 #[cfg(test)]

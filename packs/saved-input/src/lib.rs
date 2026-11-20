@@ -1,11 +1,10 @@
 //! Finite transport syntax for the original saved-turn input.
 
-use super::super::legacy_append_context::{validate_context_binding, validate_tool_selection};
-use super::{AppendError, PyValue, canonical, has_fields, identifier, integer, string, text_part};
-use ordered_python_compat::pystrip;
+use ordered_python_compat::{CodecError, PyValue, dumps_bounded, pystrip, pytruthy};
 use std::collections::BTreeSet;
-use tobkiri_canon::{Digest, Variant};
+use tobkiri_canon::{CanonValue, Digest, Variant};
 
+const BINDING_VERSION: &str = "tobkiri.conversation-context-binding.v1";
 const MAX_SAVED_INPUT_BYTES: usize = 3 * 1024 * 1024;
 const MAX_SAVED_TEXT_BYTES: usize = 60 * 1024;
 const MAX_SAVED_IMAGE_BYTES: usize = 1024 * 1024;
@@ -13,7 +12,27 @@ const MAX_SAVED_IMAGE_BASE64_CHARS: usize = MAX_SAVED_IMAGE_BYTES.div_ceil(3) * 
 const MAX_SNAPSHOT_BYTES: usize = 64 * 1024;
 const MAX_TASK_CONTEXT_BYTES: usize = 48 * 1024;
 
-pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendError> {
+/// The saved request and its canonical, complete input.
+pub struct ValidatedInput<'a> {
+    /// The supplied request after finite shape checks.
+    pub request: &'a PyValue,
+    /// The whole input normalized to the original owner's canonical domain.
+    pub canonical: CanonValue,
+}
+
+/// Failures of the original saved input's finite transport contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ValidationError {
+    /// The input is outside the accepted contract.
+    Invalid,
+    /// The input exceeds an encoded byte limit.
+    Limit,
+    /// The bounded ordered codec cannot represent this input.
+    Compatibility,
+}
+
+/// Validate one complete saved input, including its nested preferences and contexts.
+pub fn validate(initial: &PyValue) -> Result<ValidatedInput<'_>, ValidationError> {
     let required = [
         "turn_id",
         "conversation_id",
@@ -32,16 +51,16 @@ pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendEr
         "resolved_chat_references",
     ];
     if !has_fields(initial, &["request"]) {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
-    let request = initial.get("request").ok_or(AppendError::Invalid)?;
-    let fields = request.as_object().ok_or(AppendError::Invalid)?;
+    let request = initial.get("request").ok_or(ValidationError::Invalid)?;
+    let fields = request.as_object().ok_or(ValidationError::Invalid)?;
     if required.iter().any(|key| request.get(key).is_none())
         || fields
             .iter()
             .any(|(key, _)| !required.contains(&key.as_str()) && !optional.contains(&key.as_str()))
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     // The single {"request":...} wrapper adds exactly 12 bytes. Compact
     // ordered JSON uses the same string escaping and integer digits as
@@ -52,7 +71,7 @@ pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendEr
     if integer(request.get("conversation_revision")).is_none_or(|value| value < 1)
         || !request.get("content").is_some_and(user_content)
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     if let Some(selection) = request.get("tool_selection") {
         validate_tool_selection(selection)?;
@@ -72,13 +91,13 @@ pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendEr
                 .is_some_and(|value| identifier(value, false))
         })
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let cost = request.get("strategy_maximum_cost_microusd");
     if cost.is_some_and(|value| !matches!(value, PyValue::Null))
         && !integer(cost).is_some_and(|value| (1..=1_000_000).contains(&value))
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     if !optional_string(
         request,
@@ -86,7 +105,7 @@ pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendEr
         &["none", "low", "medium", "high", "xhigh"],
     ) || !optional_string(request, "action_approval_mode", &["ask", "agent", "full"])
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let references = match request.get("chat_references") {
         Some(references) => validate_chat_references(references)?,
@@ -95,9 +114,10 @@ pub(super) fn validate(initial: &PyValue) -> Result<(&PyValue, Digest), AppendEr
     if let Some(snapshot) = request.get("resolved_chat_references") {
         validate_resolved_chat_references(snapshot, &references)?;
     }
-    let digest = tobkiri_canon::digest(&strict_initial, Variant::StrictV1)
-        .map_err(|_| AppendError::Invalid)?;
-    Ok((request, digest))
+    Ok(ValidatedInput {
+        request,
+        canonical: strict_initial,
+    })
 }
 
 fn user_content(content: &PyValue) -> bool {
@@ -187,27 +207,27 @@ fn image_url(url: &str) -> bool {
 
 type Reference<'a> = (&'a str, &'a str, &'a str);
 
-fn validate_chat_references(value: &PyValue) -> Result<Vec<Reference<'_>>, AppendError> {
+fn validate_chat_references(value: &PyValue) -> Result<Vec<Reference<'_>>, ValidationError> {
     let items = value
         .as_array()
         .filter(|rows| rows.len() <= 16)
-        .ok_or(AppendError::Invalid)?;
+        .ok_or(ValidationError::Invalid)?;
     let mut seen = BTreeSet::new();
     let mut references = Vec::new();
     for item in items {
         if !has_fields(item, &["kind", "profile_id", "id"]) {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
         let kind = string(item, "kind")
             .filter(|kind| matches!(*kind, "chat" | "group"))
-            .ok_or(AppendError::Invalid)?;
+            .ok_or(ValidationError::Invalid)?;
         let reference = (
             kind,
             checked_id(item, "profile_id")?,
             checked_id(item, "id")?,
         );
         if !seen.insert(reference) {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
         references.push(reference);
     }
@@ -217,7 +237,7 @@ fn validate_chat_references(value: &PyValue) -> Result<Vec<Reference<'_>>, Appen
 fn validate_resolved_chat_references(
     snapshot: &PyValue,
     lean: &[Reference<'_>],
-) -> Result<(), AppendError> {
+) -> Result<(), ValidationError> {
     if !has_fields(
         snapshot,
         &[
@@ -235,14 +255,14 @@ fn validate_resolved_chat_references(
         || !matches!(snapshot.get("next_cursor"), Some(PyValue::Null))
         || !matches!(snapshot.get("truncated"), Some(PyValue::Bool(false)))
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let profile = checked_id(snapshot, "profile_id")?;
     if lean
         .iter()
         .any(|(_, row_profile, _)| *row_profile != profile)
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     for key in [
         "store_revision",
@@ -251,19 +271,19 @@ fn validate_resolved_chat_references(
         "expires_at",
     ] {
         if integer(snapshot.get(key)).is_none_or(|value| value < 0) {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
     }
-    let time = integer(snapshot.get("snapshot_time")).ok_or(AppendError::Invalid)?;
-    let expires = integer(snapshot.get("expires_at")).ok_or(AppendError::Invalid)?;
+    let time = integer(snapshot.get("snapshot_time")).ok_or(ValidationError::Invalid)?;
+    let expires = integer(snapshot.get("expires_at")).ok_or(ValidationError::Invalid)?;
     if time + 600_000 != expires {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let rows = snapshot
         .get("references")
         .and_then(PyValue::as_array)
         .filter(|rows| rows.len() == lean.len())
-        .ok_or(AppendError::Invalid)?;
+        .ok_or(ValidationError::Invalid)?;
     for (row, (kind, _, id)) in rows.iter().zip(lean) {
         validate_reference_row(row, kind, id)?;
     }
@@ -271,7 +291,7 @@ fn validate_resolved_chat_references(
     Ok(())
 }
 
-fn validate_reference_row(row: &PyValue, kind: &str, id: &str) -> Result<(), AppendError> {
+fn validate_reference_row(row: &PyValue, kind: &str, id: &str) -> Result<(), ValidationError> {
     if !has_fields(
         row,
         &[
@@ -291,17 +311,17 @@ fn validate_reference_row(row: &PyValue, kind: &str, id: &str) -> Result<(), App
         })
         || string(row, "snapshot_digest").is_none_or(|value| Digest::parse(value).is_err())
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let members = row
         .get("conversation_ids")
         .and_then(PyValue::as_array)
         .filter(|members| members.len() <= 256)
-        .ok_or(AppendError::Invalid)?;
+        .ok_or(ValidationError::Invalid)?;
     if integer(row.get("member_count")) != Some(members.len() as i64)
         || (kind == "chat" && (members.len() != 1 || members[0].as_str() != Some(id)))
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     let mut seen = BTreeSet::new();
     for member in members {
@@ -309,7 +329,7 @@ fn validate_reference_row(row: &PyValue, kind: &str, id: &str) -> Result<(), App
             .as_str()
             .is_some_and(|id| identifier(id, false) && seen.insert(id))
         {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
     }
     Ok(())
@@ -319,7 +339,7 @@ fn validate_task_context(
     context: &PyValue,
     conversation_id: &str,
     turn_id: &str,
-) -> Result<(), AppendError> {
+) -> Result<(), ValidationError> {
     canonical(context, MAX_TASK_CONTEXT_BYTES)?;
     if !has_fields(
         context,
@@ -339,21 +359,21 @@ fn validate_task_context(
         || string(context, "recipient_id")
             != Some(format!("conversation:{conversation_id}").as_str())
     {
-        return Err(AppendError::Invalid);
+        return Err(ValidationError::Invalid);
     }
     for key in ["source_id", "conversation_id", "recipient_id", "input_id"] {
         checked_id(context, key)?;
     }
     for key in ["source_revision", "generation"] {
         if integer(context.get(key)).is_none_or(|value| value < 0) {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
     }
     let items = context
         .get("items")
         .and_then(PyValue::as_array)
         .filter(|items| (1..=100).contains(&items.len()))
-        .ok_or(AppendError::Invalid)?;
+        .ok_or(ValidationError::Invalid)?;
     let mut seen = BTreeSet::new();
     for item in items {
         if !has_fields(item, &["id", "kind", "body"])
@@ -362,7 +382,7 @@ fn validate_task_context(
             || !string(item, "body")
                 .is_some_and(|body| body.len() <= 32_000 && !pystrip(body).is_empty())
         {
-            return Err(AppendError::Invalid);
+            return Err(ValidationError::Invalid);
         }
     }
     Ok(())
@@ -374,8 +394,137 @@ fn optional_string(value: &PyValue, key: &str, allowed: &[&str]) -> bool {
         .is_none_or(|value| value.as_str().is_some_and(|value| allowed.contains(&value)))
 }
 
-fn checked_id<'a>(value: &'a PyValue, key: &str) -> Result<&'a str, AppendError> {
+fn checked_id<'a>(value: &'a PyValue, key: &str) -> Result<&'a str, ValidationError> {
     string(value, key)
         .filter(|id| identifier(id, false))
-        .ok_or(AppendError::Invalid)
+        .ok_or(ValidationError::Invalid)
+}
+
+/// Check the complete shape of the saved parent assertion.
+pub fn validate_context_binding(value: &PyValue) -> Result<(), ValidationError> {
+    if !has_fields(
+        value,
+        &[
+            "version",
+            "profile_id",
+            "parent_conversation_id",
+            "parent_revision",
+            "context_digest",
+        ],
+    ) || value.get("version").and_then(PyValue::as_str) != Some(BINDING_VERSION)
+        || !positive_integer(value.get("parent_revision"))
+        || value
+            .get("context_digest")
+            .and_then(PyValue::as_str)
+            .is_none_or(|digest| Digest::parse(digest).is_err())
+    {
+        return Err(ValidationError::Invalid);
+    }
+    checked_id(value, "profile_id")?;
+    checked_id(value, "parent_conversation_id")?;
+    Ok(())
+}
+
+/// Validate the original saved tool selection shape.
+pub fn validate_tool_selection(value: &PyValue) -> Result<(), ValidationError> {
+    let fields = value.as_object().ok_or(ValidationError::Invalid)?;
+    let mode = value.get("mode").and_then(PyValue::as_str);
+    if !matches!(mode, Some("auto" | "manual" | "none"))
+        || fields.iter().any(|(key, _)| {
+            !["mode", "scope", "include", "exclude", "must_use"].contains(&key.as_str())
+        })
+        || value
+            .get("scope")
+            .is_some_and(|scope| !matches!(scope.as_str(), Some("turn" | "conversation")))
+        || value
+            .get("must_use")
+            .is_some_and(|required| !matches!(required, PyValue::Bool(_)))
+    {
+        return Err(ValidationError::Invalid);
+    }
+    for targets in ["include", "exclude"]
+        .into_iter()
+        .filter_map(|key| value.get(key))
+    {
+        let targets = targets.as_array().ok_or(ValidationError::Invalid)?;
+        if targets.len() > 256 {
+            return Err(ValidationError::Invalid);
+        }
+        for target in targets {
+            let id = if matches!(target, PyValue::String(_)) {
+                target.as_str()
+            } else if has_fields(target, &["kind", "id"])
+                && matches!(
+                    target.get("kind").and_then(PyValue::as_str),
+                    Some("tool" | "service")
+                )
+            {
+                target.get("id").and_then(PyValue::as_str)
+            } else {
+                None
+            };
+            if !id.is_some_and(valid_tool_id) {
+                return Err(ValidationError::Invalid);
+            }
+        }
+    }
+    if mode == Some("none")
+        && (value.get("include").is_some_and(pytruthy)
+            || value.get("must_use") == Some(&PyValue::Bool(true)))
+    {
+        return Err(ValidationError::Invalid);
+    }
+    Ok(())
+}
+
+fn canonical(value: &PyValue, maximum: usize) -> Result<CanonValue, ValidationError> {
+    let encoded = dumps_bounded(value, maximum).map_err(|error| match error {
+        CodecError::ByteLimit => ValidationError::Limit,
+        CodecError::NodeLimit | CodecError::Resource => ValidationError::Compatibility,
+        _ => ValidationError::Invalid,
+    })?;
+    tobkiri_canon::parse(encoded.as_bytes(), Variant::StrictV1)
+        .map_err(|_| ValidationError::Invalid)
+}
+
+fn text_part(part: &PyValue) -> Option<&str> {
+    if !has_fields(part, &["type", "text"]) || string(part, "type") != Some("text") {
+        return None;
+    }
+    string(part, "text")
+}
+
+fn identifier(value: &str, allow_slash: bool) -> bool {
+    let mut bytes = value.bytes();
+    value.len() <= 256
+        && bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| {
+            byte.is_ascii_alphanumeric() || b"._:-".contains(&byte) || (allow_slash && byte == b'/')
+        })
+}
+
+fn valid_tool_id(value: &str) -> bool {
+    identifier(value, true)
+}
+
+fn has_fields(value: &PyValue, keys: &[&str]) -> bool {
+    value.as_object().map(<[_]>::len) == Some(keys.len())
+        && keys.iter().all(|key| value.get(key).is_some())
+}
+
+fn string<'a>(value: &'a PyValue, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(PyValue::as_str)
+}
+
+fn integer(value: Option<&PyValue>) -> Option<i64> {
+    match value {
+        Some(PyValue::Int(value)) => value.parse().ok(),
+        _ => None,
+    }
+}
+
+fn positive_integer(value: Option<&PyValue>) -> bool {
+    matches!(value, Some(PyValue::Int(digits)) if digits != "0" && !digits.starts_with('-'))
 }

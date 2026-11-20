@@ -2659,6 +2659,7 @@ dependencies = [
  "ordered-python-compat",
  "thiserror 2.0.21",
  "tobkiri-canon",
+ "tobkiri-saved-input",
 ]
 
 [[package]]
@@ -2671,6 +2672,14 @@ dependencies = [
  "tobkiri-canon",
  "tobkiri-gate",
  "tobkiri-manifest",
+]
+
+[[package]]
+name = "tobkiri-saved-input"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "tobkiri-canon",
 ]
 
 [[package]]

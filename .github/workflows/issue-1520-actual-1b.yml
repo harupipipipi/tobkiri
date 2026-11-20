@@ -16,6 +16,7 @@ on:
       - 'crates/test-guests/typed-tool/**'
       - 'packs/local.model-registry-rust/**'
       - 'packs/local.saved-conversation-rust/**'
+      - 'packs/saved-input/**'
       - 'packs/local.openai-compat-provider/**'
       - 'packs/shapes/harness-chat-v2/**'
       - 'packs/local.provider-registry-rust/**'

@@ -6,8 +6,13 @@ use tobkiri_canon::Digest;
 
 #[cfg(feature = "component")]
 mod component;
+mod input;
 mod start;
 
+pub use input::{
+    SavedInputCapture, SavedInputSource, prepare_saved_input, replay_saved_input,
+    saved_input_source, validate_saved_input_capture_turn,
+};
 pub use start::{LegacySavedTurnStartRequest, active_turn_in_conversation};
 
 /// Maximum body size accepted by the original owner.

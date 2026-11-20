@@ -1,0 +1,10 @@
+[package]
+name = "tobkiri-saved-input"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+tobkiri-canon = { path = "../../crates/tobkiri-canon" }

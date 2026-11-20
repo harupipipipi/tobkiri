@@ -14,6 +14,7 @@ component = ["dep:serde_json", "dep:wit-bindgen"]
 [dependencies]
 ordered-python-compat = { path = "../ordered-python-compat" }
 tobkiri-canon = { path = "../../crates/tobkiri-canon" }
+tobkiri-saved-input = { path = "../saved-input" }
 serde_json = { workspace = true, optional = true }
 wit-bindgen = { workspace = true, optional = true }
 
