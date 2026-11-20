@@ -56,6 +56,12 @@ const CHILD_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ATTESTATION_BYTES: u64 = 64 * 1024;
 const SNAPSHOT_RUNTIME_MANIFEST: &str = "app/runtime-resource-manifest.v1.json";
 const RUNTIME_OVERLAY_SCHEMA: &str = "io.tobkiri.sealed-runtime-overlay.v1";
+#[cfg(any(test, target_os = "macos"))]
+const MACOS_CI_PACKVM_FREE: bool = cfg!(all(
+    target_os = "macos",
+    tobkiri_ci_e2e_artifact,
+    feature = "native-packvm-disabled-probe"
+));
 pub(crate) const SAVED_ORCHESTRATION_MANIFEST_ENV: &str =
     "TOBKIRI_NATIVE_SAVED_ORCHESTRATION_MANIFEST";
 pub(crate) const PROVIDER_SNAPSHOT_ENV: &str = "TOBKIRI_NATIVE_PROVIDER_SNAPSHOT";
@@ -1331,6 +1337,17 @@ fn packaged_packvm_bundle_binding_from_app_dir(
     // caller-controlled .app/Contents/Resources spelling on another OS.
     #[cfg(target_os = "macos")]
     {
+        if MACOS_CI_PACKVM_FREE {
+            // Keep the bundle root on the launch wire for every sealed role.
+            let root = macos_bundle_root_from_app_dir(configured_app_dir)?
+                .context("PackVM-disabled CI probe requires a canonical application bundle")?;
+            return Ok(Some(PackVMBundleBinding {
+                root,
+                provisioning_sha256: String::new(),
+                helper_manifest_sha256: String::new(),
+                helper_team_id: String::new(),
+            }));
+        }
         macos_packvm_bundle_binding_from_app_dir(configured_app_dir)
     }
     #[cfg(not(target_os = "macos"))]
@@ -1343,9 +1360,7 @@ fn packaged_packvm_bundle_binding_from_app_dir(
 }
 
 #[cfg(any(test, target_os = "macos"))]
-fn macos_packvm_bundle_binding_from_app_dir(
-    configured_app_dir: &Path,
-) -> Result<Option<PackVMBundleBinding>> {
+fn macos_bundle_root_from_app_dir(configured_app_dir: &Path) -> Result<Option<PathBuf>> {
     let app_dir = configured_app_dir
         .canonicalize()
         .context("packaged application resource root is unavailable")?;
@@ -1365,6 +1380,16 @@ fn macos_packvm_bundle_binding_from_app_dir(
     {
         return Ok(None);
     }
+    Ok(Some(bundle.to_path_buf()))
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn macos_packvm_bundle_binding_from_app_dir(
+    configured_app_dir: &Path,
+) -> Result<Option<PackVMBundleBinding>> {
+    let Some(bundle) = macos_bundle_root_from_app_dir(configured_app_dir)? else {
+        return Ok(None);
+    };
     let resources = bundle.join("Contents/Resources");
     let provisioning = read_bounded_regular(
         &resources.join("packvm-vz-provisioning.v1.json"),
@@ -1385,7 +1410,7 @@ fn macos_packvm_bundle_binding_from_app_dir(
         String::new()
     };
     Ok(Some(PackVMBundleBinding {
-        root: bundle.to_path_buf(),
+        root: bundle,
         provisioning_sha256: sha256_bytes(&provisioning),
         helper_manifest_sha256: sha256_bytes(&helper_manifest),
         helper_team_id,
@@ -3487,7 +3512,7 @@ struct MacosCiAttestedFile {
     sha256: String,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(test, target_os = "macos"))]
 const MACOS_CI_ATTESTED_PATHS: &[&str] = &[
     "Contents/MacOS/tobkiri-launcher",
     "Contents/MacOS/tobkiri-packvm-vz-helper",
@@ -3498,6 +3523,61 @@ const MACOS_CI_ATTESTED_PATHS: &[&str] = &[
     "Contents/Resources/packvm-vz-helper.manifest.v1.json",
     "Contents/Resources/ci-e2e-signing-certificate.der",
 ];
+
+#[cfg(any(test, target_os = "macos"))]
+const MACOS_CI_PACKVM_PATHS: &[&str] = &[
+    "Contents/MacOS/tobkiri-packvm-vz-helper",
+    "Contents/Resources/packvm-vz-provisioning",
+    "Contents/Resources/packvm-vz-provisioning.v1.json",
+    "Contents/Resources/packvm-vz-helper.manifest.v1.json",
+    "Contents/Resources/app/packvm-qemu",
+];
+
+#[cfg(any(test, target_os = "macos"))]
+fn macos_ci_attested_paths(packvm_free: bool) -> impl Iterator<Item = &'static str> {
+    MACOS_CI_ATTESTED_PATHS
+        .iter()
+        .copied()
+        .filter(move |relative| !packvm_free || !MACOS_CI_PACKVM_PATHS.contains(relative))
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn verify_macos_ci_packvm_absence(bundle: &Path) -> Result<()> {
+    for relative in [
+        ".",
+        "Contents",
+        "Contents/MacOS",
+        "Contents/Resources",
+        "Contents/Resources/app",
+    ] {
+        let directory = if relative == "." {
+            bundle.to_path_buf()
+        } else {
+            bundle.join(relative)
+        };
+        let metadata = fs::symlink_metadata(&directory).with_context(|| {
+            format!("[PYTHON_SEALED_PROVENANCE_INVALID] unsafe CI bundle directory: {relative}")
+        })?;
+        ensure!(
+            metadata.is_dir(),
+            "[PYTHON_SEALED_PROVENANCE_INVALID] unsafe CI bundle directory: {relative}"
+        );
+    }
+    for relative in MACOS_CI_PACKVM_PATHS {
+        match fs::symlink_metadata(bundle.join(relative)) {
+            Ok(_) => bail!(
+                "[PYTHON_SEALED_PROVENANCE_INVALID] PackVM-disabled CI bundle contains {relative}"
+            ),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("[PYTHON_SEALED_PROVENANCE_INVALID] unsafe CI PackVM path: {relative}")
+                });
+            }
+        }
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "macos")]
 const MACOS_CI_MACHO_ATTESTED_PATHS: &[&str] = &[
@@ -3528,8 +3608,7 @@ fn verify_macos_ci_attestation(bundle: &Path, certificate_sha256: &str) -> Resul
     {
         bail!("[PYTHON_SEALED_PROVENANCE_INVALID] CI attestation domain is invalid");
     }
-    let expected_files = MACOS_CI_ATTESTED_PATHS
-        .iter()
+    let expected_files = macos_ci_attested_paths(MACOS_CI_PACKVM_FREE)
         .map(|relative| {
             let bytes = read_bounded_regular(&bundle.join(relative), 32 * 1024 * 1024)
                 .with_context(|| {
@@ -3538,8 +3617,8 @@ fn verify_macos_ci_attestation(bundle: &Path, certificate_sha256: &str) -> Resul
                     )
                 })?;
             Ok(MacosCiAttestedFile {
-                path: (*relative).to_owned(),
-                sha256: if MACOS_CI_MACHO_ATTESTED_PATHS.contains(relative) {
+                path: relative.to_owned(),
+                sha256: if MACOS_CI_MACHO_ATTESTED_PATHS.contains(&relative) {
                     macho_code_sha256(&bytes)?
                 } else {
                     sha256_bytes(&bytes)
@@ -3579,7 +3658,11 @@ fn verify_macos_ci_attestation(bundle: &Path, certificate_sha256: &str) -> Resul
     VerifyingKey::from_bytes(&public_key_bytes)
         .context("[PYTHON_SEALED_PROVENANCE_UNAVAILABLE] CI public key is invalid")?
         .verify(message.as_bytes(), &Signature::from_bytes(&signature_bytes))
-        .context("[PYTHON_SEALED_PROVENANCE_INVALID] CI startup attestation signature rejected")
+        .context("[PYTHON_SEALED_PROVENANCE_INVALID] CI startup attestation signature rejected")?;
+    if MACOS_CI_PACKVM_FREE {
+        verify_macos_ci_packvm_absence(bundle)?;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -4354,11 +4437,10 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         let result = packaged_packvm_bundle_binding_from_app_dir(&root);
-        if cfg!(any(target_os = "linux", windows)) {
-            assert!(
-                result.is_err(),
-                "portable packaged roles require bound VM assets"
-            );
+        let requires_bundle_binding =
+            cfg!(any(target_os = "linux", windows)) || MACOS_CI_PACKVM_FREE;
+        if requires_bundle_binding {
+            assert!(result.is_err());
         } else {
             assert!(result.unwrap().is_none());
         }
@@ -4367,7 +4449,7 @@ mod tests {
             .is_none());
         let nested = root.join("nested/application/resources");
         fs::create_dir_all(&nested).unwrap();
-        if cfg!(any(target_os = "linux", windows)) {
+        if requires_bundle_binding {
             assert!(packaged_packvm_bundle_binding_from_app_dir(&nested).is_err());
         }
         assert!(packaged_packvm_bundle_binding_from_app_dir(&root.join("missing")).is_err());
@@ -5492,6 +5574,70 @@ mod tests {
                 "Contents/MacOS/tobkiri-packvm-vz-helper",
             ]
         );
+    }
+
+    #[test]
+    fn packvm_free_ci_attestation_binds_the_remaining_files_in_order() {
+        assert!(macos_ci_attested_paths(false).eq(MACOS_CI_ATTESTED_PATHS.iter().copied()));
+        assert_eq!(
+            macos_ci_attested_paths(true).collect::<Vec<_>>(),
+            [
+                "Contents/MacOS/tobkiri-launcher",
+                "Contents/Resources/app/python-runtime/sealed-environment.v1.json",
+                "Contents/Resources/app/runtime-resource-manifest.v1.json",
+                "Contents/Resources/ci-e2e-artifact-policy.v1.json",
+                "Contents/Resources/ci-e2e-signing-certificate.der",
+            ]
+        );
+    }
+
+    #[test]
+    fn packvm_free_ci_bundle_rejects_each_packvm_entry_even_if_it_is_a_dangling_symlink() {
+        let bundle = std::env::temp_dir().join(format!(
+            "Tobkiri-CI-PackVM-Free-{}-{}.app",
+            std::process::id(),
+            random_nonce()
+        ));
+        fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
+        fs::create_dir_all(bundle.join("Contents/Resources/app")).unwrap();
+
+        verify_macos_ci_packvm_absence(&bundle).unwrap();
+        for relative in [
+            "Contents/MacOS/tobkiri-packvm-vz-helper",
+            "Contents/Resources/packvm-vz-provisioning",
+            "Contents/Resources/packvm-vz-provisioning.v1.json",
+            "Contents/Resources/packvm-vz-helper.manifest.v1.json",
+            "Contents/Resources/app/packvm-qemu",
+        ] {
+            let path = bundle.join(relative);
+            let assert_rejected = || {
+                let error = verify_macos_ci_packvm_absence(&bundle).unwrap_err();
+                assert!(error.to_string().contains(relative));
+            };
+            fs::write(&path, b"fixture").unwrap();
+            assert_rejected();
+            fs::remove_file(&path).unwrap();
+
+            fs::create_dir(&path).unwrap();
+            assert_rejected();
+            fs::remove_dir(&path).unwrap();
+
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(bundle.join("missing"), &path).unwrap();
+                assert_rejected();
+                fs::remove_file(&path).unwrap();
+            }
+        }
+        verify_macos_ci_packvm_absence(&bundle).unwrap();
+        #[cfg(unix)]
+        {
+            let macos = bundle.join("Contents/MacOS");
+            fs::remove_dir(&macos).unwrap();
+            std::os::unix::fs::symlink(bundle.join("missing"), &macos).unwrap();
+            assert!(verify_macos_ci_packvm_absence(&bundle).is_err());
+        }
+        fs::remove_dir_all(bundle).unwrap();
     }
 
     #[test]

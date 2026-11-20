@@ -35,6 +35,14 @@ PACKVM_PROVISIONING_MANIFEST_RELATIVE = (
     "Contents/Resources/packvm-vz-provisioning.v1.json"
 )
 PACKVM_BUNDLE_MANIFEST_RELATIVE = "Contents/Resources/packvm-vz-helper.manifest.v1.json"
+PACKVM_SIGNED_PATHS = frozenset(
+    (PACKVM_HELPER_RELATIVE, PACKVM_PROVISIONING_MANIFEST_RELATIVE, PACKVM_BUNDLE_MANIFEST_RELATIVE)
+)
+PACKVM_ASSET_PATHS = (
+    *sorted(PACKVM_SIGNED_PATHS),
+    "Contents/Resources/packvm-vz-provisioning",
+    "Contents/Resources/app/packvm-qemu",
+)
 PACKVM_PROVISIONING_SCHEMA = "io.tobkiri.packvm-vz-provisioning.v1"
 PACKVM_BUNDLE_SCHEMA = "io.tobkiri.packvm-vz-bundle-manifest.v1"
 PACKVM_REQUIRED_PROVISIONING_NAMES = frozenset(
@@ -529,6 +537,23 @@ def _attested_sha256(app_bundle: Path, relative: str) -> str:
     return _sha256(path)
 
 
+def _verified_signed_paths(app_bundle: Path, expect_no_packvm: bool) -> tuple[str, ...]:
+    if not expect_no_packvm:
+        verify_packvm_bundle(app_bundle)
+        return SIGNED_PATHS
+
+    for relative in (".", "Contents", "Contents/MacOS", "Contents/Resources", "Contents/Resources/app"):
+        if not stat.S_ISDIR((app_bundle / relative).lstat().st_mode):
+            raise ValueError(f"PackVM-free app directory is unsafe: {relative}")
+    for relative in PACKVM_ASSET_PATHS:
+        try:
+            (app_bundle / relative).lstat()
+        except FileNotFoundError:
+            continue
+        raise ValueError(f"PackVM-free app contains an unexpected PackVM asset: {relative}")
+    return tuple(path for path in SIGNED_PATHS if path not in PACKVM_SIGNED_PATHS)
+
+
 def _message(certificate_sha256: str, files: list[dict[str, str]]) -> bytes:
     """Build the fixed-field signature domain shared with the Rust verifier."""
     lines = [
@@ -592,9 +617,11 @@ def create_identity(output_dir: Path) -> dict[str, str]:
     }
 
 
-def attest(app_bundle: Path, private_key_path: Path, certificate_path: Path) -> Path:
+def attest(
+    app_bundle: Path, private_key_path: Path, certificate_path: Path, *, expect_no_packvm: bool = False
+) -> Path:
     """Write a certificate-pinned startup attestation before final ad-hoc signing."""
-    verify_packvm_bundle(app_bundle)
+    signed_paths = _verified_signed_paths(app_bundle, expect_no_packvm)
     resources = app_bundle / "Contents/Resources"
     destination_certificate = resources / CERTIFICATE_NAME
     destination_certificate.write_bytes(
@@ -604,7 +631,7 @@ def attest(app_bundle: Path, private_key_path: Path, certificate_path: Path) -> 
     certificate_sha256 = _sha256(destination_certificate)
     files = [
         {"path": relative, "sha256": _attested_sha256(app_bundle, relative)}
-        for relative in SIGNED_PATHS
+        for relative in signed_paths
     ]
     private_key = serialization.load_pem_private_key(
         _read_bound_regular(private_key_path, "CI/E2E private key", 32 * 1024),
@@ -631,9 +658,11 @@ def attest(app_bundle: Path, private_key_path: Path, certificate_path: Path) -> 
     return destination
 
 
-def verify(app_bundle: Path, expected_certificate_sha256: str) -> None:
+def verify(
+    app_bundle: Path, expected_certificate_sha256: str, *, expect_no_packvm: bool = False
+) -> None:
     """Verify the pinned certificate, fixed file identities, and Ed25519 signature."""
-    verify_packvm_bundle(app_bundle)
+    signed_paths = _verified_signed_paths(app_bundle, expect_no_packvm)
     resources = app_bundle / "Contents/Resources"
     certificate_path = resources / CERTIFICATE_NAME
     certificate_bytes = _read_bound_regular(
@@ -673,7 +702,7 @@ def verify(app_bundle: Path, expected_certificate_sha256: str) -> None:
         raise ValueError("CI/E2E attestation domain is invalid")
     expected_files = [
         {"path": relative, "sha256": _attested_sha256(app_bundle, relative)}
-        for relative in SIGNED_PATHS
+        for relative in signed_paths
     ]
     if document["files"] != expected_files:
         raise ValueError("CI/E2E attested file identity changed")
@@ -691,6 +720,7 @@ def main() -> int:
     attest_parser.add_argument("--app-bundle", type=Path, required=True)
     attest_parser.add_argument("--private-key", type=Path, required=True)
     attest_parser.add_argument("--certificate", type=Path, required=True)
+    attest_parser.add_argument("--expect-no-packvm", action="store_true")
     packvm_write_parser = subparsers.add_parser("write-packvm-bundle-manifest")
     packvm_write_parser.add_argument("--app-bundle", type=Path, required=True)
     packvm_write_parser.add_argument(
@@ -704,13 +734,17 @@ def main() -> int:
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--app-bundle", type=Path, required=True)
     verify_parser.add_argument("--expected-certificate-sha256", required=True)
+    verify_parser.add_argument("--expect-no-packvm", action="store_true")
     args = parser.parse_args()
     if args.command == "create-identity":
         print(json.dumps(create_identity(args.output_dir), sort_keys=True))
     elif args.command == "attest":
-        print(attest(args.app_bundle, args.private_key, args.certificate))
+        print(attest(
+            args.app_bundle, args.private_key, args.certificate,
+            expect_no_packvm=args.expect_no_packvm,
+        ))
     elif args.command == "verify":
-        verify(args.app_bundle, args.expected_certificate_sha256)
+        verify(args.app_bundle, args.expected_certificate_sha256, expect_no_packvm=args.expect_no_packvm)
     elif args.command == "write-packvm-bundle-manifest":
         print(
             write_packvm_bundle_manifest(

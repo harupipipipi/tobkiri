@@ -22,6 +22,8 @@ CI_ARTIFACT_PATH = (
     Path(__file__).resolve().parents[3] / ".github/scripts/macos_ci_artifact.py"
 )
 FINAL_NAME = "Tobkiri Launcher_1.2.3_x64.dmg"
+CI_POLICY_PATH = SCRIPT.parent.parent / "src-tauri/ci-e2e/ci-e2e-artifact-policy.v1.json"
+PACKVM_QEMU_PATH = "Contents/Resources/app/packvm-qemu"
 
 
 def _load_publisher():
@@ -117,6 +119,9 @@ exit 0
         """#!/bin/sh
 set -eu
 cp -R "$1" "$2"
+if [ "${FAKE_DITTO_STRAY_PACKVM:-0}" = "1" ]; then
+  mkdir "$2/Contents/Resources/app/packvm-qemu"
+fi
 """,
     )
     _write_executable(
@@ -251,14 +256,7 @@ fail("unexpected hdiutil command: %s" % command, 2)
     return bin_dir, state_path
 
 
-def _fixture_app(root: Path) -> Path:
-    app = root / "Tobkiri Launcher.app"
-    contents = app / "Contents"
-    (contents / "MacOS").mkdir(parents=True)
-    (contents / "Resources" / "app" / "python-runtime").mkdir(parents=True)
-    (contents / "Info.plist").write_text("fixture", encoding="utf-8")
-    (contents / "MacOS" / "launcher").write_text("fixture", encoding="utf-8")
-    helper = contents / "MacOS" / "tobkiri-packvm-vz-helper"
+def _fixture_macho() -> bytes:
     header = bytearray(32)
     header[:4] = b"\xcf\xfa\xed\xfe"
     struct.pack_into("<II", header, 16, 2, 88)
@@ -267,7 +265,38 @@ def _fixture_app(root: Path) -> Path:
     struct.pack_into("<QQ", linkedit, 32, 4, 120)
     struct.pack_into("<Q", linkedit, 48, 4)
     signature = struct.pack("<IIII", 0x1D, 16, 120, 4)
-    helper.write_bytes(header + linkedit + signature + b"SIGN")
+    return bytes(header + linkedit + signature + b"SIGN")
+
+
+def _fixture_app(root: Path, *, expect_no_packvm: bool = False) -> Path:
+    app = root / "Tobkiri Launcher.app"
+    contents = app / "Contents"
+    (contents / "MacOS").mkdir(parents=True)
+    resources = contents / "Resources"
+    (resources / "app" / "python-runtime").mkdir(parents=True)
+    if expect_no_packvm:
+        (contents / "Info.plist").write_bytes(
+            plistlib.dumps(
+                {
+                    "CFBundleIdentifier": CI_ARTIFACT.BUNDLE_IDENTIFIER,
+                    "CFBundleShortVersionString": "1.2.3",
+                }
+            )
+        )
+        (contents / "MacOS" / "tobkiri-launcher").write_bytes(_fixture_macho())
+        (resources / "NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt").write_text(
+            "non-publishable fixture\n", encoding="utf-8"
+        )
+        shutil.copyfile(CI_POLICY_PATH, resources / CI_POLICY_PATH.name)
+        (resources / "app/python-runtime/sealed-environment.v1.json").write_bytes(
+            b"{}\n"
+        )
+        (resources / "app/runtime-resource-manifest.v1.json").write_bytes(b"{}\n")
+        return app
+
+    (contents / "Info.plist").write_text("fixture", encoding="utf-8")
+    (contents / "MacOS" / "launcher").write_text("fixture", encoding="utf-8")
+    (app / CI_ARTIFACT.PACKVM_HELPER_RELATIVE).write_bytes(_fixture_macho())
     inputs = []
     bubblewrap_package = b"b" * CI_ARTIFACT.PACKVM_BUBBLEWRAP_PACKAGE_BYTES
     for name in sorted(CI_ARTIFACT.PACKVM_REQUIRED_PROVISIONING_NAMES):
@@ -332,9 +361,11 @@ def _formal_binding(root: Path) -> tuple[str, str]:
     return str(wrapper), hashlib.sha256(wrapper.read_bytes()).hexdigest()
 
 
-def _prepare(root: Path, mode: str) -> tuple[Path, Path, Path, dict[str, str]]:
+def _prepare(
+    root: Path, mode: str, *, expect_no_packvm: bool = False
+) -> tuple[Path, Path, Path, dict[str, str]]:
     root.mkdir(parents=True, exist_ok=True)
-    app = _fixture_app(root)
+    app = _fixture_app(root, expect_no_packvm=expect_no_packvm)
     output_dir = root / "output"
     output_dir.mkdir()
     formal_python_snapshot = root / "formal-python-snapshot"
@@ -396,7 +427,7 @@ raise SystemExit(result.returncode)
     return app, output_dir, state_path, environment
 
 
-def _command(app: Path, output_dir: Path) -> list[str]:
+def _command(app: Path, output_dir: Path, *policy: str) -> list[str]:
     return [
         "/bin/bash",
         str(SCRIPT),
@@ -404,7 +435,7 @@ def _command(app: Path, output_dir: Path) -> list[str]:
         str(app),
         "--target",
         "x86_64-apple-darwin",
-        "--ad-hoc",
+        *(policy or ("--ad-hoc",)),
         "--output-dir",
         str(output_dir),
     ]
@@ -645,6 +676,91 @@ def test_packager_rejects_missing_or_tampered_packvm_material_before_dmg_creatio
     )
     assert result.returncode == 1
     assert expected in result.stderr
+    assert _state(state_path)["create_count"] == 0
+
+
+def _attest_packvm_free_app(app: Path) -> str:
+    identity = CI_ARTIFACT.create_identity(app.parent / "identity")
+    CI_ARTIFACT.attest(
+        app,
+        Path(identity["private_key"]),
+        Path(identity["certificate"]),
+        expect_no_packvm=True,
+    )
+    return identity["certificate_sha256"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS PlistBuddy")
+def test_packager_accepts_attested_packvm_free_ci_app(tmp_path: Path) -> None:
+    """An explicitly selected PackVM-free CI bundle can be packaged."""
+    app, output_dir, state_path, environment = _prepare(
+        tmp_path, "success", expect_no_packvm=True
+    )
+    certificate = ("--ci-e2e-cert-sha256", _attest_packvm_free_app(app))
+    default_result = subprocess.run(
+        _command(app, output_dir, *certificate),
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert default_result.returncode == 1
+    assert "PackVM VZ helper is missing or unsafe" in default_result.stderr
+    assert _state(state_path)["create_count"] == 0
+
+    result = subprocess.run(
+        _command(app, output_dir, *certificate, "--expect-no-packvm"),
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert _state(state_path)["create_count"] == 1
+    assert (output_dir / FINAL_NAME).read_bytes() == b"DMG-1"
+
+
+def test_packager_rejects_packvm_free_flag_with_ad_hoc_policy(tmp_path: Path) -> None:
+    """The omission flag requires the CI/E2E certificate argument."""
+    app, output_dir, state_path, environment = _prepare(tmp_path, "success")
+    result = subprocess.run(
+        _command(app, output_dir, "--ad-hoc", "--expect-no-packvm"),
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "--expect-no-packvm requires --ci-e2e-cert-sha256" in result.stderr
+    assert _state(state_path)["create_count"] == 0
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS PlistBuddy")
+@pytest.mark.parametrize("asset_added_after_staging", [False, True])
+def test_packager_rejects_stray_packvm_asset_in_ci_app(
+    tmp_path: Path, asset_added_after_staging: bool
+) -> None:
+    """The source bundle and staged copy must both be physically PackVM-free."""
+    app, output_dir, state_path, environment = _prepare(
+        tmp_path, "success", expect_no_packvm=True
+    )
+    certificate = _attest_packvm_free_app(app)
+    if asset_added_after_staging:
+        environment["FAKE_DITTO_STRAY_PACKVM"] = "1"
+    else:
+        (app / PACKVM_QEMU_PATH).mkdir()
+    result = subprocess.run(
+        _command(
+            app, output_dir, "--ci-e2e-cert-sha256", certificate, "--expect-no-packvm"
+        ),
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "PackVM-free app contains an unexpected PackVM asset" in result.stderr
+    assert PACKVM_QEMU_PATH in result.stderr
     assert _state(state_path)["create_count"] == 0
 
 

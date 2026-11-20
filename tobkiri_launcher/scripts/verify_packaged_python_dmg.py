@@ -28,6 +28,13 @@ DEVICE_PATTERN = re.compile(r"^/dev/disk[0-9]+(?:s[0-9]+)?$")
 NATIVE_SETUP_COMPONENT = Path("Contents/Resources/app/native-setup/component.wasm")
 MAX_NATIVE_SETUP_COMPONENT_BYTES = 32 * 1024 * 1024
 NATIVE_REGISTRY_PACKS = Path("Contents/Resources/app/native-registry-packs")
+PACKVM_ASSETS = (
+    "Contents/MacOS/tobkiri-packvm-vz-helper",
+    "Contents/Resources/packvm-vz-provisioning.v1.json",
+    "Contents/Resources/packvm-vz-helper.manifest.v1.json",
+    "Contents/Resources/packvm-vz-provisioning",
+    "Contents/Resources/app/packvm-qemu",
+)
 REGISTRY_RECEIPT_NAME = "receipt.json"
 REGISTRY_RECEIPT_FORMAT = "tobkiri.registry-packs/1"
 SETTLEMENT_RECEIPT_FORMAT = "tobkiri.registry-packs/2"
@@ -710,6 +717,18 @@ def _cold_boot_installed_launcher(
             print("Retained the private install and data after unverified shutdown", file=sys.stderr)
 
 
+def _verify_no_packvm_assets(app_bundle: Path) -> None:
+    for relative in ("Contents", "Contents/MacOS", "Contents/Resources", "Contents/Resources/app"):
+        if not stat.S_ISDIR((app_bundle / relative).lstat().st_mode):
+            raise DmgVerificationError(f"PackVM-free app directory is unsafe: {relative}")
+    for relative in PACKVM_ASSETS:
+        try:
+            (app_bundle / relative).lstat()
+        except FileNotFoundError:
+            continue
+        raise DmgVerificationError(f"PackVM-free DMG includes an unexpected asset: {relative}")
+
+
 def verify_dmg(args: argparse.Namespace) -> None:
     """Mount, verify, codesign-check, detach, and safely remove one mountpoint."""
     dmg = _canonical_regular_file(args.dmg, "DMG")
@@ -725,6 +744,9 @@ def verify_dmg(args: argparse.Namespace) -> None:
     try:
         mount.attach()
         app_bundle = mount.application_bundle()
+        if args.expect_no_packvm:
+            _verify_no_packvm_assets(app_bundle)
+            mount.verify_mounted()
         if args.expected_native_setup_component_sha256 is not None:
             mount.verify_native_setup_component(
                 app_bundle,
@@ -797,6 +819,8 @@ def verify_dmg(args: argparse.Namespace) -> None:
         print(f"Verified mounted DMG native Setup Wasm: {dmg}")
     if args.expected_native_registry_packs_receipt_sha256 is not None:
         print(f"Verified mounted DMG native Registry Packs: {dmg}")
+    if args.expect_no_packvm:
+        print(f"Verified mounted DMG omits PackVM assets: {dmg}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -810,6 +834,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-native-registry-packs-receipt-sha256")
     parser.add_argument("--installed-boot-diagnostics-dir", type=Path)
     parser.add_argument("--expect-packvm-disabled", action="store_true")
+    parser.add_argument("--expect-no-packvm", action="store_true")
     parser.add_argument("--wait-for-user-setup-seconds", type=float)
     parser.add_argument(
         "--wait-for-user-chat", nargs=3, metavar=("SECONDS", "PROVIDER_ID", "MODEL_ID"),
@@ -834,6 +859,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("installed native cold boot requires the pinned native Setup and Registry resources")
     if args.expect_packvm_disabled and args.installed_boot_diagnostics_dir is None:
         parser.error("PackVM-disabled verification requires the installed native Setup check")
+    if args.expect_no_packvm and not args.expect_packvm_disabled:
+        parser.error("PackVM-free verification requires --expect-packvm-disabled")
     if args.wait_for_user_setup_seconds is not None and (
         args.installed_boot_diagnostics_dir is None
         or not 5.0 <= args.wait_for_user_setup_seconds <= 900.0

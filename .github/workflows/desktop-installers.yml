@@ -585,7 +585,7 @@ jobs:
           python -B scripts/run_tauri_build.py build --target ${{ matrix.target }} "${build_args[@]}"
 
       - name: Stage authenticated macOS PackVM VZ helper
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && !inputs.native_packvm_disabled
         working-directory: tobkiri_launcher
         shell: bash
         run: |
@@ -602,42 +602,51 @@ jobs:
       - name: Attest and ad-hoc sign macOS CI/E2E application
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}
         run: |
           set -euo pipefail
           app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
           test -d "$app"
-          helper="$app/Contents/MacOS/tobkiri-packvm-vz-helper"
-          /usr/bin/codesign --force --sign - \
-            --identifier dev.tobkiri.launcher.packvm-vz-helper \
-            --options runtime --timestamp=none \
-            --entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/tobkiri-packvm-vz-helper.entitlements \
-            "$helper"
-          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$helper"
-          helper_details=$(/usr/bin/codesign -d -r- --verbose=4 "$helper" 2>&1)
-          /usr/bin/grep -Fqx 'Identifier=dev.tobkiri.launcher.packvm-vz-helper' <<<"$helper_details"
-          /usr/bin/grep -Fqx 'Signature=adhoc' <<<"$helper_details"
-          /usr/bin/grep -Eq '^# designated => cdhash H"[0-9a-fA-F]{40}"$' <<<"$helper_details"
-          /usr/bin/codesign -d --entitlements :- "$helper" 2>/dev/null \
-            | /usr/bin/plutil -extract 'com\.apple\.security\.virtualization' raw -o - - \
-            | /usr/bin/grep -qx true
-          python .github/scripts/macos_ci_artifact.py write-packvm-bundle-manifest \
-            --app-bundle "$app" \
-            --expected-signing-mode ad-hoc
+          bundle_args=(--app-bundle "$app")
+          if [[ "$NATIVE_PACKVM_DISABLED" == true ]]; then
+            bundle_args+=(--expect-no-packvm)
+          else
+            helper="$app/Contents/MacOS/tobkiri-packvm-vz-helper"
+            /usr/bin/codesign --force --sign - \
+              --identifier dev.tobkiri.launcher.packvm-vz-helper \
+              --options runtime --timestamp=none \
+              --entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/tobkiri-packvm-vz-helper.entitlements \
+              "$helper"
+            /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$helper"
+            helper_details=$(/usr/bin/codesign -d -r- --verbose=4 "$helper" 2>&1)
+            /usr/bin/grep -Fqx 'Identifier=dev.tobkiri.launcher.packvm-vz-helper' <<<"$helper_details"
+            /usr/bin/grep -Fqx 'Signature=adhoc' <<<"$helper_details"
+            /usr/bin/grep -Eq '^# designated => cdhash H"[0-9a-fA-F]{40}"$' <<<"$helper_details"
+            /usr/bin/codesign -d --entitlements :- "$helper" 2>/dev/null \
+              | /usr/bin/plutil -extract 'com\.apple\.security\.virtualization' raw -o - - \
+              | /usr/bin/grep -qx true
+            python .github/scripts/macos_ci_artifact.py write-packvm-bundle-manifest \
+              --app-bundle "$app" \
+              --expected-signing-mode ad-hoc
+          fi
           python .github/scripts/macos_ci_artifact.py attest \
-            --app-bundle "$app" \
+            "${bundle_args[@]}" \
             --private-key "$TOBKIRI_CI_PRIVATE_KEY" \
             --certificate "$TOBKIRI_CI_CERTIFICATE"
           /usr/bin/codesign --force --options runtime --timestamp=none \
             --sign - "$app"
           /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$app"
           python .github/scripts/macos_ci_artifact.py verify \
-            --app-bundle "$app" \
+            "${bundle_args[@]}" \
             --expected-certificate-sha256 "$TOBKIRI_MACOS_CI_CERT_SHA256"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
             "$app/Contents/Info.plist")" = 'dev.tobkiri.launcher.ci-e2e'
 
       - name: Host-seal and launch-test packaged Python application resources
         if: runner.os == 'macOS'
+        env:
+          NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}
         run: |
           app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
           packaged_manifest_sha="$(/usr/bin/shasum -a 256 "$app/Contents/Resources/app/python-runtime/sealed-environment.v1.json" | /usr/bin/awk '{print $1}')"
@@ -653,8 +662,10 @@ jobs:
           test ! -e "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app/Contents/Resources/app/logs"
           /usr/bin/codesign --verify --strict --all-architectures --verbose=2 \
             "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
-          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 \
-            "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app/Contents/MacOS/tobkiri-packvm-vz-helper"
+          if [[ "$NATIVE_PACKVM_DISABLED" != true ]]; then
+            /usr/bin/codesign --verify --strict --all-architectures --verbose=2 \
+              "$app/Contents/MacOS/tobkiri-packvm-vz-helper"
+          fi
 
       - name: Cold-boot packaged macOS CI/E2E Launcher
         if: runner.os == 'macOS' && !inputs.native_setup
@@ -681,13 +692,17 @@ jobs:
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
         shell: bash
+        env:
+          NATIVE_PACKVM_DISABLED: ${{ inputs.native_packvm_disabled || false }}
         run: |
-          set -o pipefail
-          bash scripts/package_macos_dmg.sh \
-            --app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app" \
-            --target '${{ matrix.target }}' \
-            --ci-e2e-cert-sha256 "$TOBKIRI_MACOS_CI_CERT_SHA256" \
-            --output-dir "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" \
+          set -euo pipefail
+          package_args=(--app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+            --target '${{ matrix.target }}' --ci-e2e-cert-sha256 "$TOBKIRI_MACOS_CI_CERT_SHA256"
+            --output-dir "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg")
+          if [[ "$NATIVE_PACKVM_DISABLED" == true ]]; then
+            package_args+=(--expect-no-packvm)
+          fi
+          bash scripts/package_macos_dmg.sh "${package_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/tobkiri-macos-dmg-${{ matrix.target }}.log"
 
       - name: Verify mounted macOS installer resources
@@ -718,7 +733,7 @@ jobs:
               --expected-native-registry-packs-receipt-sha256 "$EXPECTED_REGISTRY_PACKS_RECEIPT_SHA256"
               --installed-boot-diagnostics-dir "$diagnostics_dir")
             if [[ "$NATIVE_PACKVM_DISABLED" == true ]]; then
-              verify_args+=(--expect-packvm-disabled)
+              verify_args+=(--expect-packvm-disabled --expect-no-packvm)
             fi
           fi
           bash scripts/verify_packaged_python_dmg.sh "${verify_args[@]}"

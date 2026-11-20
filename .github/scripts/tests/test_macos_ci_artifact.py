@@ -40,10 +40,12 @@ def _fixture_helper_is_ad_hoc(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _bundle(root: Path) -> Path:
+def _bundle(root: Path, *, with_packvm: bool = True) -> Path:
     """Create the exact startup-critical CI bundle paths."""
     bundle = root / "Tobkiri Launcher CI E2E.app"
     for relative in macos_ci_artifact.SIGNED_PATHS:
+        if not with_packvm and relative in macos_ci_artifact.PACKVM_SIGNED_PATHS:
+            continue
         if relative == f"Contents/Resources/{macos_ci_artifact.CERTIFICATE_NAME}":
             continue
         if relative == macos_ci_artifact.PACKVM_BUNDLE_MANIFEST_RELATIVE:
@@ -113,7 +115,8 @@ def _bundle(root: Path) -> Path:
             )
         else:
             path.write_bytes(f"fixture:{relative}".encode())
-    macos_ci_artifact.write_packvm_bundle_manifest(bundle)
+    if with_packvm:
+        macos_ci_artifact.write_packvm_bundle_manifest(bundle)
     return bundle
 
 
@@ -132,6 +135,34 @@ def test_ephemeral_identity_attests_and_detects_tampering(tmp_path: Path) -> Non
     executable.write_bytes(executable_bytes)
     with pytest.raises(ValueError, match="attested file identity changed"):
         macos_ci_artifact.verify(bundle, identity["certificate_sha256"])
+
+
+def test_attestation_requires_the_selected_vm_asset_mode(tmp_path: Path) -> None:
+    identity = macos_ci_artifact.create_identity(tmp_path / "identity")
+    bundle = _bundle(tmp_path, with_packvm=False)
+    attestation = macos_ci_artifact.attest(
+        bundle, Path(identity["private_key"]), Path(identity["certificate"]),
+        expect_no_packvm=True,
+    )
+    macos_ci_artifact.verify(bundle, identity["certificate_sha256"], expect_no_packvm=True)
+    files = json.loads(attestation.read_text())["files"]
+    assert [entry["path"] for entry in files] == [
+        path for path in macos_ci_artifact.SIGNED_PATHS if path not in macos_ci_artifact.PACKVM_SIGNED_PATHS
+    ]
+    with pytest.raises(ValueError):
+        macos_ci_artifact.verify(bundle, identity["certificate_sha256"])
+
+
+@pytest.mark.parametrize("relative", macos_ci_artifact.PACKVM_ASSET_PATHS)
+def test_packvm_free_attestation_rejects_dangling_asset_links(tmp_path: Path, relative: str) -> None:
+    identity = macos_ci_artifact.create_identity(tmp_path / "identity")
+    bundle = _bundle(tmp_path, with_packvm=False)
+    (bundle / relative).symlink_to(tmp_path / "absent")
+    with pytest.raises(ValueError, match="unexpected PackVM asset"):
+        macos_ci_artifact.attest(
+            bundle, Path(identity["private_key"]), Path(identity["certificate"]),
+            expect_no_packvm=True,
+        )
 
 
 def test_codesign_size_rewrite_preserves_canonical_executable_identity(
@@ -412,7 +443,7 @@ def test_workflow_never_mutates_keychain_or_trust_state() -> None:
         assert forbidden not in workflow
     assert "TOBKIRI_MACOS_ARTIFACT_POLICY=ci-e2e-v1" in workflow
     assert "--sign -" in workflow
-    assert "tobkiri-non-publishable-ci-e2e-" in workflow
+    assert "tobkiri-non-publishable-ci-e2e${{" in workflow
     assert "write-packvm-bundle-manifest" in workflow
     assert "--expected-signing-mode ad-hoc" in workflow
     assert "--entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/" in workflow
@@ -440,7 +471,10 @@ def test_rust_cold_boot_attestation_mirrors_the_python_path_policy() -> None:
         assert f'"{relative}",' in source
     for relative in macos_ci_artifact.MACHO_SIGNED_PATHS:
         assert f'"{relative}",' in source
-    assert "MACOS_CI_MACHO_ATTESTED_PATHS.contains(relative)" in source
+    assert "MACOS_CI_MACHO_ATTESTED_PATHS.contains(&relative)" in source
+    assert "macos_ci_attested_paths(MACOS_CI_PACKVM_FREE)" in source
+    for relative in macos_ci_artifact.PACKVM_ASSET_PATHS:
+        assert f'"{relative}",' in source
 
 
 def test_release_guard_rejects_ci_domain_artifacts() -> None:

@@ -274,34 +274,40 @@ def _runtime_overlay_arguments(
     ]
 
 
-def _packvm_bundle_fixture(root: Path) -> tuple[Path, dict[str, str]]:
+def _packvm_bundle_fixture(
+    root: Path, *, vm_free: bool = False
+) -> tuple[Path, dict[str, str]]:
     """Create a signed-app-mode macOS resource domain for v3 binding tests."""
 
     bundle = root / "Tobkiri Launcher.app"
     resources = bundle / "Contents" / "Resources"
     application = resources / "app"
     application.mkdir(parents=True)
+    (bundle / "Contents" / "MacOS").mkdir()
     files = {
-        resources / "packvm-vz-provisioning.v1.json": b'{"kind":"provisioning"}\n',
-        resources / "packvm-vz-helper.manifest.v1.json": b'{"kind":"helper"}\n',
         application / "runtime-resource-manifest.v1.json": b'{"kind":"runtime"}\n',
     }
+    if not vm_free:
+        files[resources / "packvm-vz-provisioning.v1.json"] = (
+            b'{"kind":"provisioning"}\n'
+        )
+        files[resources / "packvm-vz-helper.manifest.v1.json"] = b'{"kind":"helper"}\n'
     for path, payload in files.items():
         path.write_bytes(payload)
         path.chmod(0o644)
     for directory in (application, resources, resources.parent, bundle):
         directory.chmod(0o755)
-    return bundle, {
-        "provisioning": hashlib.sha256(
-            files[resources / "packvm-vz-provisioning.v1.json"]
-        ).hexdigest(),
-        "helper": hashlib.sha256(
-            files[resources / "packvm-vz-helper.manifest.v1.json"]
-        ).hexdigest(),
-        "outer": hashlib.sha256(
-            files[application / "runtime-resource-manifest.v1.json"]
-        ).hexdigest(),
+    digests = {
+        "outer": BUILDER._sha256_file(application / "runtime-resource-manifest.v1.json")
     }
+    if not vm_free:
+        digests["provisioning"] = BUILDER._sha256_file(
+            resources / "packvm-vz-provisioning.v1.json"
+        )
+        digests["helper"] = BUILDER._sha256_file(
+            resources / "packvm-vz-helper.manifest.v1.json"
+        )
+    return bundle, digests
 
 
 def _writable_staged_fixture(base: Path, target: str) -> Path:
@@ -1481,11 +1487,12 @@ def test_runtime_link_materializer_rejects_outside_target(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("native_first_setup", (False, True))
 @pytest.mark.parametrize(
-    ("target", "packvm_disabled"),
+    ("target", "packvm_disabled", "vm_free"),
     (
-        ("x86_64-unknown-linux-gnu", False),
-        ("aarch64-apple-darwin", False),
-        ("aarch64-apple-darwin", True),
+        ("x86_64-unknown-linux-gnu", False, False),
+        ("aarch64-apple-darwin", False, False),
+        ("aarch64-apple-darwin", True, False),
+        ("aarch64-apple-darwin", True, True),
     ),
 )
 def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
@@ -1494,20 +1501,24 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
     native_first_setup: bool,
     target: str,
     packvm_disabled: bool,
+    vm_free: bool,
 ) -> None:
     """The parent wire reaches each canonical role with exact argv/stdin."""
     output = _fixture_sources(tmp_path / "sealed", target)[2]
     if target.endswith("-apple-darwin"):
-        bundle, digests = _packvm_bundle_fixture(tmp_path / "bundle")
+        bundle, digests = _packvm_bundle_fixture(tmp_path / "bundle", vm_free=vm_free)
         overlay_arguments = _runtime_overlay_arguments(
             output, outer_digest=digests["outer"]
         )
-        bundle_arguments = {
-            "--application-bundle-root": str(bundle),
-            "--packvm-provisioning-sha256": digests["provisioning"],
-            "--packvm-helper-manifest-sha256": digests["helper"],
-            "--packvm-helper-team-id": "ABC1234567",
-        }
+        bundle_arguments = {"--application-bundle-root": str(bundle)}
+        if not vm_free:
+            bundle_arguments.update(
+                {
+                    "--packvm-provisioning-sha256": digests["provisioning"],
+                    "--packvm-helper-manifest-sha256": digests["helper"],
+                    "--packvm-helper-team-id": "ABC1234567",
+                }
+            )
     else:
         overlay_arguments = _runtime_overlay_arguments(output)
         bundle_arguments = {}
@@ -1603,6 +1614,7 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
             carries_packvm_policy = packvm_disabled and role != "host_helper"
             if carries_packvm_policy:
                 parent_args.append("--packvm-disabled")
+            if carries_packvm_policy and not vm_free:
                 helper_digest_index = parent_args.index("--packvm-helper-manifest-sha256") + 1
                 changed_args = parent_args.copy()
                 changed_args[helper_digest_index] = "0" * 64
@@ -1611,7 +1623,15 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
                 ):
                     bootstrap.main([*changed_args, "--", *role_args])
                 assert not attestation.exists()
-            result = bootstrap.main([*parent_args, "--", *role_args])
+            with monkeypatch.context() as launch_platform:
+                if vm_free:
+                    launch_platform.setattr(sys, "platform", "darwin")
+                result = bootstrap.main([*parent_args, "--", *role_args])
+                if role == "typed":
+                    with pytest.raises(
+                        bootstrap.SealedBootstrapError, match="already exists"
+                    ):
+                        bootstrap.main([*parent_args, "--", *role_args])
             assert result == expected_return
             evidence = json.loads(attestation.read_text(encoding="utf-8"))
             assert list(evidence) == [
@@ -1646,9 +1666,6 @@ def test_bootstrap_wire_dispatches_all_roles_and_publishes_attestation(
             assert all(Path(item).resolve().is_relative_to(output) for item in evidence["sys_path"])
             assert all(Path(item).resolve().is_relative_to(output) for item in sys.path)
             assert list(sys.path) == evidence["sys_path"]
-            if role == "typed":
-                with pytest.raises(bootstrap.SealedBootstrapError, match="already exists"):
-                    bootstrap.main([*parent_args, "--", *role_args])
             sys.path = _fixture_sys_path(output, include_missing_zip=True)
             sys.stdin = old_stdin
             sys.stdout = old_stdout
@@ -3597,6 +3614,119 @@ def test_packvm_bundle_binding_is_scope_only_immutable_and_raw_bound(
             sys.modules["tobkiri_sealed.bootstrap"] = old_bootstrap
         if old_package is not None:
             sys.modules["tobkiri_sealed"] = old_package
+
+
+def test_packvm_bundle_absence_authorizes_policy_without_legacy_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only verified root-only evidence can enable the policy without VM metadata."""
+    monkeypatch.syspath_prepend(str(BOOTSTRAP_PATH.parents[1]))
+    import tobkiri_sealed.bootstrap as bootstrap
+
+    root = tmp_path.resolve()
+    bundle, digests = _packvm_bundle_fixture(root / "bundle", vm_free=True)
+    with monkeypatch.context() as launch_platform:
+        launch_platform.setattr(sys, "platform", "darwin")
+        binding = bootstrap._verify_packvm_bundle_binding(
+            str(bundle), "", "", "", digests["outer"]
+        )
+
+    manifest = root / BUILDER.MANIFEST_FILENAME
+    manifest.write_text("{}", encoding="utf-8")
+    app = root / "app" / "app.py"
+    app.parent.mkdir()
+    app.touch(mode=0o444)
+    app.parent.chmod(0o555)
+    scope = bootstrap._SealedDispatchScope(
+        bootstrap._SCOPE_CONSTRUCTOR_TOKEN,
+        root,
+        manifest,
+        BUILDER._sha256_file(manifest),
+        "a" * 64,
+        bootstrap.ROLE_TARGETS["typed"],
+        binding,
+        packvm_disabled=True,
+    )
+    assert scope.packvm_bundle_binding_for(app) is None
+    assert scope.packvm_disabled_for(app) is True
+
+
+def test_packvm_bundle_absence_rejects_non_macos_and_unbound_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The root-only wire requires macOS and the digest-bound canonical layout."""
+    monkeypatch.syspath_prepend(str(BOOTSTRAP_PATH.parents[1]))
+    import tobkiri_sealed.bootstrap as bootstrap
+
+    bundle, digests = _packvm_bundle_fixture(tmp_path.resolve(), vm_free=True)
+    with monkeypatch.context() as launch_platform:
+        launch_platform.setattr(sys, "platform", "linux")
+        with pytest.raises(bootstrap.SealedBootstrapError, match="requires macOS"):
+            bootstrap._verify_packvm_bundle_binding(
+                str(bundle), "", "", "", digests["outer"]
+            )
+
+    with monkeypatch.context() as launch_platform:
+        launch_platform.setattr(sys, "platform", "darwin")
+        with pytest.raises(
+            bootstrap.SealedBootstrapError,
+            match="outer runtime manifest binding changed",
+        ):
+            bootstrap._verify_packvm_bundle_binding(str(bundle), "", "", "", "0" * 64)
+        with pytest.raises(
+            bootstrap.SealedBootstrapError, match="root is not canonical"
+        ):
+            bootstrap._verify_packvm_bundle_binding(
+                f"{bundle}/.", "", "", "", digests["outer"]
+            )
+        macos = bundle / "Contents" / "MacOS"
+        alternate = tmp_path.resolve() / "alternate-executable-directory"
+        macos.rename(alternate)
+        macos.symlink_to(alternate, target_is_directory=True)
+        with pytest.raises(
+            bootstrap.SealedBootstrapError, match="executable directory is linked"
+        ):
+            bootstrap._verify_packvm_bundle_binding(
+                str(bundle), "", "", "", digests["outer"]
+            )
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "Contents/MacOS/tobkiri-packvm-vz-helper",
+        "Contents/Resources/packvm-vz-provisioning",
+        "Contents/Resources/packvm-vz-provisioning.v1.json",
+        "Contents/Resources/packvm-vz-helper.manifest.v1.json",
+        "Contents/Resources/app/packvm-qemu",
+    ],
+)
+def test_packvm_bundle_absence_rejects_existing_and_dangling_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    """Every VM asset name must be absent even if its target does not exist."""
+    monkeypatch.syspath_prepend(str(BOOTSTRAP_PATH.parents[1]))
+    import tobkiri_sealed.bootstrap as bootstrap
+
+    bundle, digests = _packvm_bundle_fixture(tmp_path.resolve(), vm_free=True)
+    asset = bundle / relative
+    with monkeypatch.context() as launch_platform:
+        launch_platform.setattr(sys, "platform", "darwin")
+        asset.touch()
+        with pytest.raises(
+            bootstrap.SealedBootstrapError, match="PackVM asset is present"
+        ):
+            bootstrap._verify_packvm_bundle_binding(
+                str(bundle), "", "", "", digests["outer"]
+            )
+        asset.unlink()
+        asset.symlink_to(bundle / "missing")
+        with pytest.raises(
+            bootstrap.SealedBootstrapError, match="PackVM asset is present"
+        ):
+            bootstrap._verify_packvm_bundle_binding(
+                str(bundle), "", "", "", digests["outer"]
+            )
 
 
 def test_bootstrap_rejects_unknown_parent_arguments(

@@ -114,6 +114,12 @@ class SealedBootstrapError(RuntimeError):
 _SCOPE_CONSTRUCTOR_TOKEN = object()
 
 
+class _VerifiedPackVMAbsence:
+    """Bootstrap evidence that the signed macOS bundle has no PackVM assets."""
+
+    __slots__ = ()
+
+
 class _SealedDispatchScope:
     """Opaque bootstrap-issued capability for one sealed role target.
 
@@ -151,7 +157,7 @@ class _SealedDispatchScope:
         manifest_digest: str,
         environment_digest: str,
         target: Sequence[str],
-        packvm_bundle_binding: Mapping[str, str] | None,
+        packvm_bundle_binding: Mapping[str, str] | _VerifiedPackVMAbsence | None,
         native_first_setup: bool = False,
         packvm_disabled: bool = False,
     ) -> None:
@@ -171,7 +177,7 @@ class _SealedDispatchScope:
         if packvm_disabled:
             if self._target not in _PACKVM_DISABLED_TARGETS:
                 raise SealedBootstrapError(_PACKVM_DISABLED_ROLE_ERROR)
-            if (
+            if not isinstance(packvm_bundle_binding, _VerifiedPackVMAbsence) and (
                 packvm_bundle_binding is None
                 or tuple(packvm_bundle_binding) != _PACKVM_BUNDLE_BINDING_KEYS
             ):
@@ -179,16 +185,18 @@ class _SealedDispatchScope:
                     "PackVM disabled policy requires a verified macOS bundle binding"
                 )
         self._packvm_disabled = packvm_disabled
-        if packvm_bundle_binding is not None:
+        if packvm_bundle_binding is None or isinstance(
+            packvm_bundle_binding, _VerifiedPackVMAbsence
+        ):
+            self._packvm_bundle_binding: Mapping[str, str] | None = None
+        else:
             if tuple(packvm_bundle_binding) not in {
                 _PACKVM_BUNDLE_BINDING_KEYS, _PORTABLE_PACKVM_BINDING_KEYS
             }:
                 raise SealedBootstrapError("sealed PackVM bundle binding is invalid")
-            self._packvm_bundle_binding: Mapping[str, str] | None = MappingProxyType(
+            self._packvm_bundle_binding = MappingProxyType(
                 dict(packvm_bundle_binding)
             )
-        else:
-            self._packvm_bundle_binding = None
 
     def app_root_for(self, module_file: str | os.PathLike[str]) -> Path:
         """Return the app root only for this scope's exact sealed target."""
@@ -227,6 +235,7 @@ class _SealedDispatchScope:
         This is intentionally a scope method rather than an environment
         variable or Host-contract lookup.  A packaged target must first prove
         it is the role target that the sealed manifest selected.
+        Verified absence returns None.
         """
 
         self.app_root_for(module_file)
@@ -642,13 +651,13 @@ def _verify_packvm_bundle_binding(
     helper_manifest_sha256: str,
     helper_team_id: str,
     outer_runtime_manifest_sha256: str,
-) -> Mapping[str, str] | None:
-    """Validate the Launcher-authenticated macOS app PackVM resource domain.
+) -> Mapping[str, str] | _VerifiedPackVMAbsence | None:
+    """Validate the Launcher-authenticated app PackVM resource domain.
 
     The sealed snapshot is deliberately separate from the signed application
-    bundle.  Only the Launcher can supply this four-part binding, and it is
-    accepted only for the exact ``.app/Contents/Resources/app`` layout whose
-    outer runtime manifest is already bound by the sealed overlay.
+    bundle. The Launcher supplies a binding for the signed macOS app layout
+    or the portable inventory. A root-only macOS binding means the Launcher
+    authenticated a CI app built without VM assets.
     """
 
     supplied = (
@@ -661,6 +670,10 @@ def _verify_packvm_bundle_binding(
         raise SealedBootstrapError("sealed PackVM bundle launch binding is invalid")
     if all(value == "" for value in supplied):
         return None
+    if application_bundle_root and not any(supplied[1:]):
+        return _verify_packvm_bundle_absence(
+            application_bundle_root, outer_runtime_manifest_sha256
+        )
     if application_bundle_root and provisioning_sha256 and not helper_manifest_sha256 and not helper_team_id:
         return _verify_portable_packvm_binding(
             application_bundle_root, provisioning_sha256, outer_runtime_manifest_sha256
@@ -674,31 +687,9 @@ def _verify_packvm_bundle_binding(
     if not _is_sha256_identity(outer_runtime_manifest_sha256):
         raise SealedBootstrapError("sealed outer runtime manifest binding is invalid")
 
-    bundle = Path(application_bundle_root)
-    if not bundle.is_absolute() or bundle.suffix != ".app":
-        raise SealedBootstrapError("sealed application bundle root is invalid")
-    bundle = _assert_real_directory(
-        bundle,
-        "sealed application bundle root",
-        require_immutable=False,
+    bundle, resources, application = _macos_packvm_bundle_layout(
+        application_bundle_root
     )
-    contents = _assert_real_directory(
-        bundle / "Contents",
-        "sealed application contents",
-        require_immutable=False,
-    )
-    resources = _assert_real_directory(
-        contents / "Resources",
-        "sealed application resources",
-        require_immutable=False,
-    )
-    application = _assert_real_directory(
-        resources / "app",
-        "sealed application resource root",
-        require_immutable=False,
-    )
-    if contents.parent != bundle or resources.parent != contents or application.parent != resources:
-        raise SealedBootstrapError("sealed application bundle layout is invalid")
 
     provisioning = _read_bound_regular_bytes(
         resources / PACKVM_PROVISIONING_MANIFEST_NAME,
@@ -729,6 +720,83 @@ def _verify_packvm_bundle_binding(
             "helper_team_id": helper_team_id,
         }
     )
+
+
+def _macos_packvm_bundle_layout(
+    application_bundle_root: str,
+) -> tuple[Path, Path, Path]:
+    """Return the canonical root and resource directories of a macOS app."""
+    bundle = Path(application_bundle_root)
+    if not bundle.is_absolute() or bundle.suffix != ".app":
+        raise SealedBootstrapError("sealed application bundle root is invalid")
+    bundle = _assert_real_directory(
+        bundle,
+        "sealed application bundle root",
+        require_immutable=False,
+    )
+    contents = _assert_real_directory(
+        bundle / "Contents",
+        "sealed application contents",
+        require_immutable=False,
+    )
+    resources = _assert_real_directory(
+        contents / "Resources",
+        "sealed application resources",
+        require_immutable=False,
+    )
+    application = _assert_real_directory(
+        resources / "app",
+        "sealed application resource root",
+        require_immutable=False,
+    )
+    if contents.parent != bundle or resources.parent != contents or application.parent != resources:
+        raise SealedBootstrapError("sealed application bundle layout is invalid")
+    return bundle, resources, application
+
+
+def _verify_packvm_bundle_absence(
+    application_bundle_root: str, outer_runtime_manifest_sha256: str
+) -> _VerifiedPackVMAbsence:
+    """Bind the outer manifest and verify that each VM asset path is absent."""
+    if sys.platform != "darwin":
+        raise SealedBootstrapError("sealed PackVM bundle absence requires macOS")
+    if not _is_sha256_identity(outer_runtime_manifest_sha256):
+        raise SealedBootstrapError("sealed outer runtime manifest binding is invalid")
+
+    bundle, resources, application = _macos_packvm_bundle_layout(
+        application_bundle_root
+    )
+    if str(bundle) != application_bundle_root:
+        raise SealedBootstrapError("sealed application bundle root is not canonical")
+    executable_directory = _assert_real_directory(
+        bundle / "Contents" / "MacOS",
+        "sealed application executable directory",
+        require_immutable=False,
+    )
+    outer_manifest = _read_bound_regular_bytes(
+        application / OUTER_RUNTIME_MANIFEST_NAME,
+        "sealed outer runtime manifest",
+        4 * 1024 * 1024,
+    )
+    if _sha256_bytes(outer_manifest) != outer_runtime_manifest_sha256:
+        raise SealedBootstrapError("sealed outer runtime manifest binding changed")
+    for path in (
+        executable_directory / "tobkiri-packvm-vz-helper",
+        resources / "packvm-vz-provisioning",
+        resources / PACKVM_PROVISIONING_MANIFEST_NAME,
+        resources / PACKVM_HELPER_MANIFEST_NAME,
+        application / "packvm-qemu",
+    ):
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise SealedBootstrapError(
+                f"sealed PackVM asset cannot be checked: {path}"
+            ) from exc
+        raise SealedBootstrapError(f"sealed PackVM asset is present: {path}")
+    return _VerifiedPackVMAbsence()
 
 
 def _verify_portable_packvm_binding(
@@ -876,7 +944,7 @@ def _new_dispatch_scope(
     root: Path,
     manifest: dict[str, Any],
     role: str,
-    packvm_bundle_binding: Mapping[str, str] | None,
+    packvm_bundle_binding: Mapping[str, str] | _VerifiedPackVMAbsence | None,
     native_first_setup: bool,
     packvm_disabled: bool,
 ) -> _SealedDispatchScope:
@@ -1604,6 +1672,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.packvm_helper_team_id,
             args.outer_runtime_manifest_sha256,
         )
+        if (
+            isinstance(packvm_bundle_binding, _VerifiedPackVMAbsence)
+            and manifest["platform"] != "macos"
+        ):
+            raise SealedBootstrapError(
+                "sealed PackVM bundle absence requires a macOS snapshot"
+            )
         records = _verify_tree(root, manifest)
         sentinels = _sentinels_match(root, manifest, records)
         _validate_runtime_state(root, manifest, include_application=False)

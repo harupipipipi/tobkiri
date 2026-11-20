@@ -229,13 +229,22 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertIn("--expected-native-registry-packs-receipt-sha256", mounted)
         self.assertRegex(
             mounted,
-            r'if \[\[ "\$NATIVE_PACKVM_DISABLED" == true \]\]; then\s+verify_args\+=\(--expect-packvm-disabled\)',
+            r'if \[\[ "\$NATIVE_PACKVM_DISABLED" == true \]\]; then'
+            r'\s+verify_args\+=\(--expect-packvm-disabled --expect-no-packvm\)',
         )
         self.assertIn('>> "$GITHUB_OUTPUT"', mounted)
         upload = step(installer, "Upload desktop installer")
         self.assertIn("non-publishable-ci-e2e", upload)
         self.assertIn("inputs.native_packvm_disabled && '-packvm-disabled'", upload)
         self.assertIn("steps.verified_dmg.outputs.path", upload)
+        stage_helper = step(installer, "Stage authenticated macOS PackVM VZ helper")
+        self.assertIn("runner.os == 'macOS' && !inputs.native_packvm_disabled", stage_helper)
+        attest = step(installer, "Attest and ad-hoc sign macOS CI/E2E application")
+        self.assertIn("bundle_args+=(--expect-no-packvm)", attest)
+        self.assertEqual(attest.count('"${bundle_args[@]}"'), 2)
+        dmg = step(installer, "Build macOS DMG installer")
+        self.assertIn("package_args+=(--expect-no-packvm)", dmg)
+        self.assertIn('scripts/package_macos_dmg.sh "${package_args[@]}"', dmg)
 
     def test_app_diagnostic_uses_same_extension_and_only_the_actual_catalog_trace(self) -> None:
         mode = "catalog-app-frame-diagnostic"

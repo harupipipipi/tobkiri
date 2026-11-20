@@ -6,7 +6,7 @@ usage() {
     'Usage: verify_packaged_python_dmg.sh --dmg PATH --target TARGET --expected-manifest-sha256 SHA256' \
     '       [--expected-native-setup-component-sha256 SHA256 --expected-native-setup-component-bytes BYTES]' \
     '       [--expected-native-registry-packs-receipt-sha256 SHA256]' \
-    '       [--expect-packvm-disabled]' \
+    '       [--expect-packvm-disabled [--expect-no-packvm]]' \
     '       [--installed-boot-diagnostics-dir PATH [--wait-for-user-setup-seconds SECONDS' \
     '         [--wait-for-user-chat SECONDS PROVIDER_ID MODEL_ID]]]' >&2
 }
@@ -29,7 +29,7 @@ while (($# > 0)); do
       shift 2
       ;;
     --wait-for-user-chat) (($# >= 4)) || { usage; exit 2; }; shift 4 ;;
-    --expect-packvm-disabled) shift ;;
+    --expect-packvm-disabled|--expect-no-packvm) shift ;;
     *) usage; exit 2 ;;
   esac
 done

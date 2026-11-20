@@ -6,7 +6,7 @@ set -Eeuo pipefail
 usage() {
   cat >&2 <<'USAGE'
 Usage: package_macos_dmg.sh --app-bundle PATH --target TARGET --output-dir PATH \
-  [--ad-hoc | --ci-e2e-cert-sha256 SHA256]
+  (--ad-hoc | --ci-e2e-cert-sha256 SHA256 [--expect-no-packvm])
 USAGE
 }
 
@@ -15,6 +15,7 @@ target=''
 output_dir=''
 ad_hoc=0
 ci_e2e_cert_sha256=''
+expect_no_packvm=0
 
 while (($# > 0)); do
   case "$1" in
@@ -44,6 +45,10 @@ while (($# > 0)); do
       ci_e2e_cert_sha256=$2
       shift 2
       ;;
+    --expect-no-packvm)
+      expect_no_packvm=1
+      shift
+      ;;
     -h|--help)
       usage >&1
       exit 0
@@ -57,6 +62,10 @@ done
 
 if [[ -z "$app_bundle" || -z "$target" || -z "$output_dir" ]]; then
   usage
+  exit 2
+fi
+if [[ "$expect_no_packvm" -eq 1 && -z "$ci_e2e_cert_sha256" ]]; then
+  printf '%s\n' '--expect-no-packvm requires --ci-e2e-cert-sha256' >&2
   exit 2
 fi
 
@@ -485,6 +494,41 @@ verify_packvm_helper_signature() {
     }
 }
 
+verify_app_signature() {
+  local bundle_path=$1
+  if [[ "$expect_no_packvm" -eq 0 ]]; then
+    verify_packvm_helper_signature "$bundle_path"
+    run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" \
+      verify-packvm-bundle --app-bundle "$bundle_path"
+  fi
+  codesign --verify --strict --all-architectures --verbose=2 "$bundle_path"
+}
+
+verify_ci_e2e_bundle() {
+  local bundle_path=$1
+  shift
+  local bundle_identifier=''
+  local marker="$bundle_path/Contents/Resources/NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt"
+  local artifact_policy="$bundle_path/Contents/Resources/ci-e2e-artifact-policy.v1.json"
+  local expected_policy="$script_dir/../src-tauri/ci-e2e/ci-e2e-artifact-policy.v1.json"
+
+  bundle_identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle_path/Contents/Info.plist")
+  [[ "$bundle_identifier" == 'dev.tobkiri.launcher.ci-e2e' ]] || {
+    printf 'CI/E2E artifact has the wrong bundle identifier: %s\n' "$bundle_identifier" >&2
+    return 1
+  }
+  [[ -f "$marker" && ! -L "$marker" ]] || {
+    printf '%s\n' 'CI/E2E artifact is missing its signed non-publishable marker' >&2
+    return 1
+  }
+  [[ -f "$artifact_policy" && ! -L "$artifact_policy" ]] && cmp -s "$expected_policy" "$artifact_policy" || {
+    printf '%s\n' 'CI/E2E artifact policy is missing or differs from its build domain' >&2
+    return 1
+  }
+  run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" verify \
+    --app-bundle "$bundle_path" --expected-certificate-sha256 "$ci_e2e_cert_sha256" "$@"
+}
+
 app_bundle=$(cd "$app_bundle" && pwd -P)
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd -P)
@@ -560,44 +604,27 @@ trap 'exit 130' INT
 trap 'exit 131' QUIT
 trap 'exit 143' TERM
 
-printf 'Verifying ad-hoc-signed app bundle: %s\n' "$app_bundle"
-verify_packvm_helper_signature "$app_bundle"
-run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" \
-  verify-packvm-bundle --app-bundle "$app_bundle"
-codesign --verify --strict --all-architectures --verbose=2 "$app_bundle"
+printf 'Verifying signed app bundle: %s\n' "$app_bundle"
+verify_app_signature "$app_bundle"
 if [[ "$ad_hoc" -eq 1 ]]; then
   signing_details=$(codesign -d -r- --verbose=4 "$app_bundle" 2>&1)
   grep -Fqx 'Signature=adhoc' <<<"$signing_details" || {
     printf '%s\n' 'macOS app is not ad-hoc signed' >&2
     exit 1
   }
-elif [[ -n "$ci_e2e_cert_sha256" ]]; then
-  bundle_identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_bundle/Contents/Info.plist")
-  [[ "$bundle_identifier" == 'dev.tobkiri.launcher.ci-e2e' ]] || {
-    printf 'CI/E2E artifact has the wrong bundle identifier: %s\n' "$bundle_identifier" >&2
-    exit 1
-  }
-  marker="$app_bundle/Contents/Resources/NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt"
-  [[ -f "$marker" && ! -L "$marker" ]] || {
-    printf '%s\n' 'CI/E2E artifact is missing its signed non-publishable marker' >&2
-    exit 1
-  }
-  artifact_policy="$app_bundle/Contents/Resources/ci-e2e-artifact-policy.v1.json"
-  expected_policy="$script_dir/../src-tauri/ci-e2e/ci-e2e-artifact-policy.v1.json"
-  [[ -f "$artifact_policy" && ! -L "$artifact_policy" ]] && cmp -s "$expected_policy" "$artifact_policy" || {
-    printf '%s\n' 'CI/E2E artifact policy is missing or differs from its build domain' >&2
-    exit 1
-  }
-  run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" verify \
-    --app-bundle "$app_bundle" --expected-certificate-sha256 "$ci_e2e_cert_sha256"
+elif [[ "$expect_no_packvm" -eq 1 ]]; then
+  verify_ci_e2e_bundle "$app_bundle" --expect-no-packvm
+else
+  verify_ci_e2e_bundle "$app_bundle"
 fi
 
 printf 'Staging verified app bundle for DMG: %s\n' "$app_name"
-ditto "$app_bundle" "$staging_dir/$app_name"
-verify_packvm_helper_signature "$staging_dir/$app_name"
-run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" \
-  verify-packvm-bundle --app-bundle "$staging_dir/$app_name"
-codesign --verify --strict --all-architectures --verbose=2 "$staging_dir/$app_name"
+staged_app_bundle="$staging_dir/$app_name"
+ditto "$app_bundle" "$staged_app_bundle"
+verify_app_signature "$staged_app_bundle"
+if [[ "$expect_no_packvm" -eq 1 ]]; then
+  verify_ci_e2e_bundle "$staged_app_bundle" --expect-no-packvm
+fi
 ln -s /Applications "$staging_dir/Applications"
 
 temporary_dmg_path="$image_dir/${app_stem}_${version}_${architecture_suffix}.dmg"

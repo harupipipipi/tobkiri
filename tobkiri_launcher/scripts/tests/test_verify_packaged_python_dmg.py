@@ -364,6 +364,7 @@ def test_primary_error_wins_over_cleanup_error(
         expected_native_setup_component_sha256=None,
         expected_native_registry_packs_receipt_sha256=None,
         installed_boot_diagnostics_dir=None,
+        expect_no_packvm=False,
     )
 
     with pytest.raises(MODULE.DmgVerificationError, match="primary attach failure"):
@@ -430,6 +431,29 @@ def test_registry_receipt_cli_accepts_only_bare_lowercase_sha256(
         assert "expected native Registry Packs receipt SHA-256 is invalid" in (
             capsys.readouterr().err
         )
+
+
+def test_mounted_packvm_absence_rejects_a_dangling_asset_link(tmp_path: Path) -> None:
+    bundle = tmp_path / "Launcher.app"
+    (bundle / "Contents/MacOS").mkdir(parents=True)
+    (bundle / "Contents/Resources/app").mkdir(parents=True)
+    MODULE._verify_no_packvm_assets(bundle)
+    (bundle / "Contents/Resources/packvm-vz-provisioning").symlink_to(tmp_path / "missing")
+    with pytest.raises(MODULE.DmgVerificationError, match="unexpected asset"):
+        MODULE._verify_no_packvm_assets(bundle)
+
+
+def test_packvm_free_mount_requires_runtime_verification(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", [
+        os.fspath(SCRIPT), "--dmg", "fixture.dmg", "--repo-root", ".",
+        "--target", "aarch64-apple-darwin", "--expected-manifest-sha256", "b" * 64,
+        "--expect-no-packvm",
+    ])
+    with pytest.raises(SystemExit, match="2"):
+        MODULE.parse_args()
+    assert "requires --expect-packvm-disabled" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(("setup", "seconds", "model", "error"), [
@@ -847,6 +871,7 @@ def test_actual_read_only_dmg_mount_is_identity_bound_and_cleanup_is_idempotent(
         expected_native_setup_component_sha256=component_digest,
         expected_native_registry_packs_receipt_sha256="b" * 64,
         installed_boot_diagnostics_dir=None,
+        expect_no_packvm=False,
     )
     try:
         with pytest.raises(
