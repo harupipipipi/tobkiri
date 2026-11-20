@@ -55,6 +55,17 @@ _SAVED_ORCHESTRATION_ENV = "TOBKIRI_NATIVE_SAVED_ORCHESTRATION"
 _CALENDAR_SAVED_ORCHESTRATION_ENV = (
     "TOBKIRI_NATIVE_CALENDAR_SAVED_ORCHESTRATION_MANIFEST"
 )
+_CALENDAR_MANUAL_SAVED_ORCHESTRATION_ENV = (
+    "TOBKIRI_NATIVE_CALENDAR_MANUAL_SAVED_ORCHESTRATION_MANIFEST"
+)
+_CALENDAR_STATUS_SAVED_ORCHESTRATION_ENV = (
+    "TOBKIRI_NATIVE_CALENDAR_STATUS_SAVED_ORCHESTRATION_MANIFEST"
+)
+_CALENDAR_ORCHESTRATION_MARKERS = {
+    "calendar": _CALENDAR_SAVED_ORCHESTRATION_ENV,
+    "calendar-manual": _CALENDAR_MANUAL_SAVED_ORCHESTRATION_ENV,
+    "calendar-status": _CALENDAR_STATUS_SAVED_ORCHESTRATION_ENV,
+}
 _APPLICATION_PRESENTATION_ENV = "TOBKIRI_NATIVE_APPLICATION_PRESENTATION"
 _CONVERSATION_COMPLETE_ENV = "TOBKIRI_NATIVE_CONVERSATION_COMPLETE"
 _SAVED_LOCAL_CHAT_ENV = "TOBKIRI_NATIVE_SAVED_LOCAL_CHAT"
@@ -484,6 +495,9 @@ class NativeSavedInputRequest:
     caller: SavedInputCaller = "saved-turn"
 
 
+SavedOrchestrationCaller = Literal["saved-turn"] | CalendarSavedCaller
+
+
 @dataclass(frozen=True)
 class NativeSavedOrchestrationRequest:
     """Borrow the signed Saved Orchestration invocation and step input."""
@@ -493,7 +507,7 @@ class NativeSavedOrchestrationRequest:
     deadline_monotonic: float
     assert_current: Callable[[], None]
     input: Mapping[str, Any]
-    caller: Literal["saved-turn", "calendar"] = "saved-turn"
+    caller: SavedOrchestrationCaller = "saved-turn"
 
 
 ApplicationPresentationRole = Literal["settings", "catalog", "commands"]
@@ -1086,14 +1100,34 @@ def capture_launcher_calendar_saved_orchestration_step() -> (
     Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
 ):
     """Capture the launcher-attested pure step for automatic Calendar dispatch."""
-    manifest = os.environ.get(_CALENDAR_SAVED_ORCHESTRATION_ENV)
+    return _capture_calendar_saved_orchestration_step("calendar")
+
+
+def capture_launcher_manual_calendar_saved_orchestration_step() -> (
+    Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
+):
+    """Capture the launcher-attested pure step for a manual Calendar dispatch."""
+    return _capture_calendar_saved_orchestration_step("calendar-manual")
+
+
+def capture_launcher_calendar_status_saved_orchestration_step() -> (
+    Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None
+):
+    """Capture the launcher-attested pure step for an expired Calendar occurrence."""
+    return _capture_calendar_saved_orchestration_step("calendar-status")
+
+
+def _capture_calendar_saved_orchestration_step(
+    caller: CalendarSavedCaller,
+) -> Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None:
+    manifest = os.environ.get(_CALENDAR_ORCHESTRATION_MARKERS[caller])
     if manifest is None or _TURN_INPUT_DIGEST.fullmatch(manifest) is None:
         return None
-    return _capture_saved_orchestration_step("calendar")
+    return _capture_saved_orchestration_step(caller)
 
 
 def _capture_saved_orchestration_step(
-    caller: Literal["saved-turn", "calendar"],
+    caller: SavedOrchestrationCaller,
 ) -> Callable[[NativeSavedOrchestrationRequest], Mapping[str, Any]] | None:
     launcher = _capture_launcher()
     if launcher is None:
@@ -1496,12 +1530,13 @@ def _start_payload(
     elif isinstance(borrow, NativeSavedOrchestrationRequest):
         if not 0 < body_input_bytes <= MAX_CANONICAL_JSON_BYTES:
             raise _ProtocolError("native Saved Orchestration input size is invalid")
-        if type(borrow.caller) is not str or borrow.caller not in (
-            "saved-turn", "calendar",
+        if type(borrow.caller) is not str or (
+            borrow.caller != "saved-turn"
+            and borrow.caller not in _CALENDAR_ORCHESTRATION_MARKERS
         ):
             raise _ProtocolError("native Saved Orchestration caller is invalid")
         frame["saved_orchestration"] = {"input_bytes": body_input_bytes}
-        if borrow.caller == "calendar":
+        if borrow.caller != "saved-turn":
             frame["saved_orchestration"]["caller"] = borrow.caller
     elif isinstance(borrow, NativeApplicationPresentationRequest):
         if (

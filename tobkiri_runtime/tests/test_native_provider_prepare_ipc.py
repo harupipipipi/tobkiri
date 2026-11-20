@@ -3776,18 +3776,34 @@ def _saved_orchestration_request(
 @contextmanager
 def _served_saved_orchestration(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
-    *, calendar: bool = False,
+    *, caller: ipc.SavedOrchestrationCaller = "saved-turn",
 ) -> Iterator[Callable[[ipc.NativeSavedOrchestrationRequest], Mapping[str, Any]]]:
-    if calendar:
-        monkeypatch.setenv(ipc._CALENDAR_SAVED_ORCHESTRATION_ENV, "sha256:" + "a" * 64)
-        capture = ipc.capture_launcher_calendar_saved_orchestration_step
-    else:
-        monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
-        capture = ipc.capture_launcher_saved_orchestration_step
+    marker, value, capture = _SAVED_ORCHESTRATION_CAPTURES[caller]
+    monkeypatch.setenv(marker, value)
     with _served(monkeypatch, serve):
         step = capture()
         assert step is not None
         yield step
+
+
+_ORCHESTRATION_MANIFEST = "sha256:" + "a" * 64
+_SAVED_ORCHESTRATION_CAPTURES = {
+    "saved-turn": (
+        ipc._SAVED_ORCHESTRATION_ENV, "1", ipc.capture_launcher_saved_orchestration_step,
+    ),
+    "calendar": (
+        ipc._CALENDAR_SAVED_ORCHESTRATION_ENV, _ORCHESTRATION_MANIFEST,
+        ipc.capture_launcher_calendar_saved_orchestration_step,
+    ),
+    "calendar-manual": (
+        ipc._CALENDAR_MANUAL_SAVED_ORCHESTRATION_ENV, _ORCHESTRATION_MANIFEST,
+        ipc.capture_launcher_manual_calendar_saved_orchestration_step,
+    ),
+    "calendar-status": (
+        ipc._CALENDAR_STATUS_SAVED_ORCHESTRATION_ENV, _ORCHESTRATION_MANIFEST,
+        ipc.capture_launcher_calendar_status_saved_orchestration_step,
+    ),
+}
 
 
 @contextmanager
@@ -4409,19 +4425,20 @@ def test_saved_orchestration_capture_requires_managed_opt_in(
     assert ipc.capture_launcher_saved_orchestration_step() is not None
 
 
+@pytest.mark.parametrize("caller", ["calendar", "calendar-manual", "calendar-status"])
 def test_calendar_saved_orchestration_capture_requires_its_manifest_and_socket(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caller: ipc.CalendarSavedCaller,
 ) -> None:
-    marker = ipc._CALENDAR_SAVED_ORCHESTRATION_ENV
-    manifest = "sha256:" + "a" * 64
-    capture = ipc.capture_launcher_calendar_saved_orchestration_step
+    marker, manifest, capture = _SAVED_ORCHESTRATION_CAPTURES[caller]
     monkeypatch.delenv(ipc._SOCKET_ENV, raising=False)
     monkeypatch.delenv(ipc._OWNER_ENV, raising=False)
     monkeypatch.setenv(marker, manifest)
     assert capture() is None
     monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
     monkeypatch.setenv(ipc._OWNER_ENV, _owner())
-    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
+    for sibling_marker, sibling_value, _ in _SAVED_ORCHESTRATION_CAPTURES.values():
+        if sibling_marker != marker:
+            monkeypatch.setenv(sibling_marker, sibling_value)
     monkeypatch.delenv(marker)
     assert capture() is None
     monkeypatch.setenv(marker, "1")
@@ -4435,28 +4452,30 @@ def test_saved_orchestration_capture_rejects_other_callers_before_connection(
 ) -> None:
     monkeypatch.setenv(ipc._SOCKET_ENV, "/fixture.sock")
     monkeypatch.setenv(ipc._OWNER_ENV, _owner())
-    monkeypatch.setenv(ipc._SAVED_ORCHESTRATION_ENV, "1")
-    monkeypatch.setenv(ipc._CALENDAR_SAVED_ORCHESTRATION_ENV, "sha256:" + "a" * 64)
-    ordinary = ipc.capture_launcher_saved_orchestration_step()
-    calendar = ipc.capture_launcher_calendar_saved_orchestration_step()
-    assert ordinary is not None and calendar is not None
-
     def unexpected_invocation(*args: Any, **kwargs: Any) -> None:
         pytest.fail("a different caller reached the Launcher transport")
 
     monkeypatch.setattr(ipc, "_invoke", unexpected_invocation)
     request = _saved_orchestration_request(_Borrow(), {"request": {}})
-    with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
-        ordinary(replace(request, caller="calendar"))
-    with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
-        calendar(request)
+    for caller, (marker, value, capture) in _SAVED_ORCHESTRATION_CAPTURES.items():
+        monkeypatch.setenv(marker, value)
+        step = capture()
+        assert step is not None
+        for other in _SAVED_ORCHESTRATION_CAPTURES:
+            if caller != other:
+                with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
+                    step(replace(request, caller=other))
 
 
 @pytest.mark.parametrize(
-    ("at_limit", "calendar"), [(False, False), (True, False), (False, True)],
+    ("at_limit", "caller"),
+    [
+        (False, "saved-turn"), (True, "saved-turn"), (False, "calendar"),
+        (False, "calendar-manual"), (False, "calendar-status"),
+    ],
 )
 def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
-    monkeypatch: pytest.MonkeyPatch, at_limit: bool, calendar: bool,
+    monkeypatch: pytest.MonkeyPatch, at_limit: bool, caller: ipc.SavedOrchestrationCaller,
 ) -> None:
     borrow = _Borrow()
     limit = 4 * 1024 * 1024
@@ -4480,9 +4499,9 @@ def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
         tag, payload = _receive(peer)
         numerator, denominator = borrow.deadline_monotonic.as_integer_ratio()
         assert tag == 1
-        descriptor = {"input_bytes": len(expected_input)}
-        if calendar:
-            descriptor["caller"] = "calendar"
+        descriptor: dict[str, int | str] = {"input_bytes": len(expected_input)}
+        if caller != "saved-turn":
+            descriptor["caller"] = caller
         assert json.loads(payload) == {
             "identity": {
                 key: value for key, value in vars(borrow.context).items()
@@ -4505,17 +4524,12 @@ def test_saved_orchestration_sends_canonical_bytes_only_after_readiness(
         _send(peer, 7, response)
         assert peer.recv(1) == b""
 
-    with _served_saved_orchestration(monkeypatch, serve, calendar=calendar) as step:
-        marker = (
-            ipc._CALENDAR_SAVED_ORCHESTRATION_ENV if calendar
-            else ipc._SAVED_ORCHESTRATION_ENV
-        )
+    with _served_saved_orchestration(monkeypatch, serve, caller=caller) as step:
+        marker, _, _ = _SAVED_ORCHESTRATION_CAPTURES[caller]
         monkeypatch.delenv(marker)
         monkeypatch.delenv(ipc._SOCKET_ENV)
         monkeypatch.delenv(ipc._OWNER_ENV)
-        request = _saved_orchestration_request(borrow, step_input)
-        if calendar:
-            request = replace(request, caller="calendar")
+        request = replace(_saved_orchestration_request(borrow, step_input), caller=caller)
         assert step(request) == result
 
 
