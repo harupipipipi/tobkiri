@@ -10,8 +10,8 @@ mod input;
 mod start;
 
 pub use input::{
-    SavedInputCapture, SavedInputSource, prepare_saved_input, replay_saved_input,
-    saved_input_source, validate_saved_input_capture_turn,
+    SavedInputCapture, SavedInputSource, prepare_saved_input, prepare_saved_input_capture_turn,
+    replay_saved_input, saved_input_source,
 };
 pub use start::{LegacySavedTurnStartRequest, active_turn_in_conversation};
 
@@ -239,13 +239,19 @@ pub fn settle(
 }
 
 fn commit(turn: &PyValue, updated_at: i64) -> Result<Transition> {
-    let body = dumps_bounded(turn, RECORD_LIMIT)
+    Ok(Transition::Commit {
+        updated_at,
+        body: encode_record(turn)?,
+    })
+}
+
+fn encode_record(turn: &PyValue) -> Result<Vec<u8>> {
+    dumps_bounded(turn, RECORD_LIMIT)
+        .map(String::into_bytes)
         .map_err(|error| match error {
             CodecError::ByteLimit | CodecError::Resource => Error::Capacity,
             _ => Error::InvalidRecord,
-        })?
-        .into_bytes();
-    Ok(Transition::Commit { updated_at, body })
+        })
 }
 
 fn load_record(profile: &str, id: &str, request_id: &str, body: &[u8]) -> Result<PyValue> {

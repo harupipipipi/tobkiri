@@ -13,7 +13,7 @@ use rusqlite::{
 };
 use std::sync::Arc;
 use tobkiri_canon::{AllocationBudget, CoreBuffer, MAX_BYTES};
-use tobkiri_pack_saved_turn_runtime_rust::validate_saved_input_capture_turn;
+use tobkiri_pack_saved_turn_runtime_rust::prepare_saved_input_capture_turn;
 
 #[cfg(all(test, unix))]
 #[path = "input_store_tests.rs"]
@@ -44,6 +44,7 @@ const SELECT_INPUT: &str = "SELECT id, source_digest, accepted_digest, context,
 const SELECT_TURN: &str = "SELECT id, request_id, body FROM main.turns WHERE id = ?1";
 const COUNT_INPUTS: &str = "SELECT count(*) FROM main.saved_inputs";
 const INSERT_INPUT: &str = "INSERT INTO main.saved_inputs (id, source_digest, accepted_digest, context) VALUES (?1, ?2, ?3, ?4)";
+const UPDATE_TURN: &str = "UPDATE main.turns SET updated_at = ?1, body = ?2 WHERE id = ?3";
 
 /// Identity of the authenticated source from the admitted Pack.
 pub struct OriginalSavedInputIdentity {
@@ -79,7 +80,7 @@ pub enum OriginalSavedInputOutcome {
     Accepted(CoreBuffer),
     /// The original database is absent, uninitialized, or has no exact Turn row.
     Missing,
-    /// An existing incompatible schema or prepared Turn needs the original writer.
+    /// An incompatible owner layout or codec needs the original writer.
     LegacyFallback,
 }
 
@@ -170,6 +171,7 @@ pub fn read_legacy_saved_input_from_admitted_port(
 
 /// Retain the first accepted input for this exact source under the writer lock.
 ///
+/// Rebind an existing queued delivery or Calendar Turn in the same transaction.
 /// A concurrent capture of the same source replays the retained projection.
 /// Evaluators must return within the deadline and avoid reentering the database.
 pub fn capture_legacy_saved_input_from_admitted_port(
@@ -245,14 +247,8 @@ pub fn capture_legacy_saved_input_from_admitted_port(
             }
         };
         live()?;
-        match validate_indexed_turn(&transaction, profile, turn_id, identity, &proposed, budget) {
-            Err(Error::RequiresLegacyCodec) => {
-                live()?;
-                transaction.rollback().map_err(read_sql)?;
-                return Ok(OriginalSavedInputOutcome::LegacyFallback);
-            }
-            result => result?,
-        }
+        let replacement =
+            prepare_indexed_turn(&transaction, profile, turn_id, identity, &proposed, budget)?;
 
         let count: i64 = prepare(&transaction, COUNT_INPUTS)?
             .query_row([], |row| row.get(0))
@@ -264,6 +260,17 @@ pub fn capture_legacy_saved_input_from_admitted_port(
         let context = proposed_row.context;
         let accepted = recover_exact(identity, proposed_row, recover)?;
         live()?;
+        if let Some((updated_at, body)) = replacement {
+            // The writer lock still protects the exact row checked above.
+            let body = std::str::from_utf8(body.as_bytes()).map_err(|_| Error::InvalidRecord)?;
+            let changed = prepare(&transaction, UPDATE_TURN)?
+                .execute(params![updated_at, body, turn_id])
+                .map_err(read_sql)?;
+            if changed != 1 {
+                return Err(Error::Storage);
+            }
+            live()?;
+        }
         let changed = prepare(&transaction, INSERT_INPUT)?
             .execute(params![
                 turn_id,
@@ -388,33 +395,41 @@ fn recover_exact(
     Ok(accepted)
 }
 
-fn validate_indexed_turn(
+fn prepare_indexed_turn(
     transaction: &Transaction<'_>,
     profile: &ProfileId,
     turn_id: &str,
     identity: &OriginalSavedInputIdentity,
     proposed: &OriginalSavedInputProjection,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<()> {
+) -> Result<Option<(i64, CoreBuffer)>> {
     let mut select = prepare(transaction, SELECT_TURN)?;
     let mut rows = select.query([turn_id]).map_err(read_sql)?;
-    if let Some(row) = rows.next().map_err(read_sql)? {
-        let row = indexed_turn_row(row, profile, turn_id)?;
-        let _funding = TemporaryCharge::new(budget, TRANSITION_WORK_BYTES)?;
-        let validation = validate_saved_input_capture_turn(
-            row.profile_id,
-            row.turn_id,
-            row.request_id,
-            row.body.as_bytes(),
-            &identity.source_digest,
-            &proposed.accepted_digest,
-        );
-        if rows.next().map_err(read_sql)?.is_some() {
-            return Err(Error::InvalidRecord);
-        }
-        validation?;
+    let Some(row) = rows.next().map_err(read_sql)? else {
+        return Ok(None);
+    };
+    let row = indexed_turn_row(row, profile, turn_id)?;
+    let _funding = TemporaryCharge::new(budget, TRANSITION_WORK_BYTES)?;
+    let replacement = prepare_saved_input_capture_turn(
+        row.profile_id,
+        row.turn_id,
+        row.request_id,
+        row.body.as_bytes(),
+        &identity.source_digest,
+        &proposed.accepted_digest,
+    );
+    if rows.next().map_err(read_sql)?.is_some() {
+        return Err(Error::InvalidRecord);
     }
-    Ok(())
+    replacement?
+        .map(|(updated_at, body)| {
+            if body.len() > RECORD_LIMIT {
+                return Err(Error::InvalidRecord);
+            }
+            let body = CoreBuffer::copy_from(&body, budget).map_err(|_| Error::Capacity)?;
+            Ok((updated_at, body))
+        })
+        .transpose()
 }
 
 fn stored_result(
@@ -491,6 +506,10 @@ fn authorize(connection: &Connection, writable: bool, initialize: bool) -> rusql
                 AuthAction::Read {
                     table_name: "turns",
                     column_name: "id" | "request_id" | "body",
+                }
+                | AuthAction::Update {
+                    table_name: "turns",
+                    column_name: "updated_at" | "body",
                 }
                 | AuthAction::Insert {
                     table_name: "saved_inputs",

@@ -46,6 +46,13 @@ impl Store {
         Connection::open(&self.path).unwrap()
     }
 
+    fn initialize(&self) -> Connection {
+        fs::create_dir_all(self.path.parent().unwrap()).unwrap();
+        let sqlite = self.sqlite();
+        sqlite.execute_batch(LEGACY_SCHEMA).unwrap();
+        sqlite
+    }
+
     fn identity(&self, source: &[u8]) -> OriginalSavedInputIdentity {
         let identity = saved_input_source(source).unwrap();
         OriginalSavedInputIdentity {
@@ -121,6 +128,52 @@ fn projected_candidate() -> Vec<u8> {
         "items": [{"id": "item-1", "kind": "todo", "body": "Reflect the retained context"}]
     });
     serde_json::to_vec(&candidate).unwrap()
+}
+
+fn queued_turn(field: &str, provenance: Value) -> Value {
+    let mut turn = json!({
+        "profile_id": PROFILE,
+        "id": "turn-1",
+        "request_id": "saved-turn.test",
+        "conversation_id": "conv-1",
+        "revision": 3,
+        "conversation_revision": 1,
+        "created_at": 101,
+        "updated_at": 123,
+        "status": "queued",
+        "guidance": [],
+        "events": [{"type": "queued", "content": "作業"}],
+        "input_digest": saved_input_source(SOURCE).unwrap().source_digest,
+    });
+    turn[field] = provenance;
+    turn
+}
+
+fn insert_queued_turn(sqlite: &Connection, turn: &Value) -> String {
+    let body = serde_json::to_string_pretty(turn).unwrap();
+    sqlite
+        .execute(
+            "INSERT INTO turns (id, request_id, updated_at, body) VALUES ('turn-1', 'saved-turn.test', 123, ?1)",
+            [&body],
+        )
+        .unwrap();
+    body
+}
+
+fn indexed_queued_turn(sqlite: &Connection) -> (String, String, i64, String) {
+    sqlite
+        .query_row(
+            "SELECT id, request_id, updated_at, body FROM turns",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap()
+}
+
+fn saved_input_count(sqlite: &Connection) -> i64 {
+    sqlite
+        .query_row("SELECT count(*) FROM saved_inputs", [], |row| row.get(0))
+        .unwrap()
 }
 
 fn accepted(result: Result<OriginalSavedInputOutcome>) -> CoreBuffer {
@@ -325,6 +378,183 @@ fn concurrent_first_captures_publish_one_projection() {
         );
     });
     assert_eq!(publish.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn queued_delivery_and_calendar_rebind_to_the_first_published_projection() {
+    for (field, provenance) in [
+        (
+            "delivery_provenance",
+            json!({
+                "kind": "chat_message_delivery",
+                "delivery_id": "delivery-1",
+                "source": {"conversation_id": "origin"},
+                "loop_depth": 1,
+            }),
+        ),
+        (
+            "calendar_preparation",
+            json!(Digest::hash(b"preparation").as_str()),
+        ),
+    ] {
+        let store = Store::new();
+        let sqlite = store.initialize();
+        let mut turn = queued_turn(field, provenance);
+        insert_queued_turn(&sqlite, &turn);
+
+        let first = projected_candidate();
+        let mut second: Value = serde_json::from_slice(&first).unwrap();
+        second["request"]["task_context"]["items"][0]["body"] = json!("Different context");
+        let second = serde_json::to_vec(&second).unwrap();
+        let barrier = Barrier::new(2);
+        let published = Arc::new(AtomicUsize::new(0));
+        let capture = |candidate: &[u8]| {
+            let published = Arc::clone(&published);
+            barrier.wait();
+            accepted(store.capture(candidate, move |phase| {
+                if phase == OriginalSavedTurnCheck::Publish {
+                    published.fetch_add(1, Ordering::SeqCst);
+                }
+                Ok(())
+            }))
+        };
+        let winner = thread::scope(|scope| {
+            let first = scope.spawn(|| capture(&first));
+            let second = scope.spawn(|| capture(&second));
+            let winner = first.join().unwrap();
+            assert_eq!(
+                winner.as_bytes(),
+                second.join().unwrap().as_bytes(),
+                "{field}"
+            );
+            winner
+        });
+        assert_eq!(published.load(Ordering::SeqCst), 1, "{field}");
+        assert_eq!(saved_input_count(&sqlite), 1, "{field}");
+        let retained = accepted(store.read(SOURCE));
+        assert_eq!(retained.as_bytes(), winner.as_bytes(), "{field}");
+        let winner_digest = Digest::hash(winner.as_bytes());
+        assert_ne!(turn["input_digest"], json!(winner_digest.as_str()));
+        turn["input_digest"] = json!(winner_digest.as_str());
+        let expected = (
+            "turn-1".to_owned(),
+            "saved-turn.test".to_owned(),
+            123,
+            serde_json::to_string(&turn).unwrap(),
+        );
+        assert_eq!(indexed_queued_turn(&sqlite), expected, "{field}");
+        assert_eq!(
+            accepted(store.capture(SOURCE, deny_publication)).as_bytes(),
+            winner.as_bytes(),
+            "{field}",
+        );
+        assert_eq!(indexed_queued_turn(&sqlite), expected, "{field}");
+    }
+}
+
+#[test]
+fn queued_turn_already_bound_to_accepted_input_does_not_get_rewritten() {
+    let store = Store::new();
+    let sqlite = store.initialize();
+    let candidate = projected_candidate();
+    let prepared = prepare_saved_input(SOURCE, &candidate).unwrap();
+    let mut turn = queued_turn("calendar_preparation", json!("preparation-1"));
+    turn["input_digest"] = json!(prepared.accepted_digest);
+    let original = insert_queued_turn(&sqlite, &turn);
+    assert_eq!(
+        accepted(store.capture(&candidate, |_| Ok(()))).as_bytes(),
+        prepared.accepted,
+    );
+    assert_eq!(indexed_queued_turn(&sqlite).3, original);
+    assert_eq!(saved_input_count(&sqlite), 1);
+}
+
+#[test]
+fn queued_turn_rebind_and_capture_roll_back_when_publication_is_denied() {
+    let store = Store::new();
+    let sqlite = store.initialize();
+    let turn = queued_turn("calendar_preparation", json!("preparation-1"));
+    insert_queued_turn(&sqlite, &turn);
+    let original = indexed_queued_turn(&sqlite);
+    let candidate = projected_candidate();
+    let published = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&published);
+    assert!(matches!(
+        store.capture(&candidate, move |phase| {
+            if phase == OriginalSavedTurnCheck::Publish {
+                observed.fetch_add(1, Ordering::SeqCst);
+            }
+            deny_publication(phase)
+        }),
+        Err(Error::Revoked),
+    ));
+    assert_eq!(published.load(Ordering::SeqCst), 1);
+    assert_eq!(indexed_queued_turn(&sqlite), original);
+    assert_eq!(saved_input_count(&sqlite), 0);
+}
+
+#[test]
+fn queued_turn_does_not_change_on_corruption_or_full_saved_inputs() {
+    let store = Store::new();
+    let sqlite = store.initialize();
+    let candidate = projected_candidate();
+    let mut turn = queued_turn("calendar_preparation", json!("preparation-1"));
+    turn["request_id"] = json!("different-index");
+    insert_queued_turn(&sqlite, &turn);
+    let corrupt = indexed_queued_turn(&sqlite);
+    let before_publish = |phase| {
+        assert!(matches!(phase, OriginalSavedTurnCheck::Live));
+        Ok(())
+    };
+    assert!(matches!(
+        store.capture(&candidate, before_publish),
+        Err(Error::InvalidRecord),
+    ));
+    assert_eq!(indexed_queued_turn(&sqlite), corrupt);
+    assert_eq!(saved_input_count(&sqlite), 0);
+
+    sqlite.execute("DELETE FROM turns", []).unwrap();
+    turn["request_id"] = json!("saved-turn.test");
+    insert_queued_turn(&sqlite, &turn);
+    let original = indexed_queued_turn(&sqlite);
+    sqlite
+        .execute(
+            "WITH RECURSIVE entries(n) AS (
+                VALUES (1) UNION ALL SELECT n + 1 FROM entries WHERE n < ?1
+             ) INSERT INTO saved_inputs SELECT n, 'source', 'accepted', '{}' FROM entries",
+            [SAVED_INPUT_CAPACITY],
+        )
+        .unwrap();
+    assert!(matches!(
+        store.capture(&candidate, before_publish),
+        Err(Error::Conflict),
+    ));
+    assert_eq!(indexed_queued_turn(&sqlite), original);
+    assert_eq!(saved_input_count(&sqlite), SAVED_INPUT_CAPACITY);
+}
+
+#[test]
+fn refused_capture_statement_rolls_back_queued_turn_rebind() {
+    let store = Store::new();
+    let sqlite = store.initialize();
+    let turn = queued_turn("delivery_provenance", json!({"delivery_id": "delivery-1"}));
+    insert_queued_turn(&sqlite, &turn);
+    let original = indexed_queued_turn(&sqlite);
+    sqlite
+        .execute_batch(
+            "CREATE TRIGGER forbidden_capture BEFORE INSERT ON saved_inputs
+             BEGIN SELECT RAISE(ABORT, 'forbidden trigger'); END;",
+        )
+        .unwrap();
+    assert!(matches!(
+        store.capture(&projected_candidate(), |phase| {
+            assert!(matches!(phase, OriginalSavedTurnCheck::Live));
+            Ok(())
+        }),
+        Err(Error::InvalidRecord),
+    ));
+    assert_eq!(indexed_queued_turn(&sqlite), original);
+    assert_eq!(saved_input_count(&sqlite), 0);
 }
 
 #[test]

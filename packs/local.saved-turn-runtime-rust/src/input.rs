@@ -1,8 +1,8 @@
 //! Source binding and projection for the original Saved Turn input capture.
 
 use crate::{
-    Error, ObjectFields, RECORD_LIMIT, Result, check_structure_bound, equals_python_integer,
-    load_record,
+    Error, ObjectFields, RECORD_LIMIT, Result, check_structure_bound, encode_record,
+    equals_python_integer, load_record, string,
 };
 use ordered_python_compat::{CodecError, PyValue, loads, loads_python_json, pytruthy};
 use std::collections::BTreeMap;
@@ -122,37 +122,47 @@ pub fn replay_saved_input(
     Ok(accepted)
 }
 
-/// Check an existing original turn against a proposed capture under its owner lock.
+/// Prepare a queued turn rebind under the owner lock, preserving the body timestamp.
 ///
-/// Queued delivery and Calendar rows with the original source digest require
-/// the legacy codec to rebind the turn and capture its context together.
-pub fn validate_saved_input_capture_turn(
+/// An already accepted digest needs no update. Otherwise the exact admitted
+/// delivery or Calendar turn may be updated alongside the saved input capture.
+pub fn prepare_saved_input_capture_turn(
     profile: &str,
     turn_id: &str,
     request_id: &str,
     body: &[u8],
     source_digest: &Digest,
     accepted_digest: &Digest,
-) -> Result<()> {
-    let record = load_record(profile, turn_id, request_id, body).map_err(|error| match error {
-        // The general row codec does not distinguish opaque legacy data
-        // from malformed JSON. Neither can prove a queued context rebind.
-        Error::RequiresLegacyCodec => Error::InvalidRecord,
-        error => error,
-    })?;
+) -> Result<Option<(i64, Vec<u8>)>> {
+    let mut record =
+        load_record(profile, turn_id, request_id, body).map_err(|error| match error {
+            // The general row codec does not distinguish opaque legacy data
+            // from malformed JSON. Neither can prove a queued context rebind.
+            Error::RequiresLegacyCodec => Error::InvalidRecord,
+            error => error,
+        })?;
     let digest = record.string("input_digest");
     if digest == Some(accepted_digest.as_str()) {
-        return Ok(());
+        return Ok(None);
     }
-    if digest == Some(source_digest.as_str())
-        && record.string("status") == Some("queued")
-        && ["delivery_provenance", "calendar_preparation"]
+    if digest != Some(source_digest.as_str())
+        || record.string("status") != Some("queued")
+        || !["delivery_provenance", "calendar_preparation"]
             .iter()
             .any(|field| record.get(field).is_some_and(pytruthy))
+        // Workflow admission is bound to the current digest when execution is
+        // claimed. A queued row with that binding cannot receive a new digest.
+        || record.get("saved_workflow").is_some()
     {
-        return Err(Error::RequiresLegacyCodec);
+        return Err(Error::Conflict);
     }
-    Err(Error::Conflict)
+
+    let Some(PyValue::Int(updated_at)) = record.get("updated_at") else {
+        return Err(Error::InvalidRecord);
+    };
+    let updated_at = updated_at.parse().map_err(|_| Error::InvalidRecord)?;
+    record.set("input_digest", string(accepted_digest.as_str()))?;
+    Ok(Some((updated_at, encode_record(&record)?)))
 }
 
 fn load_source(body: &[u8]) -> Result<PyValue> {

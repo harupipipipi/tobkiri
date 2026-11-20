@@ -289,10 +289,63 @@ fn rejects_invalid_user_content_and_owner_projection_before_writing() {
     );
 }
 
+fn prepare_capture_turn(body: &[u8]) -> Result<Option<(i64, Vec<u8>)>> {
+    prepare_saved_input_capture_turn(
+        "profile",
+        "turn-1",
+        "request-1",
+        body,
+        &Digest::parse(SOURCE_DIGEST).unwrap(),
+        &Digest::parse(ACCEPTED_DIGEST).unwrap(),
+    )
+}
+
 #[test]
-fn protects_existing_turn_binding_and_defers_legacy_queued_rebinding() {
-    let source_digest = Digest::parse(SOURCE_DIGEST).unwrap();
-    let accepted_digest = Digest::parse(ACCEPTED_DIGEST).unwrap();
+fn rebinds_queued_delivery_and_calendar_with_python_owner_bytes() {
+    let original = r#"{
+  "id": "turn-1", "profile_id": "profile", "input_digest": "@digest",
+  "request_id": "request-1", "status": "queued", "conversation_id": "conv-1",
+  "updated_at": 123, "revision": 8, "created_at": 120, "conversation_revision": 42,
+  "guidance": [{"value": {"text": "\u78ba\u8a8d\n\u001f", "z": -0.0, "a": 1E-7},
+                "status": "queued", "id": "guidance-1"}],
+  "events": [{"name": "turn.guidance_queued", "sequence": 0, "at": 123}],
+  @admission,
+  "extra": {"integer": 123456789012345678901234567890, "labels": ["🗓️", "a\/b"]}
+}"#;
+    // Golden rows from the SQL update in DurableTurnRuntime.bind_saved_input
+    // for source() and accepted(), with a previously indexed timestamp of 777.
+    let expected = concat!(
+        r#"{"id":"turn-1","profile_id":"profile","input_digest":""#,
+        "sha256:8a8e9fe1ee84eba0783d847b7cc30b170a8d45c255758796a4aa90a7c87911f5",
+        r#"","request_id":"request-1","status":"queued","conversation_id":"conv-1","#,
+        r#""updated_at":123,"revision":8,"created_at":120,"conversation_revision":42,"#,
+        r#""guidance":[{"value":{"text":"確認\n\u001f","z":-0.0,"a":1e-07},"status":"queued","id":"guidance-1"}],"#,
+        r#""events":[{"name":"turn.guidance_queued","sequence":0,"at":123}],@admission,"#,
+        r#""extra":{"integer":123456789012345678901234567890,"labels":["🗓️","a/b"]}}"#,
+    );
+    for (admission, compact_admission) in [
+        (
+            r#""delivery_provenance": {"delivery_id": "delivery-1"}"#,
+            r#""delivery_provenance":{"delivery_id":"delivery-1"}"#,
+        ),
+        (
+            r#""delivery_provenance": [], "calendar_preparation": {"occurrence_id": "calendar-1"}"#,
+            r#""delivery_provenance":[],"calendar_preparation":{"occurrence_id":"calendar-1"}"#,
+        ),
+    ] {
+        let original = original
+            .replace("@digest", SOURCE_DIGEST)
+            .replace("@admission", admission);
+        let expected = expected.replace("@admission", compact_admission);
+        let (timestamp, body) = prepare_capture_turn(original.as_bytes()).unwrap().unwrap();
+        assert_eq!(timestamp, 123);
+        assert_eq!(body, expected.as_bytes());
+        assert_eq!(prepare_capture_turn(&body), Ok(None));
+    }
+}
+
+#[test]
+fn rejects_conflicting_or_invalid_turns_and_leaves_accepted_rows_alone() {
     let mut row = json!({
         "profile_id": "profile",
         "id": "turn-1",
@@ -305,45 +358,59 @@ fn protects_existing_turn_binding_and_defers_legacy_queued_rebinding() {
         "status": "queued",
         "guidance": [],
         "events": [],
-        "input_digest": ACCEPTED_DIGEST
+        "input_digest": SOURCE_DIGEST
     });
-    let validate = |row: &Value| {
-        validate_saved_input_capture_turn(
-            "profile",
-            "turn-1",
-            "request-1",
-            &bytes(row),
-            &source_digest,
-            &accepted_digest,
-        )
-    };
-    assert_eq!(validate(&row), Ok(()));
-    row["input_digest"] = json!(SOURCE_DIGEST);
-    assert_eq!(validate(&row), Err(Error::Conflict));
-    row["delivery_provenance"] = json!({});
-    assert_eq!(validate(&row), Err(Error::Conflict));
-    row["calendar_preparation"] = json!({"id": "prep-1"});
-    assert_eq!(validate(&row), Err(Error::RequiresLegacyCodec));
-    row["calendar_preparation"] = json!(null);
-    row["delivery_provenance"] = json!({"id": "delivery-1"});
-    assert_eq!(validate(&row), Err(Error::RequiresLegacyCodec));
+    let prepare = |row: &Value| prepare_capture_turn(&bytes(row));
+    assert_eq!(prepare(&row), Err(Error::Conflict));
+    for false_value in [
+        json!(null),
+        json!({}),
+        json!([]),
+        json!(0),
+        json!(""),
+        json!(false),
+    ] {
+        row["delivery_provenance"] = false_value;
+        assert_eq!(prepare(&row), Err(Error::Conflict));
+    }
+    row["delivery_provenance"] = json!("delivery-1");
+    assert!(prepare(&row).unwrap().is_some());
     row["status"] = json!("running");
-    assert_eq!(validate(&row), Err(Error::Conflict));
+    assert_eq!(prepare(&row), Err(Error::Conflict));
+    row["input_digest"] = json!(ACCEPTED_DIGEST);
+    assert_eq!(prepare(&row), Ok(None));
     row["status"] = json!("queued");
     row["input_digest"] = json!(REFERENCE_DIGEST);
-    assert_eq!(validate(&row), Err(Error::Conflict));
+    assert_eq!(prepare(&row), Err(Error::Conflict));
+    row["input_digest"] = json!(SOURCE_DIGEST);
+    row["updated_at"] = json!(9_223_372_036_854_775_808_u64);
+    assert_eq!(prepare(&row), Err(Error::InvalidRecord));
+    row["updated_at"] = json!(123);
+    row["saved_workflow"] = json!({
+        "profile_id": "profile",
+        "turn_id": "turn-1",
+        "conversation_id": "conv-1",
+        "input_digest": SOURCE_DIGEST,
+        "run_id": "run-1",
+        "definition_id": "definition-1",
+        "revision_digest": REFERENCE_DIGEST,
+        "policy_digest": REFERENCE_DIGEST,
+        "plan_digest": REFERENCE_DIGEST,
+        "activation_id": "activation-1",
+        "activation_digest": REFERENCE_DIGEST,
+        "security_epoch": 1,
+        "workflow_principal_ids": ["principal"],
+        "owner_principal_id": "owner",
+        "owner_session_id": "session",
+        "admission_api_version": "io.tobkiri.saved-workflow-admission.v1"
+    });
+    assert_eq!(prepare(&row), Err(Error::Conflict));
+    row.as_object_mut().unwrap().remove("saved_workflow");
     row["input_digest"] = json!(ACCEPTED_DIGEST);
-    row["profile_id"] = json!("other");
-    assert_eq!(validate(&row), Err(Error::InvalidRecord));
-    assert_eq!(
-        validate_saved_input_capture_turn(
-            "profile",
-            "turn-1",
-            "request-1",
-            b"{",
-            &source_digest,
-            &accepted_digest,
-        ),
-        Err(Error::InvalidRecord),
-    );
+    for field in ["profile_id", "id", "request_id"] {
+        let mut changed = row.clone();
+        changed[field] = json!("other");
+        assert_eq!(prepare(&changed), Err(Error::InvalidRecord));
+    }
+    assert_eq!(prepare_capture_turn(b"{"), Err(Error::InvalidRecord));
 }
