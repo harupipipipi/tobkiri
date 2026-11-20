@@ -1041,6 +1041,7 @@ where
     match String::deserialize(deserializer)?.as_str() {
         "saved-turn" => Ok(SavedInputCaller::SavedTurn),
         "calendar" => Ok(SavedInputCaller::Calendar),
+        "calendar-manual" => Ok(SavedInputCaller::CalendarManual),
         _ => Err(de::Error::custom("unknown saved input caller")),
     }
 }
@@ -1059,6 +1060,7 @@ where
         "saved-turn" => Ok(SavedTurnStartCaller::SavedTurn),
         "side-chat" => Ok(SavedTurnStartCaller::SideChat),
         "calendar" => Ok(SavedTurnStartCaller::Calendar),
+        "calendar-manual" => Ok(SavedTurnStartCaller::CalendarManual),
         _ => Err(de::Error::custom("unknown Turn start caller")),
     }
 }
@@ -2856,17 +2858,20 @@ mod tests {
                 "unavailable"
             );
         }
-        let calendar =
-            start_frame(r#","saved_input":{"caller":"calendar","mode":"bind","input_bytes":1}"#);
-        let calendar = serde_json::from_str::<Start<'_>>(&calendar).unwrap();
-        assert!(matches!(
-            calendar.request_start().unwrap(),
-            RequestStart::SavedInput(SavedInputStart {
-                caller: SavedInputCaller::Calendar,
-                mode: SavedInputMode::Bind,
-                input_bytes: 1,
-            })
-        ));
+        for (name, expected) in [
+            ("calendar", SavedInputCaller::Calendar),
+            ("calendar-manual", SavedInputCaller::CalendarManual),
+        ] {
+            let calendar = start_frame(&format!(
+                r#","saved_input":{{"caller":"{name}","mode":"bind","input_bytes":1}}"#
+            ));
+            let calendar = serde_json::from_str::<Start<'_>>(&calendar).unwrap();
+            assert!(matches!(
+                calendar.request_start().unwrap(),
+                RequestStart::SavedInput(SavedInputStart {caller, mode: SavedInputMode::Bind, input_bytes: 1})
+                    if caller == expected
+            ));
+        }
         for invalid in [
             r#","saved_input":null"#.to_owned(),
             r#","saved_input":{"mode":"bind","input_bytes":0}"#.to_owned(),
@@ -2876,6 +2881,8 @@ mod tests {
             ),
             r#","saved_input":{"mode":"read","input_bytes":1}"#.to_owned(),
             r#","saved_input":{"caller":"side-chat","mode":"bind","input_bytes":1}"#.to_owned(),
+            r#","saved_input":{"caller":"calendar-status","mode":"bind","input_bytes":1}"#
+                .to_owned(),
             r#","saved_input":{"caller":null,"mode":"bind","input_bytes":1}"#.to_owned(),
             r#","saved_input":{"mode":"restore","input_bytes":1,"publication":true}"#.to_owned(),
             format!(r#","saved_input":{{"mode":"restore","input_bytes":1}}{PROVIDER_REQUEST}"#),
@@ -5357,6 +5364,10 @@ mod tests {
             (r#""caller":"saved-turn""#, SavedTurnStartCaller::SavedTurn),
             (r#""caller":"side-chat""#, SavedTurnStartCaller::SideChat),
             (r#""caller":"calendar""#, SavedTurnStartCaller::Calendar),
+            (
+                r#""caller":"calendar-manual""#,
+                SavedTurnStartCaller::CalendarManual,
+            ),
         ] {
             let frame = message(field);
             let start = parse_start(START, frame.as_bytes()).unwrap();
@@ -5368,7 +5379,7 @@ mod tests {
         for field in [
             r#""caller":"side_chat""#,
             r#""caller":"saved-reconcile""#,
-            r#""caller":"calendar-manual""#,
+            r#""caller":"calendar_manual""#,
             r#""caller":"calendar-status""#,
             r#""caller":"Calendar""#,
             r#""caller":null"#,

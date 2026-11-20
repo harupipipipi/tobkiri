@@ -646,15 +646,20 @@ def _turn_start_request(
 @contextmanager
 def _served_turn_start(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
-    *, calendar: bool = False,
+    *, caller: ipc.SavedTurnStartCaller = "saved-turn",
 ) -> Iterator[Callable[[ipc.NativeSavedTurnStartRequest], Mapping[str, Any]]]:
+    markers = {
+        "saved-turn": (ipc._SAVED_TURN_START_ENV, ipc.capture_launcher_saved_turn_start_writer),
+        "side-chat": (ipc._SIDE_CHAT_START_ENV, ipc.capture_launcher_side_chat_turn_start_writer),
+        "calendar": (ipc._CALENDAR_START_ENV, ipc.capture_launcher_calendar_turn_start_writer),
+        "calendar-manual": (
+            ipc._CALENDAR_MANUAL_START_ENV, ipc.capture_launcher_manual_calendar_turn_start_writer,
+        ),
+    }
+    marker, capture = markers[caller]
     with _served(monkeypatch, serve):
-        if calendar:
-            monkeypatch.setenv(ipc._CALENDAR_START_ENV, "1")
-            writer = ipc.capture_launcher_calendar_turn_start_writer()
-        else:
-            monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
-            writer = ipc.capture_launcher_saved_turn_start_writer()
+        monkeypatch.setenv(marker, "1")
+        writer = capture()
         assert writer is not None
         yield writer
 
@@ -710,9 +715,11 @@ def _served_saved_input(
     monkeypatch: pytest.MonkeyPatch, serve: Callable[[socket.socket], None],
     caller: ipc.SavedInputCaller = "saved-turn",
 ) -> Iterator[Callable[[ipc.NativeSavedInputRequest], Mapping[str, Any]]]:
-    marker = (
-        ipc._CALENDAR_SAVED_INPUT_ENV if caller == "calendar" else ipc._SAVED_INPUT_ENV
-    )
+    marker = {
+        "saved-turn": ipc._SAVED_INPUT_ENV,
+        "calendar": ipc._CALENDAR_SAVED_INPUT_ENV,
+        "calendar-manual": ipc._CALENDAR_MANUAL_SAVED_INPUT_ENV,
+    }[caller]
     monkeypatch.setenv(marker, "1")
     with _served(monkeypatch, serve):
         writer = ipc.capture_launcher_saved_input_writer(caller)
@@ -741,6 +748,7 @@ def test_calendar_saved_input_capture_requires_its_own_marker_and_caller(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(ipc._CALENDAR_SAVED_INPUT_ENV, raising=False)
+    monkeypatch.delenv(ipc._CALENDAR_MANUAL_SAVED_INPUT_ENV, raising=False)
     monkeypatch.setenv(ipc._SAVED_INPUT_ENV, "1")
     with _listener() as (_, address):
         monkeypatch.setenv(ipc._SOCKET_ENV, address)
@@ -754,14 +762,20 @@ def test_calendar_saved_input_capture_requires_its_own_marker_and_caller(
         calendar = ipc.capture_launcher_saved_input_writer("calendar")
         assert calendar is not None
         assert ipc.capture_launcher_saved_input_writer() is None
+        assert ipc.capture_launcher_saved_input_writer("calendar-manual") is None
+        monkeypatch.delenv(ipc._CALENDAR_SAVED_INPUT_ENV)
+        monkeypatch.setenv(ipc._CALENDAR_MANUAL_SAVED_INPUT_ENV, "1")
+        manual = ipc.capture_launcher_saved_input_writer("calendar-manual")
+        assert manual is not None
+        assert ipc.capture_launcher_saved_input_writer("calendar") is None
         request = _saved_input_request(_Borrow())
-        with pytest.raises(ipc._ProtocolError, match="caller differs"):
-            calendar(request)
-        with pytest.raises(ipc._ProtocolError, match="caller differs"):
-            ordinary(replace(request, caller="calendar"))
+        for writer, caller in ((calendar, "saved-turn"), (ordinary, "calendar"),
+                               (calendar, "calendar-manual"), (manual, "calendar")):
+            with pytest.raises(ipc._ProtocolError, match="caller differs"):
+                writer(replace(request, caller=caller))
 
 
-@pytest.mark.parametrize("caller", ["saved-turn", "calendar"])
+@pytest.mark.parametrize("caller", ["saved-turn", "calendar", "calendar-manual"])
 @pytest.mark.parametrize("mode", ["restore", "bind", "replay"])
 def test_saved_input_sends_original_once_in_funded_canonical_body(
     monkeypatch: pytest.MonkeyPatch, mode: str, caller: ipc.SavedInputCaller,
@@ -795,7 +809,7 @@ def test_saved_input_sends_original_once_in_funded_canonical_body(
         assert start["saved_input"] == {
             "mode": "restore" if mode == "restore" else "bind",
             "input_bytes": len(body),
-            **({"caller": "calendar"} if caller == "calendar" else {}),
+            **({"caller": caller} if caller != "saved-turn" else {}),
         }
         assert set(start) == {
             "identity", "security_epoch", "runtime_instance", "deadline_ns",
@@ -1001,30 +1015,39 @@ def test_calendar_turn_start_capture_rejects_other_callers_before_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(ipc._CALENDAR_START_ENV, raising=False)
+    monkeypatch.delenv(ipc._CALENDAR_MANUAL_START_ENV, raising=False)
     monkeypatch.setenv(ipc._SAVED_TURN_START_ENV, "1")
     monkeypatch.setenv(ipc._SIDE_CHAT_START_ENV, "1")
     monkeypatch.setattr(ipc, "_capture_launcher", object)
     assert ipc.capture_launcher_calendar_turn_start_writer() is None
     monkeypatch.setenv(ipc._CALENDAR_START_ENV, "1")
     calendar = ipc.capture_launcher_calendar_turn_start_writer()
+    assert ipc.capture_launcher_manual_calendar_turn_start_writer() is None
+    monkeypatch.delenv(ipc._CALENDAR_START_ENV)
+    monkeypatch.setenv(ipc._CALENDAR_MANUAL_START_ENV, "1")
+    manual = ipc.capture_launcher_manual_calendar_turn_start_writer()
+    assert ipc.capture_launcher_calendar_turn_start_writer() is None
     ordinary = ipc.capture_launcher_saved_turn_start_writer()
     side_chat = ipc.capture_launcher_side_chat_turn_start_writer()
-    assert calendar is not None and ordinary is not None and side_chat is not None
+    assert all(writer is not None for writer in (calendar, manual, ordinary, side_chat))
     request = _turn_start_request(_Borrow(), _unexpected_marker)
     scheduled = replace(request, caller="calendar")
     linked = replace(request, caller="side-chat")
+    triggered = replace(request, caller="calendar-manual")
     for writer, borrow in ((calendar, request), (calendar, linked),
-                           (ordinary, scheduled), (side_chat, scheduled)):
+                           (ordinary, scheduled), (side_chat, scheduled),
+                           (calendar, triggered), (manual, scheduled)):
+        assert writer is not None
         with pytest.raises(ipc._ProtocolError, match="caller differs from capture"):
             writer(borrow)
 
 
 @pytest.mark.parametrize("action", ["begin", "claim"])
 @pytest.mark.parametrize("published", [False, True])
-@pytest.mark.parametrize("calendar", [False, True])
+@pytest.mark.parametrize("caller", ["saved-turn", "calendar", "calendar-manual"])
 def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
     monkeypatch: pytest.MonkeyPatch, action: ipc.SavedTurnStartAction, published: bool,
-    calendar: bool,
+    caller: ipc.SavedTurnStartCaller,
 ) -> None:
     borrow = _Borrow()
     marks: list[bool] = []
@@ -1038,7 +1061,7 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
     request = replace(
         _turn_start_request(borrow, lambda: marks.append(True), action),
         assert_current=guard,
-        caller="calendar" if calendar else "saved-turn",
+        caller=caller,
     )
     status = "queued" if action == "begin" and published else "running"
     row = dict(_STARTED_TURN, status=status, details="会話")
@@ -1062,7 +1085,7 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
             "runtime_instance": borrow.runtime_instance,
             "deadline_ns": numerator * 1_000_000_000 // denominator,
             "turn_start": {
-                **({"caller": "calendar"} if calendar else {}),
+                **({"caller": caller} if caller != "saved-turn" else {}),
                 "action": action, "turn_id": "turn-1", "conversation_id": "conversation-1",
                 "conversation_revision": 3, "input_digest": _TURN_DIGEST,
                 "source_digest": _SOURCE_DIGEST,
@@ -1080,8 +1103,9 @@ def test_turn_start_sends_exact_binding_and_preserves_raw_owner_row(
         _send(peer, 7, response)
         assert peer.recv(1) == b""
 
-    with _served_turn_start(monkeypatch, serve, calendar=calendar) as writer:
-        marker = ipc._CALENDAR_START_ENV if calendar else ipc._SAVED_TURN_START_ENV
+    with _served_turn_start(monkeypatch, serve, caller=caller) as writer:
+        marker = {"saved-turn": ipc._SAVED_TURN_START_ENV, "calendar": ipc._CALENDAR_START_ENV,
+                  "calendar-manual": ipc._CALENDAR_MANUAL_START_ENV}[caller]
         monkeypatch.delenv(marker)
         assert writer(request) == {"claimed": claimed, "turn": row}
     assert marks == ([True] if published else [])

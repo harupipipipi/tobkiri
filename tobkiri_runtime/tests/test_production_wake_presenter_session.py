@@ -1,7 +1,7 @@
-"""Exercise native presenter journals and automatic Calendar saved Turns.
+"""Exercise native presenter journals and scheduled Calendar saved Turns.
 
-Tests use a passive wake adapter. The Calendar regression invokes the real
-delivery callback with doubles for Launcher IPC and post-claim orchestration.
+The Calendar regression uses the real wake delivery and signed HTTP entrypoints,
+with doubles for Launcher IPC and post-claim orchestration.
 """
 
 from __future__ import annotations
@@ -147,14 +147,17 @@ def test_original_dot_wake_journal_is_still_rejected() -> None:
         )
 
 
+@pytest.mark.parametrize("mode", ("automatic", "manual"))
 def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str,
 ) -> None:
-    """Run the signed Calendar adapter through real Turn begin and claim."""
+    """Run automatic and manual signed Calendar dispatch through Turn begin and claim."""
     from contextlib import contextmanager
+    from functools import partial
     import sqlite3
     import sys
     import threading
+    import uuid
 
     from core_runtime import native_provider_prepare_ipc as ipc
     from core_runtime.authority.v4 import LeaseState
@@ -169,9 +172,13 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         ScheduledSourceLedger,
     )
     from tests.test_production_frontend_contract_http import (
+        SAVED_TURN_HTTP_TIMEOUT_SECONDS,
         _SavedPackVmBackend,
+        _authenticate,
         _captured_production_server,
+        _contract,
         _publish_native_runtime_fixture,
+        _request,
     )
     from tobkiri_host.backends import BackendRegistry
 
@@ -275,6 +282,7 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
 
     def assert_borrow(
         request: ipc.NativeSavedInputRequest | ipc.NativeSavedTurnStartRequest,
+        caller: str,
     ) -> tuple[Any, Any]:
         request.assert_current()
         child, adapter, broker, scheduler = (
@@ -286,7 +294,24 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             )
         )
         chain = (child, adapter, broker, scheduler)
-        assert request.caller == "calendar"
+        schedule_id = adapter.payload["schedule_id"]
+        manual = schedule_id.startswith("manual-")
+        assert request.caller == caller == ("calendar-manual" if manual else "calendar")
+        if manual:
+            calendar = observed["rumi_schedule_store_pack.calendar-manage"]
+            chain = (*chain, calendar)
+            for invocation in (scheduler, calendar):
+                assert invocation.payload["operation"] == "trigger"
+                assert invocation.payload["profile_id"] == "defaults"
+                assert invocation.payload["schedule_id"] == schedule_id
+        else:
+            assert scheduler.payload == {"operation": "tick", "limit": 20}
+        assert broker.payload["schedule_id"] == schedule_id
+        key = f"{schedule_id}:{broker.payload['lease_id']}"
+        assert broker.payload["operation"] == adapter.payload["operation"] == "dispatch"
+        assert broker.payload["idempotency_key"] == key
+        assert adapter.payload["idempotency_key"] == key
+        assert adapter.idempotency_key == key
         assert request.context is child.context
         assert all(
             current.context.caller_principal == parent.target_principal
@@ -297,17 +322,27 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
         assert request.deadline_monotonic == child.deadline_monotonic
         deadline_order = [item.deadline_monotonic for item in chain]
         assert deadline_order == sorted(deadline_order)
-        assert len({item.resource_reservation_id for item in chain}) == 4
-        assert None not in {item.resource_reservation_id for item in chain}
-        assert len({item.lease.token for item in chain}) == 4
-        assert all(
-            authority.inspect_lease_token(item.lease.token.decode("ascii"))[1]
-            is LeaseState.DISPATCHED for item in chain
+        reservations = {item.resource_reservation_id for item in chain}
+        assert len(reservations) == len(chain) and None not in reservations
+        assert len({item.lease.token for item in chain}) == len(chain)
+        leases = [
+            authority.inspect_lease_token(item.lease.token.decode("ascii"))
+            for item in chain
+        ]
+        assert all(state is LeaseState.DISPATCHED for _, state in leases)
+        root_lease = leases[-1][0]
+        assert root_lease.caller.principal_id == chain[-1].context.caller_principal.value
+        expected_root = (
+            "shell.tauri.default" if manual
+            else "rumi_scheduler_runtime_pack.scheduler.clock"
         )
+        assert root_lease.caller.function_id == expected_root
         return child, adapter
 
-    def write(request: ipc.NativeSavedInputRequest) -> dict[str, Any]:
-        child, adapter = assert_borrow(request)
+    def write(
+        request: ipc.NativeSavedInputRequest, *, caller: str,
+    ) -> dict[str, Any]:
+        child, adapter = assert_borrow(request, caller)
         key = adapter.payload["idempotency_key"]
         lean = request.source
         turn_id = lean["request"]["turn_id"]
@@ -353,8 +388,10 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
             raise OSError("fixture lost the native reply after commit")
         return {"accepted": result}
 
-    def write_start(request: ipc.NativeSavedTurnStartRequest) -> dict[str, Any]:
-        child, adapter = assert_borrow(request)
+    def write_start(
+        request: ipc.NativeSavedTurnStartRequest, *, caller: str,
+    ) -> dict[str, Any]:
+        child, adapter = assert_borrow(request, caller)
         expired_publications.append(request.mark_publication_possible)
         target = request.conversation_id
         starts.append((target, request.action))
@@ -397,7 +434,12 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     _publish_native_runtime_fixture(monkeypatch)
     monkeypatch.setattr(GlobalContractClient, "invoke", invoke)
     monkeypatch.setattr(
-        ipc, "capture_launcher_calendar_turn_start_writer", lambda: write_start,
+        ipc, "capture_launcher_calendar_turn_start_writer",
+        lambda: partial(write_start, caller="calendar"),
+    )
+    monkeypatch.setattr(
+        ipc, "capture_launcher_manual_calendar_turn_start_writer",
+        lambda: partial(write_start, caller="calendar-manual"),
     )
     monkeypatch.setattr(production_v4, "bind_production_wake_v4", bind_wake)
     monkeypatch.setattr(
@@ -405,7 +447,10 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
     )
     monkeypatch.setattr(
         ipc, "capture_launcher_saved_input_writer",
-        lambda caller="saved-turn": write if caller == "calendar" else None,
+        lambda caller="saved-turn": (
+            partial(write, caller=caller) if caller in {"calendar", "calendar-manual"}
+            else None
+        ),
     )
     with contextmanager(_captured_production_server)(
         tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
@@ -421,7 +466,9 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                 if (
                     envelope.operation_id == "rumi_turn_runtime_pack.turn-lifecycle"
                     and envelope.payload["operation"] == "claim_saved"
-                    and envelope.payload["request"]["conversation_id"] == "claim-broker-ack"
+                    and envelope.payload["request"]["conversation_id"] in {
+                        "claim-broker-ack", "manual-claim-broker-ack",
+                    }
                 ):
                     raise OSError("fixture lost the committed nested Broker acknowledgement")
                 return result
@@ -431,14 +478,24 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
 
         monkeypatch.setattr(session.broker, "_dispatch", dispatch)
         assert len(wakes) == 1
-        wakes[0].arm(86400000)
         conversations = ConversationStore("defaults", user_data_root=data)
         schedules = ScheduleStore("defaults", root=data)
-        continued = ("complete", "legacy", "winner")
-        unknown_after_claim = ("claim-committed", "claim-broker-ack")
-        for destination in (
-            *continued, "ambiguous", "claim-unconfirmed", *unknown_after_claim,
-        ):
+        manual = mode == "manual"
+        if manual:
+            cookie, csrf, origin = _authenticate(server)
+            continued = ("manual-complete",)
+            unknown_after_claim = ("manual-claim-broker-ack",)
+            destinations = (*continued, *unknown_after_claim)
+            skipped_start = ()
+        else:
+            wakes[0].arm(86400000)
+            continued = ("complete", "legacy", "winner")
+            unknown_after_claim = ("claim-committed", "claim-broker-ack")
+            destinations = (
+                *continued, "ambiguous", "claim-unconfirmed", *unknown_after_claim,
+            )
+            skipped_start = ("ambiguous",)
+        for destination in destinations:
             conversations.create(
                 {"id": destination, "model_reference": "model-profile-1"},
                 expected_revision=conversations.snapshot()["revision"],
@@ -451,16 +508,49 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                 "name": destination,
                 "action_id": "chat.saved",
                 "payload": intent,
-                "next_run_at_ms": 1,
+                "next_run_at_ms": schedules.clock() + 86400000 if manual else 1,
                 "interval_ms": 0,
                 "max_attempts": 1,
                 "expected_revision": schedules.snapshot()["revision"],
             })
-            # Invoke the binding's original callback as a delivered wake.
             previous_calls = len(lifecycle_calls)
-            result = wakes[0]._invoke(destination, lambda: None, threading.Event())
+            if manual:
+                if destination in continued:
+                    # The shipped client sends a concrete schedule path and empty body.
+                    path = f"/api/agent/schedules/{destination}/trigger"
+                    body = {}
+                else:
+                    path = "/api/agent/schedules/{schedule_id}/trigger"
+                    body = {"schedule_id": destination}
+                request_headers = {
+                    "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                }
+
+                def trigger() -> tuple[int, dict[str, Any]]:
+                    status, response, _ = _request(
+                        server, "POST", _contract("POST", path),
+                        body=body, headers=request_headers,
+                        timeout_seconds=SAVED_TURN_HTTP_TIMEOUT_SECONDS,
+                    )
+                    return status, response
+
+                status, response = trigger()
+                assert status == 200 and response["success"], (response, errors)
+                if destination in unknown_after_claim:
+                    calls_before_retry = list(lifecycle_calls)
+                    assert trigger() == (status, response)
+                    assert lifecycle_calls == calls_before_retry
+                facade = response["data"]
+                assert facade["status"] == "ok", facade
+                result = facade["data"]
+                assert result["triggered"]["id"] == destination
+                assert result["count"] == 1
+            else:
+                # Invoke the binding's original callback as a delivered wake.
+                result = wakes[0]._invoke(destination, lambda: None, threading.Event())
             expected_calls = ["recover_saved_input", "bind_saved_input"]
-            if destination != "ambiguous":
+            if destination not in skipped_start:
                 expected_calls += ["begin_saved", "claim_saved"]
             assert lifecycle_calls[previous_calls:] == expected_calls, (result, errors)
             assert borrows[-2:] == [
@@ -499,11 +589,11 @@ def test_native_calendar_saved_turn_preserves_input_and_claim_on_lost_reply(
                 )["status"] == ("started" if possibly_claimed else "bound")
             assert conversations.get(destination)["messages"] == []
 
-        assert legacy == ["legacy", "claim-unconfirmed"]
-        assert legacy_start == [("legacy", "begin")]
+        assert legacy == ([] if manual else ["legacy", "claim-unconfirmed"])
+        assert legacy_start == ([] if manual else [("legacy", "begin")])
         assert starts == [
             (target, action)
-            for target in (*continued, "claim-unconfirmed", *unknown_after_claim)
+            for target in destinations if target not in skipped_start
             for action in ("begin", "claim")
         ]
         assert releases == []

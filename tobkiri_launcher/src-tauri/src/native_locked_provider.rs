@@ -69,10 +69,11 @@ pub(crate) struct LockedTurnStartBundle<'pin> {
     budget: Arc<dyn AllocationBudget>,
 }
 
-/// Signed Bundle documents for the automatic Calendar dispatch chain.
+/// Signed Bundle documents for an automatic or manual Calendar dispatch chain.
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 pub(crate) struct LockedCalendarSavedDispatchBundle<'pin> {
     source: VerifiedOrdinarySavedBundle,
+    manager: Option<LockedRegistryRoute<'pin>>,
     routes: [LockedRegistryRoute<'pin>; 4],
     budget: Arc<dyn AllocationBudget>,
 }
@@ -798,7 +799,7 @@ impl NativeApplicationSources {
         })
     }
 
-    /// Capture the signed Bundle documents for the automatic Calendar caller.
+    /// Capture the signed Bundle documents for the selected Calendar caller.
     #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
     pub(crate) fn calendar_saved_dispatch_bundle<'pin>(
         &self,
@@ -806,9 +807,18 @@ impl NativeApplicationSources {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<LockedCalendarSavedDispatchBundle<'pin>> {
         let [scheduler, broker, adapter, lifecycle] = selection.pins();
+        let manager = selection.manager();
+        if let Some(manager) = manager {
+            ensure!(
+                manager.caller_function_id() == self.authority.shell_provider_id
+                    && manager.function_id() == scheduler.caller_function_id(),
+                "manual Calendar caller differs from the selected Shell and Scheduler chain"
+            );
+        }
         let from_lock = |pin| LockedRegistryRoute::from_lock(&self.bundle_lock, pin, budget);
         Ok(LockedCalendarSavedDispatchBundle {
             source: VerifiedOrdinarySavedBundle::new(self)?,
+            manager: manager.map(from_lock).transpose()?,
             routes: [
                 from_lock(scheduler)?,
                 from_lock(broker)?,
@@ -1214,17 +1224,27 @@ impl LockedTurnStartBundle<'_> {
 
 #[cfg(all(target_os = "macos", feature = "native-first-setup"))]
 impl LockedCalendarSavedDispatchBundle<'_> {
-    /// Verify all four privileged operations against the accepted Bundle.
+    /// Verify every privileged operation against the accepted Bundle.
     pub(crate) fn verify(
         self,
         checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<VerifiedOrdinarySavedBundle> {
-        self.source.verify_routes(
-            &[Some(self.routes)],
-            &self.budget,
-            checkpoint,
-            ["privileged"; 4],
-        )
+        if let Some(manager) = self.manager {
+            let [scheduler, broker, adapter, lifecycle] = self.routes;
+            self.source.verify_routes(
+                &[Some([manager, scheduler, broker, adapter, lifecycle])],
+                &self.budget,
+                checkpoint,
+                ["privileged"; 5],
+            )
+        } else {
+            self.source.verify_routes(
+                &[Some(self.routes)],
+                &self.budget,
+                checkpoint,
+                ["privileged"; 4],
+            )
+        }
     }
 }
 

@@ -93,7 +93,10 @@ jobs:
       - name: Verify atomic saved input in the original SQLite owner
         run: cargo test --locked -p tobkiri-harness-native --lib original_saved_turn_settlement::input_store::tests
       - name: Verify the signed Calendar Saved Input route
-        run: cargo test --locked -p tobkiri-harness-native --lib calendar_saved_input_requires_a_complete_scheduler_clock_chain
+        run: >-
+          cargo test --locked -p tobkiri-harness-native --lib --
+          calendar_saved_input_requires_a_complete_scheduler_clock_chain
+          calendar_manual_saved_dispatch_requires_all_five_grants
   actual-macos-host:
     runs-on: macos-15
     timeout-minutes: 50

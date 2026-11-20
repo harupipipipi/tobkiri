@@ -284,6 +284,14 @@ static TURN_LIFECYCLE: Route = Route {
 };
 
 const SCHEDULER_CLOCK_CALLER: &str = "rumi_scheduler_runtime_pack.scheduler.clock";
+static CALENDAR_MANAGE: Route = Route {
+    pack: "rumi_schedule_store_pack",
+    function: "rumi_schedule_store_pack.calendar.manage",
+    contract: "tobkiri.action.calendar.schedule.v1",
+    operation: "rumi_schedule_store_pack.calendar-manage",
+    variant: "rumi_schedule_store_pack.calendar.manage.python",
+    execution: PYTHON_HOST,
+};
 static SCHEDULER_CONTROL: Route = Route {
     pack: "rumi_scheduler_runtime_pack",
     function: "rumi_scheduler_runtime_pack.scheduler.control",
@@ -1199,6 +1207,8 @@ pub enum SavedTurnStartCaller {
     SideChat,
     /// The Scheduler Clock wakes an automatic Calendar dispatch.
     Calendar,
+    /// The selected Shell starts a fresh Calendar dispatch through Calendar Manage.
+    CalendarManual,
 }
 
 /// The signed entry point behind a Saved Input request.
@@ -1208,27 +1218,53 @@ pub enum SavedInputCaller {
     SavedTurn,
     /// The Scheduler Clock wakes an automatic Calendar dispatch.
     Calendar,
+    /// The selected Shell starts a fresh Calendar dispatch through Calendar Manage.
+    CalendarManual,
 }
 
-/// The signed chain from the Scheduler Clock to Turn Lifecycle for automatic Calendar dispatch,
-/// shared by saved input and Turn start.
+/// The signed automatic or manual Calendar dispatch chain for saved input and Turn start.
 pub struct OriginalCalendarSavedDispatchChoice<'a> {
     _active: &'a OriginalActiveProfile,
+    manager: Option<OriginalRoutePin>,
     pins: [OriginalRoutePin; 4],
 }
 
 impl<'a> OriginalCalendarSavedDispatchChoice<'a> {
-    /// Select the four exact grants. Verify every pin against the signed Bundle before use.
+    /// Select the four automatic dispatch grants. Verify every pin against the signed Bundle.
     pub fn select(
         active: &'a OriginalActiveProfile,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Option<Self>> {
+        Self::select_entry(active, budget, false)
+    }
+
+    /// Select the five manual dispatch grants. Verify every pin against the signed Bundle.
+    pub fn select_manual(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Option<Self>> {
+        Self::select_entry(active, budget, true)
+    }
+
+    fn select_entry(
+        active: &'a OriginalActiveProfile,
+        budget: &Arc<dyn AllocationBudget>,
+        manual: bool,
+    ) -> Result<Option<Self>> {
         Ok(
-            select_calendar_saved_dispatch_records(active.records(), budget)?.map(|pins| Self {
-                _active: active,
-                pins,
-            }),
+            select_calendar_saved_dispatch_records(active.records(), budget, manual)?.map(
+                |(manager, pins)| Self {
+                    _active: active,
+                    manager,
+                    pins,
+                },
+            ),
         )
+    }
+
+    /// The initial Shell-to-Calendar Manage grant for a manual dispatch.
+    pub fn manager(&self) -> Option<&OriginalRoutePin> {
+        self.manager.as_ref()
     }
 
     /// The ordered Scheduler, Job Action Broker, saved job adapter, and Turn Lifecycle grants.
@@ -2631,7 +2667,7 @@ fn select_saved_turn_start_records(
     let via_side_chat = match caller {
         SavedTurnStartCaller::SavedTurn => false,
         SavedTurnStartCaller::SideChat => true,
-        SavedTurnStartCaller::Calendar => return Ok(None),
+        SavedTurnStartCaller::Calendar | SavedTurnStartCaller::CalendarManual => return Ok(None),
     };
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
@@ -2644,14 +2680,31 @@ fn select_saved_turn_start_records(
         .map(|lifecycle| (side_chat, [turn, lifecycle])))
 }
 
+type CalendarSavedDispatchPins = (Option<OriginalRoutePin>, [OriginalRoutePin; 4]);
+
 fn select_calendar_saved_dispatch_records(
     active: (&CoreValue, &CoreValue, &CoreValue),
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<Option<[OriginalRoutePin; 4]>> {
+    manual: bool,
+) -> Result<Option<CalendarSavedDispatchPins>> {
     let Some(records) = selected_shell_records(active, budget)? else {
         return Ok(None);
     };
-    let Some(scheduler) = records.select_route(SCHEDULER_CLOCK_CALLER, &SCHEDULER_CONTROL)? else {
+    let manager = if manual {
+        if verified_text(&records.shell_caller) != TURN_SHELL_CALLER {
+            return Ok(None);
+        }
+        let Some(manager) = records.select_shell_route(&CALENDAR_MANAGE)? else {
+            return Ok(None);
+        };
+        Some(manager)
+    } else {
+        None
+    };
+    let caller = manager
+        .as_ref()
+        .map_or(SCHEDULER_CLOCK_CALLER, OriginalRoutePin::function_id);
+    let Some(scheduler) = records.select_route(caller, &SCHEDULER_CONTROL)? else {
         return Ok(None);
     };
     let Some(broker) = records.select_route(scheduler.function_id(), &JOB_ACTION_BROKER)? else {
@@ -2662,7 +2715,7 @@ fn select_calendar_saved_dispatch_records(
     };
     Ok(records
         .select_route(adapter.function_id(), &TURN_LIFECYCLE)?
-        .map(|lifecycle| [scheduler, broker, adapter, lifecycle]))
+        .map(|lifecycle| (manager, [scheduler, broker, adapter, lifecycle])))
 }
 
 fn select_saved_turn_settlement_records(
@@ -5609,7 +5662,8 @@ mod tests {
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let select = |fixture: &Value| {
             let [profile, lock, plan] = parse_records(fixture, &budget);
-            select_calendar_saved_dispatch_records((&profile, &lock, &plan), &budget)
+            select_calendar_saved_dispatch_records((&profile, &lock, &plan), &budget, false)
+                .map(|selection| selection.map(|(_, pins)| pins))
         };
         let mut fixture = records();
         assert!(select(&fixture).unwrap().is_none());
@@ -5691,6 +5745,67 @@ mod tests {
             &budget,
         );
         assert!(select(&manual).unwrap().is_none());
+    }
+
+    #[test]
+    fn calendar_manual_saved_dispatch_requires_all_five_grants() {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
+        let select = |fixture: &Value, manual| {
+            let [profile, lock, plan] = parse_records(fixture, &budget);
+            select_calendar_saved_dispatch_records((&profile, &lock, &plan), &budget, manual)
+        };
+        let mut fixture = records();
+        let first_row = fixture["plan"]["bindings"].as_array().unwrap().len();
+        let chain = [
+            (TURN_SHELL_CALLER, &CALENDAR_MANAGE),
+            (CALENDAR_MANAGE.function, &SCHEDULER_CONTROL),
+            (SCHEDULER_CONTROL.function, &JOB_ACTION_BROKER),
+            (JOB_ACTION_BROKER.function, &CHAT_SAVED_JOB_ADAPTER),
+            (CHAT_SAVED_JOB_ADAPTER.function, &TURN_LIFECYCLE),
+        ];
+        for (caller, route) in chain {
+            add_fixture_grant(&mut fixture, caller, route, &budget);
+        }
+        let (manager, pins) = select(&fixture, true).unwrap().unwrap();
+        for (pin, (caller, route)) in manager.into_iter().chain(pins).zip(chain) {
+            assert_eq!(pin.caller_function_id(), caller);
+            assert_eq!(pin.function_id(), route.function);
+            assert_eq!(pin.operation_id(), route.operation);
+            assert_eq!(pin.variant_id(), route.variant);
+        }
+        assert!(select(&fixture, false).unwrap().is_none());
+        assert!(
+            select_saved_turn_start_for(&fixture, SavedTurnStartCaller::CalendarManual)
+                .unwrap()
+                .is_none()
+        );
+
+        for row in first_row..(first_row + chain.len()) {
+            let mut interactive = fixture.clone();
+            set_grant_interactive_only(&mut interactive, row);
+            assert!(select(&interactive, true).unwrap().is_none(), "grant {row}");
+
+            let mut missing = fixture.clone();
+            for (record, edges) in [("profile", "requested_edges"), ("plan", "bindings")] {
+                missing[record][edges].as_array_mut().unwrap().remove(row);
+            }
+            assert!(select(&missing, true).unwrap().is_none(), "grant {row}");
+        }
+
+        let mut automatic = fixture;
+        for row in [first_row + 1, first_row] {
+            for (record, edges) in [("profile", "requested_edges"), ("plan", "bindings")] {
+                automatic[record][edges].as_array_mut().unwrap().remove(row);
+            }
+        }
+        add_fixture_grant(
+            &mut automatic,
+            SCHEDULER_CLOCK_CALLER,
+            &SCHEDULER_CONTROL,
+            &budget,
+        );
+        assert!(select(&automatic, false).unwrap().is_some());
+        assert!(select(&automatic, true).unwrap().is_none());
     }
 
     #[test]

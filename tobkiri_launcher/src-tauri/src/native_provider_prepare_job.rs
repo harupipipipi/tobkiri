@@ -3251,8 +3251,16 @@ mod tests {
             "catalog",
             SavedTurnStartCaller::SideChat,
         );
-        let calendar_proof =
-            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity, "catalog");
+        let calendar_proof = VerifiedRegistryLaunch::test_calendar_saved_input_proof(
+            identity.clone(),
+            "catalog",
+            SavedTurnStartCaller::Calendar,
+        );
+        let manual_proof = VerifiedRegistryLaunch::test_calendar_saved_input_proof(
+            identity,
+            "catalog",
+            SavedTurnStartCaller::CalendarManual,
+        );
         for mode in [SavedInputMode::Restore, SavedInputMode::Bind] {
             let job = NativeRegistryRequest::SavedInput {
                 caller: SavedInputCaller::SavedTurn,
@@ -3263,21 +3271,37 @@ mod tests {
             assert!(job.has_launch_proof(&ordinary));
             assert!(!job.has_launch_proof(&side));
             assert!(!job.has_launch_proof(&calendar_proof));
+            assert!(!job.has_launch_proof(&manual_proof));
             assert!(job.uses_funded_input());
             assert_eq!(
                 job.requires_publication_permit(),
                 mode == SavedInputMode::Bind
             );
             assert_eq!(job.input_capacity().unwrap(), SAVED_INPUT_FRAME_LIMIT);
-            let calendar = NativeRegistryRequest::SavedInput {
-                caller: SavedInputCaller::Calendar,
-                mode,
-                input_bytes: SAVED_INPUT_FRAME_LIMIT,
-                receive_input: Box::new(|_| panic!("admission cannot read the body")),
-            };
-            assert!(!calendar.has_launch_proof(&ordinary));
-            assert!(!calendar.has_launch_proof(&side));
-            assert!(calendar.has_launch_proof(&calendar_proof));
+            for caller in [SavedInputCaller::Calendar, SavedInputCaller::CalendarManual] {
+                let calendar = NativeRegistryRequest::SavedInput {
+                    caller,
+                    mode,
+                    input_bytes: SAVED_INPUT_FRAME_LIMIT,
+                    receive_input: Box::new(|_| panic!("admission cannot read the body")),
+                };
+                assert!(!calendar.has_launch_proof(&ordinary));
+                assert!(!calendar.has_launch_proof(&side));
+                assert_eq!(
+                    calendar.has_launch_proof(&calendar_proof),
+                    caller == SavedInputCaller::Calendar
+                );
+                assert_eq!(
+                    calendar.has_launch_proof(&manual_proof),
+                    caller == SavedInputCaller::CalendarManual
+                );
+                assert!(calendar.uses_funded_input());
+                assert_eq!(
+                    calendar.requires_publication_permit(),
+                    mode == SavedInputMode::Bind
+                );
+                assert_eq!(calendar.input_capacity().unwrap(), SAVED_INPUT_FRAME_LIMIT);
+            }
         }
         let budget: Arc<dyn AllocationBudget> = Arc::new(TestBudget);
         let source = r#"{"request":{"turn_id":"turn"}}"#;
@@ -4159,9 +4183,19 @@ mod tests {
             SavedTurnStartCaller::SavedTurn,
             SavedTurnStartCaller::SideChat,
             SavedTurnStartCaller::Calendar,
+            SavedTurnStartCaller::CalendarManual,
         ];
-        let calendar_input_only =
-            VerifiedRegistryLaunch::test_calendar_saved_input_proof(identity.clone(), "catalog");
+        let input_only = [
+            SavedTurnStartCaller::Calendar,
+            SavedTurnStartCaller::CalendarManual,
+        ]
+        .map(|caller| {
+            VerifiedRegistryLaunch::test_calendar_saved_input_proof(
+                identity.clone(),
+                "catalog",
+                caller,
+            )
+        });
         for granted in callers {
             let proof = VerifiedRegistryLaunch::test_turn_start_proof_for(
                 identity.clone(),
@@ -4188,7 +4222,9 @@ mod tests {
                     };
                     assert_eq!(request.has_launch_proof(&proof), caller == granted);
                     assert!(!request.has_launch_proof(&append));
-                    assert!(!request.has_launch_proof(&calendar_input_only));
+                    assert!(input_only
+                        .iter()
+                        .all(|proof| !request.has_launch_proof(proof)));
                     assert!(request.requires_publication_permit());
                     assert_eq!(request.input_capacity().unwrap(), expected_capacity);
                 }
