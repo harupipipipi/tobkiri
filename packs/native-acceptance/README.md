@@ -29,13 +29,15 @@ an ApprovalPrompt or claims a browser flag can request the warning style.
 
 ## Root-owned preparation and execution
 
-No component, dependency lock or native execution receipt is fabricated here.
-The root build lease must resolve/review the isolated `provider/Cargo.toml` lock
-and build its real component using the existing Rust 1.94.0 / wasm32-wasip2
-toolchain. Its independent `[workspace]` leaves the shared host and Pack
-workspaces/locks unchanged. For example, after producing the isolated lock:
+Use the isolated provider's checked-in [Cargo.lock](provider/Cargo.lock) with
+the Rust 1.94.0 and `wasm32-wasip2` toolchain pinned at the repository root.
+The independent provider workspace has its own dependency resolution. Fetch
+its locked dependencies while online, then build the actual component offline:
 
 ```sh
+cargo fetch --locked \
+  --manifest-path packs/native-acceptance/provider/Cargo.toml \
+  --target wasm32-wasip2
 cargo build --offline --locked \
   --manifest-path packs/native-acceptance/provider/Cargo.toml \
   --target wasm32-wasip2 --target-dir "$ACCEPTANCE_TARGET"

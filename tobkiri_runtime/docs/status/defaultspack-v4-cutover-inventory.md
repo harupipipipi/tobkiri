@@ -9,23 +9,24 @@ the current migration scan result. It is not a compatibility promise.
 
 ## Current migration scan
 
-The tracked complete-v4 scanner inventories 141 bundled production Packs and
-requires four canonical v4 artifacts per Pack. Its current release proof
-classifies all 141 as `release-verified`, and the semantic migration gate is
-`GREEN`. CI blocks evidence freshness drift and reports the semantic status.
-The scanner reports zero findings for artifact contracts,
-Authority/ResolvedPlan scope, reachable legacy lookup/fallback,
-double authority, Launcher safety, and offline projection identity. The exact
-counts and informational source commit are generated in:
+The complete-v4 scanner counts production Packs and their four canonical v4
+artifacts. Run it from the repository root to read the checkout's structure
+and semantic migration status:
 
-- `generated/architecture/architecture_inventory.json`
-- `scripts/quality/evidence/complete_v4_migration_red_64b2240e.json`
-- `tests/test_complete_v4_migration_gate.py`
+```sh
+python -B tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py --check
+```
 
-The evidence filename retains its original RED baseline name, while its contents
-track the current scan. Release-proof status does not establish platform-specific
-Launcher or PackVM end-to-end operation. The baseline tables below are retained
-as historical removal evidence. They do not describe a live production fallback.
+The [checked-in scan evidence](../../scripts/quality/evidence/complete_v4_migration_red_64b2240e.json)
+records the revision in `source.observed_head_sha`, the structural counts in
+`counts` and `pack_inventory`, and the per-Pack migration classifications in
+`counts.migration_status`. That record has `gate.status: RED` and
+`gate.clean: false`. Phase 0 CI checks evidence freshness and reports the
+semantic status. The separate [architecture inventory](../../generated/architecture/architecture_inventory.json)
+names its own source commit in `repository.commit`.
+
+Physical Launcher, installer and PackVM behavior require their own runtime
+evidence. The tables below record the historical removal baseline.
 
 ## Normative authority
 

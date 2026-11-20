@@ -79,12 +79,28 @@ Unsigned development Packs use `local.*`. The Rust guest workspace is separate
 from the host workspace, targets `wasm32-wasip2`, and pins wit-bindgen 0.62.0
 (published 2026-09-10; 0.63.0 was too new under the reviewed dependency rule).
 
-Build real components and refresh their manifest/Profile hashes:
+From the repository root, use the Rust 1.94.0 toolchain and
+`wasm32-wasip2` target declared in [rust-toolchain.toml](../rust-toolchain.toml).
+The default preset publisher also needs PyYAML 6.0.3, pinned in the
+[development requirements](../tobkiri_runtime/requirements-dev.txt).
+
+Build the components, refresh their manifest and Profile hashes, and
+regenerate the legacy preset Packs and published Profiles:
 
 ```sh
 python3 -B packs/build.py
 python3 -B packs/publish_presets.py
 ```
+
+To regenerate only the published Profile JSON from existing Pack artifacts and
+recorded legacy provenance, use:
+
+```sh
+python3 -B packs/publish_presets.py --profiles-only
+```
+
+This mode checks the existing Pack pins and the legacy source digests, and
+runs without importing PyYAML or rebuilding the components.
 
 The script uses the shared `.work/cargo-target`, two build jobs, no debug symbols
 or incremental builds, and the agreed 5 GiB free-space floor. It never invents
