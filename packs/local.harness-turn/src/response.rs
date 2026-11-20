@@ -38,12 +38,10 @@ pub(super) fn assemble(mut events: Vec<ChatEvent>) -> Result<CompletedResponse, 
     let mut usage: Option<Usage> = None;
     for event in events {
         match event {
-            ChatEvent::TextDelta(delta) if !delta.is_empty() => {
-                match parts.last_mut() {
-                    Some(Part::Message(MessagePart::Text(previous))) => previous.push_str(&delta),
-                    _ => parts.push(Part::Message(MessagePart::Text(delta))),
-                }
-            }
+            ChatEvent::TextDelta(delta) if !delta.is_empty() => match parts.last_mut() {
+                Some(Part::Message(MessagePart::Text(previous))) => previous.push_str(&delta),
+                _ => parts.push(Part::Message(MessagePart::Text(delta))),
+            },
             ChatEvent::ReasoningDelta(delta) if !delta.is_empty() => match parts.last_mut() {
                 Some(Part::Message(MessagePart::Reasoning(previous))) => previous.push_str(&delta),
                 _ => parts.push(Part::Message(MessagePart::Reasoning(delta))),
