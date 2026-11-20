@@ -3773,6 +3773,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   承認を要する保存済み履歴の圧縮と、送信する入力に結び付いたdigestは維持する。
 - D-2 は `78c549e62` で、Launcher更新欄と日英の説明の表示をHarnessに揃えた。
   更新APIに送る既存の `defaultspack` キーは互換性のため引き続き使う。
+  `a824627c3` は旧配布Profileの既知のID・Base Pack・名前の組み合わせを、Launcher Homeで
+  「Tobkiri Harness」と表示する。保存済み名称での検索、名称編集と複製に使う元の値、承認画面の
+  履歴表示を保持する。カスタムProfileを含む一覧・検索・編集と既存承認表示の25件が通過した。
 - D-3 のShell起動画面を `13bb521e6` で日英対応にした。通常の起動操作を
   [Launcher CI 43598692796](https://github.com/harupipipipi/tobkiri/actions/runs/43598692796)で確認し、
   関連49件と実AppKit/WebKitが通過した。登録済みモデル一覧の表示は `7c2b4a962` で日英対応。
@@ -5920,6 +5923,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   所有する。Wasmに移した操作もこのSessionから呼ばれる。既存Launcherの
   `NativeRuntimeState::adopt_core` へ実ProfileのSession・起動時の現在性と認証済み
   Shellへの引き渡しを結び付け、元のUIと接続後に両プロセスを整理する。
+- 通常のWebViewは `App.tsx` と `apiTransport.ts` で、Setup APIの前に同一オリジンの
+  `/api/panel/auth/exchange` にコードを送る。Rust側がこの状態を引き取る際は、コードを発行する
+  `/api/panel/auth/bootstrap` と、コード・承認ウィンドウ用grant・セッションを管理する
+  `panel_auth.py` を同じ所有者に置く。WebViewが受け取る `HttpOnly` cookieとCSRF、署名済み
+  Profileへの束縛、再認証時のjournal引継ぎ、専用承認cookieの分離を既存テストで比較する。
+  現在のRust側には配布用パネルの同一オリジンlistenerがないため、この接続が両Pythonプロセスの
+  廃止に残る。原本の検証は `test_panel_auth_capture_fencing.py` と `test_pack_api_server.py` にある。
 - 現在のsealed Python起動がmacOS配布物内のPackVMマニフェストも照合するため、
   ゲストが未準備の配布物での起動と、PackVMを含まない配布物での起動は別の検証になる。
   `spawn_defaultspack_local_server` 付近の古いpack-shell表記も、実際の永続プロセス所有と
