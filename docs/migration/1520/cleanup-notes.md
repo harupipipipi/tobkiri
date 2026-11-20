@@ -6048,6 +6048,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   期限切れ確認とClockはキャンセル信号を共有するため、独立した実行が必要な会話送信と停止は
   従来どおり `dispatch` の証明を要求する。配布経路の切り替え、実Wasmでの会話と承認の検証、
   SchedulerとJob Broker自体のRustへの移植は残る。
+- `2394fc8a2` は、自動Calendarの4権限を署名済みBundleと照合し、配布済みの同じ
+  Saved Orchestration Wasmへ接続するLauncherポートを追加した。専用の起動証明をDefaultspackに渡し、
+  通常チャットと自動Calendarの証明を入れ替えた場合は本文受領前に拒否する。実行のたびにBundleと
+  Wasm配布アーカイブを再検証する。実WasmをCore経由で実行し、元のPythonのステップ出力、
+  大きい画像入力、ツール結果の上限まで照合した。macOS上のLauncherのビルド、本文受取前の証明照合、
+  本文サイズ、容量予約、環境マーカーの検証は[CI](https://github.com/harupipipipi/tobkiri/actions/runs/44669578847)で通過した。
+- `f6a771803` は、Clockからの自動実行でWasmのターン取得が成功し、確定入力と実際のAdapterの
+  追跡を確認できた会話を既存のWasmへ送る。同じ発生回・入力・期限とキャンセル証明を毎ステップ照合し、
+  会話への追記とProvider呼出しには従来のHost経路を使う。手動実行・期限切れ再開・従来の実行権取得は
+  元の会話実行経路を使う。Wasm実行を選んだ発生回をPackVMで再実行しない。
+  署名済み本番経路の回帰4件が通り、自動実行で会話を保存し、競合や取得結果の応答喪失では
+  繰り返し実行しなかった。手動実行、期限切れ再開と通常チャットの経路も確認した。
+  この回帰ではLauncher IPCの応答と推論を差し替えた。配布アーカイブ上の実Wasmは別途Coreで実行した。
 - `ada704c89` は公開時の期限と検査を一つの引数にまとめて、既存入力確定の `too_many_arguments` を
   修正した。元の[Clippyゲート](https://github.com/harupipipipi/tobkiri/actions/runs/44660705548)は
   `8b21d6696` でこの指摘により停止した。`817341b81` の
@@ -6566,7 +6579,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - [次のDMGステージング](https://github.com/harupipipipi/tobkiri/actions/runs/44656834240/job/136037440623) は
   デバッグビルドのSide Chat・Provider Snapshotの証明テストでスタックが溢れた。証明を一件ずつ
   生成・検証し、ケースと期待値を維持した。実行する2件をmacOSのグループ検証にも追加し、
-  DMGステージングでスタック設定を変えずに確認する。
+  [修正後のmacOSグループ検証](https://github.com/harupipipipi/tobkiri/actions/runs/44667703090) では
+  両方が通過した。DMGステージングのデバッグ構成は別途確認する。
 - インストールしたコピーの検証は、Launcherの正常終了とKernel・Broker両ポートの解放も
   待つ。Kernelは別のプロセスグループで動くため、アプリの終了処理が完了しなかった場合は
   失敗を返し、実行に使ったコピーとデータを保持する。引き継いだ終了予算内で待ち、実行が
