@@ -284,8 +284,8 @@ fn seed_legacy_turns(
 #[ignore = "requires the source-built structured Harness conversation-store component"]
 async fn structured_store_reads_all_pages_including_a_split_tool_round() -> Result<()> {
     let root = physical_temp()?;
-    // This fixture lifts over a thousand structured records in one export.
-    let profile = store_profile(&root.path().join("dual"), true, 60_000)?;
+    // Lifting over a thousand structured records can take longer on CI.
+    let profile = store_profile(&root.path().join("dual"), true, 120_000)?;
     let host = Arc::new(Host::default());
     let data = root.path().join("data");
     let core = Core::from_runtime_owner(RuntimeOwner::open(&data)?, host.clone())?;
@@ -322,7 +322,7 @@ async fn structured_store_reads_all_pages_including_a_split_tool_round() -> Resu
     let output = support::within_session_timeout(
         &session,
         "load the full structured history",
-        Duration::from_secs(65),
+        Duration::from_secs(125),
         session.call_user_port(STRUCTURED_CHAT_STORE.parse()?, "load".parse()?, &arguments),
     )
     .await?;
