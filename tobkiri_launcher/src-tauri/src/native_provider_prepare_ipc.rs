@@ -575,6 +575,7 @@ impl Start<'_> {
             RequestStart::Inline(operation) => Ok(operation),
             RequestStart::SavedOrchestration { .. }
             | RequestStart::SavedInput(_)
+            | RequestStart::ScheduledSourceLedger(_)
             | RequestStart::ApplicationPresentation { .. }
             | RequestStart::ConversationComplete { .. }
             | RequestStart::WorkflowMessages { .. }
@@ -3128,6 +3129,7 @@ mod tests {
                     r#","scheduled_source_ledger":{{"caller":"{caller_name}","operation":"{operation_name}","input_bytes":{SCHEDULED_SOURCE_LEDGER_INPUT_LIMIT}}}"#
                 ));
                 let start = parse_start(START, frame.as_bytes()).unwrap();
+                assert!(start.operation().is_err());
                 assert!(matches!(
                     start.request_start().unwrap(),
                     RequestStart::ScheduledSourceLedger(ScheduledSourceLedgerStart {
