@@ -26,6 +26,7 @@ use tobkiri_manifest::{
 };
 
 const LLM: &str = "local.harness-chat.llm-provider@1.0";
+const STRUCTURED_LLM: &str = "local.harness-chat.llm-provider@2.0";
 const MODEL_ROUTE: &str = "local.model-registry.routing@1.0";
 const PROVIDER_ROUTE: &str = "local.provider-registry.routing@1.0";
 const SAVED_PACK: &str = "local.saved-conversation";
@@ -65,42 +66,74 @@ fn manifest(id: &str, runtime: RuntimeSpec, wall_ms: u64) -> Result<PackManifest
     })
 }
 
-fn streaming_packs(root: &Path, origins: &[String], wall_ms: u64) -> Result<[RegistryPack; 2]> {
-    let artifact = std::env::var_os("TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT")
-        .context("source-built registered OpenAI component required")?;
+fn streaming_packs(
+    root: &Path,
+    origins: &[String],
+    wall_ms: u64,
+    structured: bool,
+) -> Result<[RegistryPack; 2]> {
+    let (artifact_var, provider_wit, ui_port) = if structured {
+        (
+            "TOBKIRI_TEST_REGISTERED_OPENAI_STRUCTURED_COMPONENT",
+            "packs/local.openai-compat-provider/structured-wit/pack.wit",
+            STRUCTURED_LLM,
+        )
+    } else {
+        (
+            "TOBKIRI_TEST_REGISTERED_OPENAI_COMPONENT",
+            "packs/local.openai-compat-provider/wit/pack.wit",
+            LLM,
+        )
+    };
+    let artifact = std::env::var_os(artifact_var).with_context(|| {
+        format!("set {artifact_var} to the source-built registered OpenAI component")
+    })?;
     let repository = support::repo();
     let chat_wit = fs::read(repository.join("packs/shapes/harness-chat.wit"))?;
+    let structured_wit = structured
+        .then(|| fs::read(repository.join("packs/shapes/harness-chat-v2/harness-chat.wit")))
+        .transpose()?;
     let core = fs::read(repository.join("crates/tobkiri-wit/wit/core/core.wit"))?;
     let mut ui = manifest(UI, RuntimeSpec::Data, wall_ms)?;
-    let llm = ports(LLM)?;
-    ui.shapes.push(ShapeDefinition {
-        name: llm.shape.clone(),
-        version: llm.version,
-        kind: ShapeKind::Port,
-        wit: "wit/harness-chat.wit".into(),
-    });
-    ui.ports.consumes.push(llm.clone());
-    ui.permissions.ports.insert(LLM.into());
+    let mut ui_files = BTreeMap::from([
+        ("wit/deps/core.wit".into(), core.clone()),
+        (
+            "wit/llm-provider.shape.json".into(),
+            br#"{"cardinality":"one","streams":{"chat":"chat-event"},"callbacks":{}}"#.to_vec(),
+        ),
+        (
+            "ui/index.html".into(),
+            b"<!doctype html><title>Registered chat acceptance</title>".to_vec(),
+        ),
+    ]);
+    let mut provides = Vec::new();
+    for (shape, path, wit) in [
+        (LLM, "wit/harness-chat.wit", Some(&chat_wit)),
+        (
+            STRUCTURED_LLM,
+            "wit/harness-chat-v2.wit",
+            structured_wit.as_ref(),
+        ),
+    ] {
+        if let Some(wit) = wit {
+            let port = ports(shape)?;
+            ui.shapes.push(ShapeDefinition {
+                name: port.shape.clone(),
+                version: port.version,
+                kind: ShapeKind::Port,
+                wit: path.into(),
+            });
+            ui_files.insert(path.into(), wit.clone());
+            provides.push(port);
+        }
+    }
+    ui.ports.consumes.push(ports(ui_port)?);
+    ui.permissions.ports.insert(ui_port.into());
     ui.ui = Some(UiDefinition {
         entry: "ui/index.html".into(),
-        ports_used: vec![LLM.parse()?],
+        ports_used: vec![ui_port.parse()?],
     });
-    let ui = registry::materialize(
-        root,
-        ui,
-        BTreeMap::from([
-            ("wit/harness-chat.wit".into(), chat_wit.clone()),
-            ("wit/deps/core.wit".into(), core.clone()),
-            (
-                "wit/llm-provider.shape.json".into(),
-                br#"{"cardinality":"one","streams":{"chat":"chat-event"},"callbacks":{}}"#.to_vec(),
-            ),
-            (
-                "ui/index.html".into(),
-                b"<!doctype html><title>Registered chat acceptance</title>".to_vec(),
-            ),
-        ]),
-    )?;
+    let ui = registry::materialize(root, ui, ui_files)?;
     let mut openai = manifest(
         "local.openai-compat-provider",
         RuntimeSpec::Wasm {
@@ -114,7 +147,7 @@ fn streaming_packs(root: &Path, origins: &[String], wall_ms: u64) -> Result<[Reg
         },
         wall_ms,
     )?;
-    openai.ports.provides.push(llm);
+    openai.ports.provides = provides;
     openai.ports.consumes = vec![ports(MODEL_ROUTE)?, ports(PROVIDER_ROUTE)?];
     openai
         .permissions
@@ -125,39 +158,39 @@ fn streaming_packs(root: &Path, origins: &[String], wall_ms: u64) -> Result<[Reg
         .network
         .origins
         .extend(origins.iter().cloned());
-    let openai = registry::materialize(
-        root,
-        openai,
-        BTreeMap::from([
-            ("component.wasm".into(), fs::read(artifact)?),
-            (
-                "config.json".into(),
-                serde_json::to_vec(&json!({"registered_models":true,"timeout_ms":20000}))?,
-            ),
-            (
-                "wit/pack.wit".into(),
-                fs::read(repository.join("packs/local.openai-compat-provider/wit/pack.wit"))?,
-            ),
-            ("wit/deps/harness-chat.wit".into(), chat_wit),
-            ("wit/deps/core.wit".into(), core),
-            (
-                "wit/deps/core-v1-2.wit".into(),
-                fs::read(repository.join("crates/tobkiri-wit/wit/core-v1-2/core.wit"))?,
-            ),
-            (
-                "wit/deps/model-registry.wit".into(),
-                fs::read(repository.join("packs/local.model-registry-rust/wit/pack.wit"))?,
-            ),
-            (
-                "wit/deps/provider-registry.wit".into(),
-                fs::read(repository.join("packs/local.provider-registry-rust/wit/pack.wit"))?,
-            ),
-        ]),
-    )?;
+    let mut provider_files = BTreeMap::from([
+        ("component.wasm".into(), fs::read(artifact)?),
+        (
+            "config.json".into(),
+            serde_json::to_vec(&json!({"registered_models":true,"timeout_ms":20000}))?,
+        ),
+        (
+            "wit/pack.wit".into(),
+            fs::read(repository.join(provider_wit))?,
+        ),
+        ("wit/deps/harness-chat.wit".into(), chat_wit),
+        ("wit/deps/core.wit".into(), core),
+        (
+            "wit/deps/core-v1-2.wit".into(),
+            fs::read(repository.join("crates/tobkiri-wit/wit/core-v1-2/core.wit"))?,
+        ),
+        (
+            "wit/deps/model-registry.wit".into(),
+            fs::read(repository.join("packs/local.model-registry-rust/wit/pack.wit"))?,
+        ),
+        (
+            "wit/deps/provider-registry.wit".into(),
+            fs::read(repository.join("packs/local.provider-registry-rust/wit/pack.wit"))?,
+        ),
+    ]);
+    if let Some(wit) = structured_wit {
+        provider_files.insert("wit/deps/harness-chat-v2.wit".into(), wit);
+    }
+    let openai = registry::materialize(root, openai, provider_files)?;
     Ok([ui, openai])
 }
 
-fn api(listener: TcpListener) -> Result<(String, Value)> {
+fn api(listener: &TcpListener, sse: &str) -> Result<(String, Value)> {
     listener.set_nonblocking(true)?;
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut socket = loop {
@@ -177,9 +210,10 @@ fn api(listener: TcpListener) -> Result<(String, Value)> {
     let mut reader = BufReader::new(&mut socket);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    let path = line
-        .split_whitespace()
-        .nth(1)
+    let mut request_line = line.split_whitespace();
+    ensure!(request_line.next() == Some("POST"));
+    let path = request_line
+        .next()
         .context("missing request URI")?
         .to_owned();
     let mut length = None;
@@ -204,10 +238,6 @@ fn api(listener: TcpListener) -> Result<(String, Value)> {
     let mut body = vec![0; length];
     reader.read_exact(&mut body)?;
     let request = serde_json::from_slice(&body)?;
-    let sse = concat!(
-        "data: {\"choices\":[{\"delta\":{\"content\":\"local reply\"}}]}\n\n",
-        "data: [DONE]\n\n"
-    );
     write!(
         socket,
         "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sse}",
@@ -221,9 +251,10 @@ async fn registered_core(
     root: &Path,
     origins: &[String],
     wall_ms: u64,
+    structured: bool,
 ) -> Result<(Core, ProfileStartBinding)> {
     let [model, provider] = packs()?;
-    let [ui, openai] = streaming_packs(root, origins, wall_ms)?;
+    let [ui, openai] = streaming_packs(root, origins, wall_ms, structured)?;
     let saved = registry::pack(SAVED_PACK)?;
     let owner = saved.pin.clone();
     let mut profile = registry::profile(
@@ -1086,9 +1117,20 @@ async fn stream(
     reference: &str,
     message: &str,
 ) -> Result<Vec<Value>> {
-    let arguments = canon(&json!({"prompt":{
+    let prompt = json!({
         "model":reference, "max-tokens":512, "messages":[{"role":"user","content":message}]
-    }}))?;
+    });
+    stream_prompt(session, ui, LLM, prompt).await
+}
+
+async fn stream_prompt(
+    session: &Session,
+    ui: &UiAttachment,
+    shape: &str,
+    prompt: Value,
+) -> Result<Vec<Value>> {
+    let reference = prompt["model"].as_str().context("prompt model")?.to_owned();
+    let arguments = canon(&json!({"prompt":prompt}))?;
     let opened = within_session(
         session,
         "open registered stream",
@@ -1097,7 +1139,7 @@ async fn stream(
             &ui.host_session,
             ui.generation.context("missing UI generation")?,
             &ui.receiver,
-            LLM.parse()?,
+            shape.parse()?,
             "chat".parse()?,
             &arguments,
         ),
@@ -1136,9 +1178,13 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
         .iter()
         .map(|listener| Ok(format!("http://{}", listener.local_addr()?)))
         .collect::<Result<Vec<_>>>()?;
-    let servers = listeners.map(|listener| thread::spawn(move || api(listener)));
+    let sse = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"local reply\"}}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let servers = listeners.map(|listener| thread::spawn(move || api(&listener, sse)));
     let root = physical_temp()?;
-    let (core, start) = registered_core(root.path(), &origins, 10_000).await?;
+    let (core, start) = registered_core(root.path(), &origins, 10_000, false).await?;
     let profile = &start.profile_id;
     let core = Arc::new(core);
     #[cfg(unix)]
@@ -1219,6 +1265,142 @@ async fn two_saved_models_route_actual_sse_requests() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "requires a source-built structured OpenAI component and staged Registry Pack archives"]
+async fn structured_provider_round_trips_two_model_requests() -> Result<()> {
+    const CALL_ID: &str = "call_clock_01";
+    const RESULT: &str = "12:00 UTC";
+    const QUESTION: &str = "What time is it in UTC?";
+    const CAP: u32 = 128;
+
+    let first_sse = concat!(
+        r#"data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Need ","content":"Let me ","tool_calls":[{"index":0,"function":{"arguments":"{\"zone\":"}}]}}]}"#,
+        "\n\n",
+        r#"data: {"choices":[{"index":0,"delta":{"reasoning_content":"the current time.","content":"check.","tool_calls":[{"index":0,"id":"call_clock_01","type":"function","function":{"name":"clock","arguments":"\"UTC\""}}]}}]}"#,
+        "\n\n",
+        r#"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}}]}"#,
+        "\n\n",
+        r#"data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        "\n\n",
+        r#"data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":4}}}"#,
+        "\n\ndata: [DONE]\n\n",
+    );
+    let second_sse = concat!(
+        r#"data: {"choices":[{"index":0,"delta":{"content":"It is noon "}}]}"#,
+        "\n\n",
+        r#"data: {"choices":[{"index":0,"delta":{"content":"in UTC."},"finish_reason":"stop"}]}"#,
+        "\n\n",
+        r#"data: {"choices":[],"usage":{"prompt_tokens":34,"completion_tokens":5}}"#,
+        "\n\ndata: [DONE]\n\n",
+    );
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let origin = format!("http://{}", listener.local_addr()?);
+    let root = physical_temp()?;
+    let (core, start) =
+        registered_core(root.path(), std::slice::from_ref(&origin), 10_000, true).await?;
+    let session = core.start_bound(&start).await?;
+    let server = thread::spawn(move || -> Result<_> {
+        Ok([api(&listener, first_sse)?, api(&listener, second_sse)?])
+    });
+
+    let parameters = json!({
+        "type":"object", "properties":{"zone":{"type":"string"}}, "required":["zone"]
+    });
+    let checked = async {
+        let provider_revision =
+            save_connection(&session, &start.profile_id, "one", "Local clock", &origin, 0).await?;
+        save_model(
+            &session,
+            &json!({
+                "model_profile_id":"registered-one", "model_id":"llama/one",
+                "provider_instance_id":"provider.one", "display_name":"Local clock",
+                "expected_revision":0, "provider_registry_revision":provider_revision,
+                "max_output_tokens":CAP,
+            }),
+        )
+        .await?;
+        let reference = select_saved_model(&session, "one", 2).await?;
+        ensure!(reference == "registered-one");
+        let ui = admitted_ui(&session)?;
+        let mut prompt = json!({
+            "model":reference, "max-tokens":512,
+            "tools":[{"name":"clock","description":"Read the local time","parameters":parameters}],
+            "messages":[{"role":"user","parts":[{"tag":"text","val":QUESTION}],"response":null}],
+        });
+        let first = stream_prompt(&session, &ui, STRUCTURED_LLM, prompt.clone()).await?;
+        assert_eq!(first, [
+            json!({"tag":"reasoning-delta","val":"Need "}),
+            json!({"tag":"text-delta","val":"Let me "}),
+            json!({"tag":"tool-delta","val":{"index":0,"id":null,"name":null,"arguments":"{\"zone\":"}}),
+            json!({"tag":"reasoning-delta","val":"the current time."}),
+            json!({"tag":"text-delta","val":"check."}),
+            json!({"tag":"tool-delta","val":{"index":0,"id":CALL_ID,"name":"clock","arguments":"\"UTC\""}}),
+            json!({"tag":"tool-delta","val":{"index":0,"id":null,"name":null,"arguments":"}"}}),
+            json!({"tag":"usage","val":{"prompt-tokens":20,"completion-tokens":7,"cached-tokens":4}}),
+            json!({"tag":"finish","val":{"tag":"tool-calls"}}),
+        ]);
+        let tool_parts = [&first[2]["val"], &first[5]["val"], &first[6]["val"]];
+        let arguments = tool_parts
+            .iter()
+            .filter_map(|part| part["arguments"].as_str())
+            .collect::<String>();
+        let arguments: Value = serde_json::from_str(&arguments)?;
+        let call_id = &tool_parts[1]["id"];
+        let messages = prompt["messages"].as_array_mut().context("prompt messages")?;
+        messages.push(json!({
+            "role":"assistant", "parts":[
+                {"tag":"reasoning","val":format!("{}{}", first[0]["val"].as_str().unwrap(), first[3]["val"].as_str().unwrap())},
+                {"tag":"text","val":format!("{}{}", first[1]["val"].as_str().unwrap(), first[4]["val"].as_str().unwrap())},
+                {"tag":"tool-call","val":{"id":call_id,"name":tool_parts[1]["name"],"arguments":arguments}},
+            ],
+            "response":{"finish":first[8]["val"],"usage":first[7]["val"]},
+        }));
+        // Inject a deterministic result at the provider boundary.
+        messages.push(json!({
+            "role":"tool", "parts":[{"tag":"tool-result","val":{
+                "call-id":call_id,"content":RESULT,"is-error":false,
+            }}], "response":null,
+        }));
+        let second = stream_prompt(&session, &ui, STRUCTURED_LLM, prompt).await?;
+        assert_eq!(second, [
+            json!({"tag":"text-delta","val":"It is noon "}),
+            json!({"tag":"text-delta","val":"in UTC."}),
+            json!({"tag":"usage","val":{"prompt-tokens":34,"completion-tokens":5,"cached-tokens":null}}),
+            json!({"tag":"finish","val":{"tag":"stop"}}),
+        ]);
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    let closed = session.close().await;
+    checked?;
+    closed?;
+
+    let [(first_path, first), (second_path, second)] = server
+        .join()
+        .map_err(|_| anyhow::anyhow!("structured loopback server failed"))??;
+    assert_eq!(first_path, "/v1/chat/completions");
+    assert_eq!(second_path, first_path);
+    let mut expected = json!({
+        "model":"llama/one", "messages":[{"role":"user","content":QUESTION}],
+        "tools":[{"type":"function","function":{
+            "name":"clock", "description":"Read the local time", "parameters":parameters,
+        }}],
+        "stream":true, "stream_options":{"include_usage":true},
+        "max_tokens":CAP, "temperature":0.0,
+    });
+    assert_eq!(first, expected);
+    let messages = expected["messages"]
+        .as_array_mut()
+        .context("expected messages")?;
+    messages.push(json!({
+        "role":"assistant", "content":"Let me check.", "reasoning_content":"Need the current time.",
+        "tool_calls":[{"id":CALL_ID,"type":"function","function":{"name":"clock","arguments":"{\"zone\":\"UTC\"}"}}],
+    }));
+    messages.push(json!({"role":"tool","tool_call_id":CALL_ID,"content":RESULT}));
+    assert_eq!(second, expected);
+    Ok(())
+}
+
+#[tokio::test]
 #[ignore = "requires source-built Wasm Packs and TOBKIRI_TEST_REGISTERED_LLAMA_ORIGIN"]
 async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
     const MODEL: &str = "gemma3-1b-local";
@@ -1241,7 +1423,8 @@ async fn real_1b_saved_model_streams_through_admitted_ui() -> Result<()> {
         "llama.cpp requires a canonical http://127.0.0.1 origin with an unprivileged port"
     );
     let root = physical_temp()?;
-    let (core, start) = registered_core(root.path(), std::slice::from_ref(&origin), 30_000).await?;
+    let (core, start) =
+        registered_core(root.path(), std::slice::from_ref(&origin), 30_000, false).await?;
     let core = Arc::new(core);
     #[cfg(unix)]
     let live = LiveConversationFixture::import(&core, root.path(), &start.profile_id).await?;

@@ -1,11 +1,27 @@
 //! OpenAI-compatible provider guest. All network and secret access is core-gated.
 
+#[cfg(not(feature = "structured-chat"))]
 wit_bindgen::generate!({ path: "wit", world: "pack",generate_all });
+#[cfg(feature = "structured-chat")]
+wit_bindgen::generate!({ path: "structured-wit", world: "pack",generate_all });
 
 mod registry;
+#[cfg(feature = "structured-chat")]
+mod structured;
 
+#[cfg(not(feature = "structured-chat"))]
 use exports::local::harness_chat::llm_provider::{Guest as Provider, Prompt};
+#[cfg(feature = "structured-chat")]
+use exports::local::harness_chat1_0_0::llm_provider::{Guest as Provider, Prompt};
+#[cfg(feature = "structured-chat")]
+use exports::local::harness_chat2_0_0::llm_provider::{
+    Guest as StructuredProvider, Prompt as StructuredPrompt,
+};
 use exports::tobkiri::core::{lifecycle, stream_source};
+#[cfg(feature = "structured-chat")]
+use local::harness_chat2_0_0::messages::MessagePart as StructuredPart;
+#[cfg(feature = "structured-chat")]
+use std::collections::VecDeque;
 use std::{cell::RefCell, collections::BTreeMap, num::NonZeroU32};
 use tobkiri::core::{
     flow, network, secrets,
@@ -103,6 +119,15 @@ struct ActiveStream {
     pending_usage: Option<String>,
     pending_failure: Option<PendingFailure>,
     done: bool,
+    #[cfg(feature = "structured-chat")]
+    structured: Option<StructuredStream>,
+}
+
+#[cfg(feature = "structured-chat")]
+#[derive(Default)]
+struct StructuredStream {
+    codec: structured::StructuredEvents,
+    pending: VecDeque<String>,
 }
 
 // Share the notification-then-failure order for HTTP and SSE API errors.
@@ -368,101 +393,122 @@ impl lifecycle::Guest for Pack {
 
 impl Provider for Pack {
     fn chat(prompt: Prompt) -> Result<StreamHandle, Error> {
+        let model = prompt.model.clone();
+        start_chat(&model, false, |config, cap| {
+            Ok(request_body(config, prompt, cap))
+        })
+    }
+}
+
+#[cfg(feature = "structured-chat")]
+impl StructuredProvider for Pack {
+    fn chat(prompt: StructuredPrompt) -> Result<StreamHandle, Error> {
+        let model = prompt.model.clone();
+        start_chat(&model, true, |config, cap| {
+            structured::request_body(config, prompt, cap)
+        })
+    }
+}
+
+fn start_chat(
+    model: &str,
+    structured: bool,
+    body: impl FnOnce(&Settings, Option<NonZeroU32>) -> Result<Vec<u8>, Error>,
+) -> Result<StreamHandle, Error> {
+    if flow::is_cancelled() {
+        return Err(error(ErrorCode::Cancelled, "run cancelled"));
+    }
+    STATE.with_borrow_mut(|state| {
+        if state.streams.len() >= 64 {
+            return Err(error(ErrorCode::LimitExceeded, "too many active streams"));
+        }
+        let configuration = state
+            .settings
+            .as_ref()
+            .ok_or_else(|| error(ErrorCode::Invalid, "provider has not been initialized"))?;
+        let resolved;
+        let (config, saved_max_tokens) = match configuration {
+            Configuration::Static(config) => {
+                if !model.is_empty() && model != config.model {
+                    return Err(error(
+                        ErrorCode::Invalid,
+                        "model does not match the approved provider settings",
+                    ));
+                }
+                (config, None)
+            }
+            Configuration::Registered(settings) => {
+                resolved = registry::resolve(model, settings.timeout_ms, flow::call_port)?;
+                let (config, cap) = &resolved;
+                (config, *cap)
+            }
+        };
+        let body = body(config, saved_max_tokens)?;
+        let secret = match &config.secret_name {
+            Some(name) => Some(secrets::get(name)?),
+            None => None,
+        };
+        let secret_headers = if secret.is_some() {
+            vec![network::HeaderFromSecret {
+                name: "authorization".into(),
+                prefix: "Bearer ".into(),
+                index: 0,
+            }]
+        } else {
+            vec![]
+        };
+        let request = network::Request {
+            method: "POST".into(),
+            url: format!("{}/chat/completions", config.base_url),
+            headers: vec![
+                ("content-type".into(), "application/json".into()),
+                ("accept".into(), "text/event-stream".into()),
+            ],
+            secret_headers,
+            body: Some(body),
+            timeout_ms: Some(config.timeout_ms),
+        };
+        let borrowed: Vec<&secrets::Secret> = secret.iter().collect();
+        let response = network::fetch(&request, &borrowed)?;
+        let pending_failure = if !(200..300).contains(&response.status()) {
+            let failure = http_failure(&response);
+            if structured || matches!(failure.code, ErrorCode::Cancelled) {
+                return Err(failure);
+            }
+            Some(PendingFailure::new(failure))
+        } else {
+            None
+        };
         if flow::is_cancelled() {
             return Err(error(ErrorCode::Cancelled, "run cancelled"));
         }
-        STATE.with_borrow_mut(|state| {
-            if state.streams.len() >= 64 {
-                return Err(error(ErrorCode::LimitExceeded, "too many active streams"));
-            }
-            let configuration = state
-                .settings
-                .as_ref()
-                .ok_or_else(|| error(ErrorCode::Invalid, "provider has not been initialized"))?;
-            let resolved;
-            let (config, saved_max_tokens) = match configuration {
-                Configuration::Static(config) => {
-                    if !prompt.model.is_empty() && prompt.model != config.model {
-                        return Err(error(
-                            ErrorCode::Invalid,
-                            "model does not match the approved provider settings",
-                        ));
-                    }
-                    (config, None)
-                }
-                Configuration::Registered(settings) => {
-                    resolved =
-                        registry::resolve(&prompt.model, settings.timeout_ms, flow::call_port)?;
-                    let (config, cap) = &resolved;
-                    (config, *cap)
-                }
-            };
-            let body = request_body(config, prompt, saved_max_tokens);
-            let secret = match &config.secret_name {
-                Some(name) => Some(secrets::get(name)?),
-                None => None,
-            };
-            let secret_headers = if secret.is_some() {
-                vec![network::HeaderFromSecret {
-                    name: "authorization".into(),
-                    prefix: "Bearer ".into(),
-                    index: 0,
-                }]
-            } else {
-                vec![]
-            };
-            let request = network::Request {
-                method: "POST".into(),
-                url: format!("{}/chat/completions", config.base_url),
-                headers: vec![
-                    ("content-type".into(), "application/json".into()),
-                    ("accept".into(), "text/event-stream".into()),
-                ],
-                secret_headers,
-                body: Some(body),
-                timeout_ms: Some(config.timeout_ms),
-            };
-            let borrowed: Vec<&secrets::Secret> = secret.iter().collect();
-            let response = network::fetch(&request, &borrowed)?;
-            let pending_failure = if !(200..300).contains(&response.status()) {
-                let failure = http_failure(&response);
-                if matches!(failure.code, ErrorCode::Cancelled) {
-                    return Err(failure);
-                }
-                Some(PendingFailure::new(failure))
-            } else {
-                None
-            };
-            if flow::is_cancelled() {
-                return Err(error(ErrorCode::Cancelled, "run cancelled"));
-            }
-            let is_sse = pending_failure.is_some()
-                || response.headers().iter().any(|(name, value)| {
-                    name.eq_ignore_ascii_case("content-type")
-                        && value.starts_with("text/event-stream")
-                });
-            if !is_sse {
-                return Err(error(ErrorCode::Invalid, "provider response is not SSE"));
-            }
-            state.next_id = state
-                .next_id
-                .checked_add(1)
-                .ok_or_else(|| error(ErrorCode::LimitExceeded, "stream handle exhaustion"))?;
-            let id = state.next_id;
-            state.streams.insert(
-                id,
-                ActiveStream {
-                    response,
-                    decoder: Decoder::default(),
-                    text: String::new(),
-                    pending_usage: None,
-                    pending_failure,
-                    done: false,
-                },
-            );
-            Ok(StreamHandle { id })
-        })
-    }
+        let is_sse = pending_failure.is_some()
+            || response.headers().iter().any(|(name, value)| {
+                name.eq_ignore_ascii_case("content-type") && value.starts_with("text/event-stream")
+            });
+        if !is_sse {
+            return Err(error(ErrorCode::Invalid, "provider response is not SSE"));
+        }
+        state.next_id = state
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| error(ErrorCode::LimitExceeded, "stream handle exhaustion"))?;
+        let id = state.next_id;
+        state.streams.insert(
+            id,
+            ActiveStream {
+                response,
+                decoder: Decoder::default(),
+                text: String::new(),
+                pending_usage: None,
+                pending_failure,
+                done: false,
+                #[cfg(feature = "structured-chat")]
+                structured: structured.then(StructuredStream::default),
+            },
+        );
+        Ok(StreamHandle { id })
+    })
 }
 
 impl stream_source::Guest for Pack {
@@ -477,6 +523,12 @@ impl stream_source::Guest for Pack {
         let result = STATE.with_borrow_mut(|state| {
             let stream = state.streams.get_mut(&local_id).ok_or_else(|| error(ErrorCode::NotFound,"stream not found"))?;
             if stream.done { state.streams.remove(&local_id); return Ok(vec![]); }
+            #[cfg(feature = "structured-chat")]
+            if let Some(structured) = stream.structured.as_mut() {
+                let events = pull_structured(structured, &stream.response, &mut stream.decoder, max as usize)?;
+                stream.done = structured.codec.done() && structured.pending.is_empty();
+                return Ok(events);
+            }
             if let Some(failure) = &mut stream.pending_failure {
                 return failure.next().map(|event| vec![event]);
             }
@@ -521,11 +573,7 @@ impl stream_source::Guest for Pack {
                 if !events.is_empty() {
                     break;
                 }
-                match stream.response.read(8192)? {
-                    Some(chunk) => stream.decoder.feed(&chunk).map_err(|message|error(ErrorCode::Invalid,message))?,
-                    None => { stream.decoder.finish().map_err(|message|error(ErrorCode::Invalid,message))?;
-                        return Err(error(ErrorCode::Invalid,"provider ended before SSE [DONE]")); }
-                }
+                read_sse_chunk(&stream.response, &mut stream.decoder)?;
             }
             Ok(events)
         });
@@ -544,6 +592,48 @@ impl stream_source::Guest for Pack {
             state.streams.remove(&local_id);
         });
     }
+}
+
+fn read_sse_chunk(response: &network::Response, decoder: &mut Decoder) -> Result<(), Error> {
+    if let Some(chunk) = response.read(8192)? {
+        return decoder
+            .feed(&chunk)
+            .map_err(|message| error(ErrorCode::Invalid, message));
+    }
+    decoder
+        .finish()
+        .map_err(|message| error(ErrorCode::Invalid, message))?;
+    Err(error(
+        ErrorCode::Invalid,
+        "provider ended before SSE [DONE]",
+    ))
+}
+
+#[cfg(feature = "structured-chat")]
+fn pull_structured(
+    stream: &mut StructuredStream,
+    response: &network::Response,
+    decoder: &mut Decoder,
+    max: usize,
+) -> Result<Vec<String>, Error> {
+    let mut events = Vec::new();
+    while events.len() < max {
+        if flow::is_cancelled() {
+            return Err(error(ErrorCode::Cancelled, "run cancelled"));
+        }
+        if let Some(event) = stream.pending.pop_front() {
+            events.push(event);
+        } else if stream.codec.done() {
+            break;
+        } else if let Some(frame) = decoder.next_frame() {
+            stream.pending.extend(stream.codec.frame(&frame)?);
+        } else if events.is_empty() {
+            read_sse_chunk(response, decoder)?;
+        } else {
+            break;
+        }
+    }
+    Ok(events)
 }
 
 export!(Pack);

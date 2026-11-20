@@ -3628,6 +3628,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [CI 43593582212](https://github.com/harupipipipi/tobkiri/actions/runs/43593582212)はmacOSで
   同じhello拡張のツールとスキーマ、空のコマンド一覧、従来呼出しの照合に通過した。
   通常のHarnessターンとの接続は残る。
+  2.0のWITに完了した応答の終了理由と任意の使用量を加え、保存と読込みで同じメッセージ型を使う。
+  OpenAI互換Packのopt-inビルドは1.0と2.0を提供する。既存のモデル解決、Secret、origin承認、
+  接続とキャンセルを共有し、2.0の変換だけを分けた。reasoning、同一IDのツール呼出しと結果、
+  キャッシュ使用量、終端の変換を検証した。実Wasmと保存済みモデル設定からloopback APIへ2回
+  接続し、1回目のIDを使って固定の結果を2回目へ渡した。通常1.0の保存済み2モデルの通信も成功。
+  WIT契約3件、Provider単体は2.0ビルド16件と通常ビルド10件が成功。1.0と2.0のSSE処理を
+  さらに共通化する場合は、1.0の
+  エラー通知と2.0の終了理由の順序を両方比較する。通常Flowでの実ツール呼出し、結果保存、
+  旧会話の読込みを保つ明示的な移行は残る。既存Store名を異なるdata shapeで再登録すると拒否される。
 - B-4 / C-11 は、`de1f3a75e` でProfileにproviderの集合を明示できるようにし、
   `4f9fb7557` でFlowの `call.provider` を追加した。初回admissionと最終dispatchで
   Pack ID、ハッシュ、提供ビューを照合する。[契約 CI 43592612365](https://github.com/harupipipipi/tobkiri/actions/runs/43592612365)は

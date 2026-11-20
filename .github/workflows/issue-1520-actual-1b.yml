@@ -12,7 +12,8 @@ on:
       - 'crates/tobkiri-e2e/fixtures/saved-conversation-owner.json'
       - 'packs/local.model-registry-rust/**'
       - 'packs/local.saved-conversation-rust/**'
-      - 'packs/local.openai-compat-provider/src/**'
+      - 'packs/local.openai-compat-provider/**'
+      - 'packs/shapes/harness-chat-v2/**'
       - 'packs/local.provider-registry-rust/**'
       - 'packs/stage_registry_packs.py'
       - 'packs/local.harness-prompt/**'
@@ -309,6 +310,16 @@ jobs:
             tail -n 80 "$work/registered-server.log" >&2
             exit "$status"
           fi
+      - name: Verify structured Wasm provider transport against a mock local API
+        run: |
+          cargo build --locked --release --target wasm32-wasip2 \
+            --manifest-path packs/Cargo.toml -p tobkiri-pack-openai-compat-provider \
+            --features structured-chat
+          export TOBKIRI_TEST_REGISTERED_OPENAI_STRUCTURED_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/registered-structured.log" --expected-passed 1 -- \
+            cargo test --locked -p tobkiri-e2e --test model_registry -- \
+              registered_network::structured_provider_round_trips_two_model_requests --ignored --exact
       - name: Retain test receipt
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -322,6 +333,8 @@ jobs:
             ${{ runner.temp }}/registered-1b.log
             ${{ runner.temp }}/registry-packs/
             ${{ runner.temp }}/registered-1b.receipt.json
+            ${{ runner.temp }}/registered-structured.log
+            ${{ runner.temp }}/registered-structured.receipt.json
             ${{ runner.temp }}/registered-provider.log
             ${{ runner.temp }}/registered-provider.receipt.json
             ${{ runner.temp }}/original-model-resolve.log

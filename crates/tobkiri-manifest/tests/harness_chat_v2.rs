@@ -1,6 +1,6 @@
 //! The standalone structured chat contract is a distinct, projected major.
-use std::collections::BTreeMap;
-use tobkiri_canon::Digest;
+use std::collections::{BTreeMap, BTreeSet};
+use tobkiri_canon::{Digest, Variant};
 use tobkiri_gate::PermissionSet;
 use tobkiri_manifest::*;
 
@@ -10,6 +10,8 @@ const PROVIDER_SIDECAR: &str =
     include_str!("../../../packs/shapes/harness-chat-v2/llm-provider.shape.json");
 const INPUT_SIDECAR: &str =
     include_str!("../../../packs/shapes/harness-chat-v2/user-input.shape.json");
+const STORE_SIDECAR: &str =
+    include_str!("../../../packs/shapes/harness-chat-v2/conversation-store.shape.json");
 
 fn shape(major: u16, interface: &str, wit: &str, sidecar: &str) -> ShapeDef {
     let files = BTreeMap::from([
@@ -94,6 +96,7 @@ fn structured_provider_requires_a_major_adapter_and_projects_all_data() {
     let message = list(field(prompt, "messages"));
     let part = list(field(message, "parts"));
     assert_eq!(case(part, "text"), Some(&WitType::String));
+    assert_eq!(case(part, "reasoning"), Some(&WitType::String));
     let call = case(part, "tool-call").unwrap();
     assert_eq!(field(call, "id"), &WitType::String);
     assert_eq!(field(call, "arguments"), &WitType::Json);
@@ -122,6 +125,20 @@ fn structured_provider_requires_a_major_adapter_and_projects_all_data() {
         assert!(case(finish, name).is_none());
     }
     assert_eq!(case(finish, "other"), Some(&WitType::String));
+    let response = WitType::Record(vec![
+        WitField {
+            name: "finish".into(),
+            ty: finish.clone(),
+        },
+        WitField {
+            name: "usage".into(),
+            ty: WitType::Option(Box::new(usage.clone())),
+        },
+    ]);
+    assert_eq!(
+        field(message, "response"),
+        &WitType::Option(Box::new(response))
+    );
 }
 
 #[test]
@@ -140,4 +157,90 @@ fn input_submit_keeps_the_flow_frame_and_accepts_tool_metadata() {
         &WitType::Json
     );
     assert!(matches!(list(field(input, "parts")), WitType::Variant(_)));
+}
+
+#[test]
+fn conversation_store_projects_the_same_ordered_messages_for_append_load_and_prompt() {
+    let old = shape(1, "conversation-store", V1, STORE_SIDECAR);
+    let store = shape(2, "conversation-store", V2, STORE_SIDECAR);
+    assert_eq!(compatibility(&old, &store).unwrap(), Compat::NeedsAdapter);
+    assert_eq!(store.cardinality, Cardinality::One);
+    assert!(store.streams.is_empty());
+    assert!(store.callbacks.is_empty());
+
+    let load = OpName::parse("load").unwrap();
+    let append = OpName::parse("append").unwrap();
+    assert_eq!(
+        store.functions.keys().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from([load.clone(), append.clone()])
+    );
+    assert_eq!(
+        core_error_result_operations(&store).unwrap(),
+        BTreeSet::from([load.clone(), append.clone()])
+    );
+
+    let provider = shape(2, "llm-provider", V2, PROVIDER_SIDECAR);
+    let prompt = &provider.functions[&OpName::parse("chat").unwrap()].params[0].1;
+    let messages = field(prompt, "messages");
+    let user_input = shape(2, "user-input", V2, INPUT_SIDECAR);
+    let input = &user_input.functions[&OpName::parse("submit").unwrap()].params[0].1;
+    let error = Some(Box::new(store.types["error"].clone()));
+    assert_eq!(
+        store.functions[&append],
+        WitFunction {
+            params: vec![
+                ("conversation".into(), WitType::String),
+                ("input".into(), input.clone()),
+                ("messages".into(), messages.clone()),
+            ],
+            result: Some(WitType::Result {
+                ok: None,
+                err: error.clone(),
+            }),
+        }
+    );
+    let context = WitType::Record(vec![
+        WitField {
+            name: "conversation".into(),
+            ty: WitType::String,
+        },
+        WitField {
+            name: "messages".into(),
+            ty: messages.clone(),
+        },
+    ]);
+    assert_eq!(
+        store.functions[&load],
+        WitFunction {
+            params: vec![("conversation".into(), WitType::String)],
+            result: Some(WitType::Result {
+                ok: Some(Box::new(context)),
+                err: error,
+            }),
+        }
+    );
+
+    let completed_messages = tobkiri_canon::parse(
+        br#"[
+          {"role":"assistant","parts":[
+            {"tag":"reasoning","val":"Need the local time"},
+            {"tag":"tool-call","val":{"id":"call-1","name":"clock","arguments":{"zone":"UTC"}}}
+          ],"response":{"finish":{"tag":"tool-calls"},"usage":{"prompt-tokens":20,"completion-tokens":0,"cached-tokens":null}}},
+          {"role":"tool","parts":[
+            {"tag":"tool-result","val":{"call-id":"call-1","content":"12:00 UTC","is-error":false}}
+          ],"response":null},
+          {"role":"assistant","parts":[{"tag":"text","val":"It is noon in UTC."}],"response":{"finish":{"tag":"stop"},"usage":null}}
+        ]"#,
+        Variant::StrictV1,
+    )
+    .unwrap();
+    assert_eq!(
+        project_json(
+            &store.functions[&append].params[2].1,
+            messages,
+            &completed_messages
+        )
+        .unwrap(),
+        completed_messages
+    );
 }

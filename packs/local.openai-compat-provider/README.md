@@ -42,5 +42,12 @@ error or audit text. Previously decoded deltas precede the error event; each pul
 its requested batch limit. Cancellation takes priority and releases the stream
 without a diagnostic event. Successful SSE output is unchanged.
 
-Successful v1 generations still carry text and usage only. Tool calls, reasoning, finish
-reasons and retry policy require their respective contract/lifecycle work.
+Successful v1 generations still carry text and usage only.
+
+Building with `--features structured-chat` exports both the existing 1.0 provider
+port and the 2.0 port. A test Pack explicitly declares both ports and applies the
+same saved routing and origin permissions. The 2.0 port translates structured
+messages and JSON tool schemas to Chat Completions, and streams reasoning, tool
+fragments, usage, and a terminal reason. It requires a finish reason followed by
+`[DONE]`. The provider forwards tool calls as data. Flow dispatch and durable
+structured history require their own integration. The shipped Pack declares 1.0.

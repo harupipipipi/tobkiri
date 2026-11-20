@@ -309,7 +309,7 @@
     },
     {
       "id": "local.openai-compat-provider",
-      "sha256": "sha256:04bcc3b6f789a1354b5e4ae868f342a88887cadd96dcaa04160f467dc6ab7647",
+      "sha256": "sha256:6662b1f9ccab6e2d0865c461333d33d819ec107025efec1deac571ea56977960",
       "source": "file:../local.openai-compat-provider",
       "version": "0.1.0"
     },
