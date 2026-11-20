@@ -6061,6 +6061,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   署名済み本番経路の回帰4件が通り、自動実行で会話を保存し、競合や取得結果の応答喪失では
   繰り返し実行しなかった。手動実行、期限切れ再開と通常チャットの経路も確認した。
   この回帰ではLauncher IPCの応答と推論を差し替えた。配布アーカイブ上の実Wasmは別途Coreで実行した。
+- `cf1fe4c15` と `47cdd8d36` は手動実行と期限切れ再開を同じ保存済み会話のWasmへ接続する。
+  手動はShellからCalendar Manageを経由した権限をすべて照合する。再開は元のJob Brokerの
+  アーカイブとTurn開始の証明を要求し、照合済みの発生回と元のキャンセル信号を引き継ぐ。
+  実行権取得と確定入力を確認したターンだけを専用の実行先へ送り、既存のGrantとHostの承認を使う。
+  古い状態の照合が失敗した場合や実行権の競合・応答喪失では、会話を重複実行しない。
+  既存の会話送信と停止の独立dispatch要件を維持する。署名済み構成の回帰4件とLauncher IPC等の
+  825件が通過した。回帰では元の発生回と同じターンへの書込みを一度だけ確認した。
+  Launcher IPCの応答と推論は差し替えた。SchedulerとJob Broker本体の移植と、インストール済み
+  Launcherでの動作確認は引き続き必要。
 - `ada704c89` は公開時の期限と検査を一つの引数にまとめて、既存入力確定の `too_many_arguments` を
   修正した。元の[Clippyゲート](https://github.com/harupipipipi/tobkiri/actions/runs/44660705548)は
   `8b21d6696` でこの指摘により停止した。`817341b81` の
@@ -6621,3 +6630,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 続く修正では、共有Coreの5-Pack比較を実行済み・差分ありと記録した。WasmのFilesystemは登録済み
   rootを使う操作とプラットフォーム検証の範囲を記載した。Rust契約は既存のWITファイル構成、Core ABIの
   版、採択済みのSQLite DATA境界に合わせた。追加した相対リンク9件を確認した。
+- `abda3c260` と `865de9e0f` はPackのRust/Wasmビルド、PyYAMLとProfileのみの再生成、
+  承認試験用Packのロック済み依存の手順を更新し、古いPack件数を生成証跡への参照に換えた。
+- `e97a104e3` はProvider Registryの旧形式の投影に記録したv4のdigestを再生成した。署名済み
+  v4 Packは変更せず、`03bce5d84` で移行証跡と配布用source manifestを更新した。
+  投影の照合エラーと証跡の差分は解消した。移行全体の判定はREDのまま。
+- `b8ee278cb` は実AppKit/WebKitのSetup回帰で入力欄の有効化とキー操作の反映を待つ。
+  [失敗した実行](https://github.com/harupipipipi/tobkiri/actions/runs/44672506567/job/136076512367)では、
+  確認ボタンを有効にする前の状態を読み取っていた。実キー操作と差し替え済みの候補を拒否する
+  検査を使う。ローカルのSetup・確認の試験31件が通過し、[実WebKitの再検証](https://github.com/harupipipipi/tobkiri/actions/runs/44673436121)を起動した。
