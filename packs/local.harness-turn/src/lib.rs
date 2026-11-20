@@ -12,7 +12,7 @@ wit_bindgen::generate!({
 mod response;
 
 use exports::local::harness_chat::assistant_output;
-use exports::local::harness_chat::model_response::{self, CompletedResponse};
+use exports::local::harness_chat::model_response::{self, CompletedResponse, TurnPrompt};
 use exports::tobkiri::core::lifecycle;
 use local::harness_chat::messages::{
     ChatEvent, Context, FinishReason, Input, Message, MessagePart, Prompt, ResponseSummary,
@@ -40,7 +40,12 @@ impl assistant_output::Guest for Pack {
 }
 
 impl model_response::Guest for Pack {
-    fn start(ctx: Context, input: Input, model: String, max_tokens: u32) -> Result<Prompt, Error> {
+    fn start(
+        ctx: Context,
+        input: Input,
+        model: String,
+        max_tokens: u32,
+    ) -> Result<TurnPrompt, Error> {
         if ctx.conversation != input.conversation || ctx.conversation.is_empty() {
             return Err(invalid(
                 "prompt context belongs to a different conversation",
@@ -55,16 +60,21 @@ impl model_response::Guest for Pack {
             return Err(invalid("user input requires text parts"));
         }
         let mut messages = ctx.messages;
+        let prior_messages = u32::try_from(messages.len())
+            .map_err(|_| invalid("conversation history is too long"))?;
         messages.push(Message {
             role: "user".into(),
             parts: input.parts,
             response: None,
         });
-        Ok(Prompt {
-            messages,
-            tools: input.tools,
-            model,
-            max_tokens,
+        Ok(TurnPrompt {
+            prompt: Prompt {
+                messages,
+                tools: input.tools,
+                model,
+                max_tokens,
+            },
+            prior_messages,
         })
     }
 
@@ -84,11 +94,16 @@ impl model_response::Guest for Pack {
     }
 
     fn follow_up(
-        previous: Prompt,
+        mut previous: TurnPrompt,
         assistant: Message,
         results: Vec<ToolResult>,
-    ) -> Result<Prompt, Error> {
-        follow_up(previous, assistant, results)
+    ) -> Result<TurnPrompt, Error> {
+        previous.prompt = follow_up(previous.prompt, assistant, results)?;
+        Ok(previous)
+    }
+
+    fn finish_turn(turn: TurnPrompt, assistant: Message) -> Result<Vec<Message>, Error> {
+        finish_turn(turn, assistant)
     }
 }
 
@@ -149,6 +164,30 @@ fn follow_up(
         },
     ]);
     Ok(previous)
+}
+
+fn finish_turn(mut turn: TurnPrompt, assistant: Message) -> Result<Vec<Message>, Error> {
+    if assistant.role != "assistant"
+        || !assistant
+            .response
+            .as_ref()
+            .is_some_and(|summary| !matches!(summary.finish, FinishReason::ToolCalls))
+    {
+        return Err(invalid("turn requires a completed final assistant message"));
+    }
+
+    let prior = turn.prior_messages as usize;
+    if !turn
+        .prompt
+        .messages
+        .get(prior)
+        .is_some_and(|message| message.role == "user")
+    {
+        return Err(invalid("turn prompt is missing its user message"));
+    }
+    let mut completed = turn.prompt.messages.split_off(prior + 1);
+    completed.push(assistant);
+    Ok(completed)
 }
 
 fn invalid(message: &str) -> Error {
@@ -238,5 +277,43 @@ mod tests {
             assert!(follow_up(prompt(), assistant(&["a"]), results).is_err());
         }
         assert!(follow_up(prompt(), assistant(&["a", "a"]), vec![result("a", false)]).is_err());
+    }
+
+    #[test]
+    fn finished_turn_contributes_only_new_assistant_and_tool_messages() {
+        let context = Context {
+            conversation: "one".into(),
+            messages: prompt().messages,
+        };
+        let input = Input {
+            conversation: "one".into(),
+            parts: vec![MessagePart::Text("next user".into())],
+            tools: vec![],
+        };
+        let turn =
+            <Pack as model_response::Guest>::start(context, input, "model".into(), 32).unwrap();
+        let turn = <Pack as model_response::Guest>::follow_up(
+            turn,
+            assistant(&["a"]),
+            vec![result("a", false)],
+        )
+        .unwrap();
+        let final_reply = Message {
+            role: "assistant".into(),
+            parts: vec![MessagePart::Text("finished".into())],
+            response: Some(ResponseSummary {
+                finish: FinishReason::Stop,
+                usage: None,
+            }),
+        };
+        let saved = finish_turn(turn, final_reply).unwrap();
+        let roles = saved
+            .iter()
+            .map(|message| message.role.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(roles, ["assistant", "tool", "assistant"]);
+        assert!(
+            matches!(saved[2].parts.as_slice(), [MessagePart::Text(text)] if text == "finished")
+        );
     }
 }

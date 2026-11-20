@@ -7,6 +7,8 @@ const CALL_ID: &str = "model-call-9";
 const INPUT: &str = "Rewrite the word cherry.";
 const TEXT: &str = "cherry";
 const REPLY: &str = "The rewrite completed.";
+const NEXT_INPUT: &str = "Summarize the preceding turn.";
+const NEXT_REPLY: &str = "The preceding turn asked for a rewrite.";
 
 fn sse(chunks: &[Value]) -> String {
     let mut wire = String::new();
@@ -17,9 +19,9 @@ fn sse(chunks: &[Value]) -> String {
     wire
 }
 
-async fn run_turn(session: &Session) -> Result<Vec<Value>> {
+async fn run_turn(session: &Session, text: &str) -> Result<Vec<Value>> {
     let ui = admitted_ui(session)?;
-    let args = canon(&json!({"input": {"conversation":"one", "text":INPUT}}))?;
+    let args = canon(&json!({"input": {"conversation":"one", "text":text}}))?;
     let stream = within_session(
         session,
         "submit structured tool turn",
@@ -131,6 +133,9 @@ async fn replay_tool_turn(tool: &str, expected: &str, executed: bool) -> Result<
         json!({"choices":[{"delta":{"content":REPLY},"finish_reason":"stop"}]}),
         json!({"choices":[],"usage":{"prompt_tokens":32,"completion_tokens":7}}),
     ]);
+    let next_sse = sse(&[json!({
+        "choices":[{"delta":{"content":NEXT_REPLY},"finish_reason":"stop"}]
+    })]);
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let origin = format!("http://{}", listener.local_addr()?);
     let root = physical_temp()?;
@@ -151,9 +156,13 @@ async fn replay_tool_turn(tool: &str, expected: &str, executed: bool) -> Result<
         )
         .await?;
         let server = thread::spawn(move || -> Result<_> {
-            Ok([api(&listener, &first_sse)?, api(&listener, &second_sse)?])
+            Ok([
+                api(&listener, &first_sse)?,
+                api(&listener, &second_sse)?,
+                api(&listener, &next_sse)?,
+            ])
         });
-        Ok::<_, anyhow::Error>((run_turn(&session).await?, server))
+        Ok::<_, anyhow::Error>((run_turn(&session, INPUT).await?, server))
     }
     .await;
     let closed = session.close().await;
@@ -167,32 +176,60 @@ async fn replay_tool_turn(tool: &str, expected: &str, executed: bool) -> Result<
         format!("structured tool Flow did not finish; Gate denials {denied:?}")
     })?;
     closed?;
-    assert_tool_audit(root.path(), &start.profile_id, executed)?;
-
-    let ends = frames
-        .iter()
-        .filter(|frame| frame["kind"]["kind"] == "completed")
-        .collect::<Vec<_>>();
-    assert_eq!(ends.len(), 1);
-    assert_eq!(
-        ends[0]["kind"]["value"]["message"],
-        json!({
-            "role":"assistant", "parts":[{"tag":"text","val":REPLY}],
-            "response":{"finish":{"tag":"stop"},"usage":{"prompt-tokens":32,"completion-tokens":7,"cached-tokens":null}}
-        })
-    );
+    assert_committed(&frames);
     assert!(frames.iter().any(|frame| {
         frame["kind"]["kind"] == "emitted"
             && frame["kind"]["shape"] == ASSISTANT_OUTPUT
             && frame["kind"]["value"] == json!({"tag":"usage","val":{"prompt-tokens":21,"completion-tokens":6,"cached-tokens":12}})
     }));
 
-    let [(first_path, first), (second_path, second)] = server
+    let renewed = core.start_bound(&start).await?;
+    let continued = async {
+        let arguments = json!({"conversation":"one"});
+        let structured = call(&renewed, STRUCTURED_CHAT_STORE, "load", arguments.clone()).await?;
+        let legacy = call(&renewed, CHAT_STORE, "load", arguments.clone()).await?;
+        let expected_structured = json!([
+            {"role":"user","parts":[{"tag":"text","val":INPUT}],"response":null},
+            {"role":"assistant","parts":[
+                {"tag":"reasoning","val":"A tool can do this."},
+                {"tag":"text","val":"I will rewrite it."},
+                {"tag":"tool-call","val":{"id":CALL_ID,"name":tool,"arguments":{"text":TEXT}}}
+            ],"response":{"finish":{"tag":"tool-calls"},"usage":{"prompt-tokens":21,"completion-tokens":6,"cached-tokens":12}}},
+            {"role":"tool","parts":[{"tag":"tool-result","val":{"call-id":CALL_ID,"content":expected,"is-error":!executed}}],"response":null},
+            {"role":"assistant","parts":[{"tag":"text","val":REPLY}],"response":{"finish":{"tag":"stop"},"usage":{"prompt-tokens":32,"completion-tokens":7,"cached-tokens":null}}}
+        ]);
+        assert_eq!(structured, json!({"conversation":"one","messages":expected_structured}));
+        assert_eq!(legacy, json!({"conversation":"one","messages":[
+            {"role":"user","content":INPUT},{"role":"assistant","content":REPLY}
+        ]}));
+        let next_frames = run_turn(&renewed, NEXT_INPUT).await?;
+        assert_committed(&next_frames);
+        let updated = call(&renewed, STRUCTURED_CHAT_STORE, "load", arguments).await?;
+        let updated = updated["messages"].as_array().context("updated conversation")?;
+        assert_eq!(updated.len(), 6);
+        assert_eq!(&updated[..4], expected_structured.as_array().unwrap());
+        assert_eq!(updated[4..], [
+            json!({"role":"user","parts":[{"tag":"text","val":NEXT_INPUT}],"response":null}),
+            json!({"role":"assistant","parts":[{"tag":"text","val":NEXT_REPLY}],"response":{"finish":{"tag":"stop"},"usage":null}}),
+        ]);
+        Ok::<_, anyhow::Error>(())
+    }.await;
+    let closed = renewed.close().await;
+    continued?;
+    closed?;
+    assert_tool_audit(root.path(), &start.profile_id, executed)?;
+
+    let [
+        (first_path, first),
+        (second_path, second),
+        (third_path, third),
+    ] = server
         .join()
         .map_err(|_| anyhow::anyhow!("structured tool loopback server failed"))??;
     assert_eq!(first_path, "/v1/chat/completions");
     assert_eq!(second_path, first_path);
-    for request in [&first, &second] {
+    assert_eq!(third_path, first_path);
+    for request in [&first, &second, &third] {
         assert_eq!(request["model"], "llama/one");
         assert_eq!(request["max_tokens"], 128);
         assert_eq!(
@@ -211,7 +248,29 @@ async fn replay_tool_turn(tool: &str, expected: &str, executed: bool) -> Result<
             {"role":"tool","tool_call_id":CALL_ID,"content":expected},
         ])
     );
+    let mut expected_next = second["messages"]
+        .as_array()
+        .context("second request messages")?
+        .clone();
+    expected_next.extend([
+        json!({"role":"assistant","content":REPLY}),
+        json!({"role":"user","content":NEXT_INPUT}),
+    ]);
+    assert_eq!(third["messages"], json!(expected_next));
     Ok(())
+}
+
+fn assert_committed(frames: &[Value]) {
+    assert_eq!(
+        frames
+            .iter()
+            .filter(|frame| frame["kind"]["kind"] == "completed")
+            .count(),
+        1
+    );
+    assert!(frames.iter().any(|frame| {
+        frame["kind"]["kind"] == "step_value" && frame["kind"]["step"] == "save-turn"
+    }));
 }
 
 #[tokio::test]

@@ -30,8 +30,9 @@ Adoption requires implementing and declaring version 2 ports and sidecars,
 wiring a version 2 Flow, translating provider-specific streams, and updating
 prompt, output, input and durable storage. The conversation store appends the
 input and the ordered assistant and tool messages atomically after a successful
-turn. Loading the conversation returns those messages with their structured parts
-and summaries for the next prompt. Old stored text and 1.0 consumers require an
-explicit migration or adapter. Adapters that produce the 1.0 `done` event must
-accumulate complete text and decide how to handle unrepresentable structured
-data.
+turn. The `structured-chat` build of `local.harness-conversation-store` uses the
+same private SQLite store and writes the structured history and 1.0 text view in
+one Core transaction. Both versions read older text rows. The opt-in Flow test
+reopens the store and uses the structured history in the next prompt. The
+shipped 1.0 UI continues to render its text stream and history. A 2.0 UI route
+must handle the additional structured events and the final completion status.

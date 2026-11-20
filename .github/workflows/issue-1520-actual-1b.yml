@@ -329,14 +329,23 @@ jobs:
         run: |
           cargo build --locked --target wasm32-wasip2 \
             --manifest-path crates/test-guests/Cargo.toml -p tobkiri-test-typed-tool
+          cargo build --locked --release --target wasm32-wasip2 \
+            --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-conversation-store \
+            --features structured-chat
           export TOBKIRI_TEST_REGISTERED_OPENAI_STRUCTURED_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_openai_compat_provider.wasm"
           export TOBKIRI_TEST_HARNESS_TURN_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_pack_harness_turn.wasm"
           export TOBKIRI_TEST_STRUCTURED_TERMINAL_INPUT_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_pack_terminal_input.wasm"
           export TOBKIRI_TEST_STRUCTURED_TYPED_TOOL_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_test_typed_tool.wasm"
+          export TOBKIRI_TEST_HARNESS_LEGACY_CONVERSATION_STORE_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/debug/tobkiri_pack_harness_conversation_store.wasm"
+          export TOBKIRI_TEST_HARNESS_STRUCTURED_CONVERSATION_STORE_COMPONENT="$CARGO_TARGET_DIR/wasm32-wasip2/release/tobkiri_pack_harness_conversation_store.wasm"
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/registered-structured-tool.log" --expected-passed 2 -- \
             cargo test --locked -p tobkiri-e2e --test model_registry -- \
               registered_network::structured_flow --ignored --test-threads=1
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/structured-conversation-store.log" --expected-passed 2 -- \
+            cargo test --locked -p tobkiri-e2e --test model_registry -- \
+              registered_network::structured_store:: --ignored --test-threads=1
       - name: Retain test receipt
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -354,6 +363,8 @@ jobs:
             ${{ runner.temp }}/registered-structured.receipt.json
             ${{ runner.temp }}/registered-structured-tool.log
             ${{ runner.temp }}/registered-structured-tool.receipt.json
+            ${{ runner.temp }}/structured-conversation-store.log
+            ${{ runner.temp }}/structured-conversation-store.receipt.json
             ${{ runner.temp }}/registered-provider.log
             ${{ runner.temp }}/registered-provider.receipt.json
             ${{ runner.temp }}/original-model-resolve.log

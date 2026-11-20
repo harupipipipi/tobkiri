@@ -1,6 +1,6 @@
 **/component.wasm
 **/*.build.json
 **/wit/deps/
-/local.openai-compat-provider/structured-wit/deps/
+**/structured-wit/deps/
 **/guest-wit/
 node_modules/

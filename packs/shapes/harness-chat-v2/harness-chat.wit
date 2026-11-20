@@ -59,12 +59,14 @@ interface assistant-output {
 interface model-response {
   use messages.{chat-event, context, input, message, prompt, tool-call, tool-result};
   use tobkiri:core/types@1.0.0.{error};
+  record turn-prompt { prompt: prompt, prior-messages: u32 }
   record completed-response { message: message, calls: list<tool-call> }
 
-  start: func(ctx: context, input: input, model: string, max-tokens: u32) -> result<prompt, error>;
+  start: func(ctx: context, input: input, model: string, max-tokens: u32) -> result<turn-prompt, error>;
   assemble: func(events: list<chat-event>) -> result<completed-response, error>;
   bind-result: func(call-id: string, content: string, is-error: bool) -> result<tool-result, error>;
-  follow-up: func(previous: prompt, assistant: message, results: list<tool-result>) -> result<prompt, error>;
+  follow-up: func(previous: turn-prompt, assistant: message, results: list<tool-result>) -> result<turn-prompt, error>;
+  finish-turn: func(turn: turn-prompt, assistant: message) -> result<list<message>, error>;
 }
 interface turn-flow { run: func(); }
 interface load-context { run: func(); }

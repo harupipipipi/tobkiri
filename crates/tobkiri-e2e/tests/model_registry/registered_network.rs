@@ -2,6 +2,8 @@
 
 #[path = "registered_network/structured_flow.rs"]
 mod structured_flow;
+#[path = "registered_network/structured_store.rs"]
+mod structured_store;
 
 use super::*;
 use std::{
@@ -34,6 +36,9 @@ const USER_INPUT: &str = "local.harness-chat.user-input@1.0";
 const TURN_FLOW: &str = "local.harness-chat.turn-flow@1.0";
 const ASSISTANT_OUTPUT: &str = "local.harness-chat.assistant-output@2.0";
 const MODEL_RESPONSE: &str = "local.harness-chat.model-response@2.0";
+const CHAT_STORE: &str = "local.harness-chat.conversation-store@1.0";
+const STRUCTURED_CHAT_STORE: &str = "local.harness-chat.conversation-store@2.0";
+const CHAT_MESSAGE_DATA: &str = "local.harness-chat.messages@1.0";
 const TYPED_TOOL: &str = "local.acceptance-typed-tool.transform@1.0";
 const MODEL_ROUTE: &str = "local.model-registry.routing@1.0";
 const PROVIDER_ROUTE: &str = "local.provider-registry.routing@1.0";
@@ -166,6 +171,14 @@ fn streaming_packs(
     let ui_port = if matches!(chat, RegisteredChat::StructuredFlow) {
         define_shape(&mut ui, USER_INPUT, ShapeKind::Port, CHAT_WIT)?;
         define_shape(&mut ui, TURN_FLOW, ShapeKind::Flow, CHAT_WIT)?;
+        define_shape(&mut ui, CHAT_MESSAGE_DATA, ShapeKind::Data, CHAT_WIT)?;
+        define_shape(&mut ui, CHAT_STORE, ShapeKind::Port, CHAT_WIT)?;
+        define_shape(
+            &mut ui,
+            STRUCTURED_CHAT_STORE,
+            ShapeKind::Port,
+            STRUCTURED_CHAT_WIT,
+        )?;
         define_shape(
             &mut ui,
             MODEL_RESPONSE,
@@ -191,6 +204,13 @@ fn streaming_packs(
                 fs::read(repository.join("packs/local.harness-chat/wit/user-input.shape.json"))?,
             ),
             ("wit/turn-flow.shape.json".into(), SINGLE_PORT.to_vec()),
+            ("wit/messages.shape.json".into(), SINGLE_PORT.to_vec()),
+            (
+                "wit/conversation-store.shape.json".into(),
+                fs::read(
+                    repository.join("packs/shapes/harness-chat-v2/conversation-store.shape.json"),
+                )?,
+            ),
             (
                 "wit/model-response.shape.json".into(),
                 fs::read(
@@ -206,6 +226,7 @@ fn streaming_packs(
             STRUCTURED_LLM,
             ASSISTANT_OUTPUT,
             MODEL_RESPONSE,
+            STRUCTURED_CHAT_STORE,
             TYPED_TOOL,
             SAVED_MODEL,
         ] {
@@ -430,17 +451,20 @@ async fn registered_fixture_core(
     let structured_flow = matches!(chat, RegisteredChat::StructuredFlow);
     if structured_flow {
         staged.extend(structured_flow_packs(root, wall_ms)?);
+        staged.push(structured_store::stage_conversation_store(
+            root, wall_ms, true,
+        )?);
     }
-    let mut profile = registry::profile(
-        "prof_registered_conversation",
-        &staged,
-        &[
-            SETTINGS,
-            PROVIDER_CONFIGURATION,
-            PROVIDER_COMMIT,
-            SAVED_MODEL,
-        ],
-    )?;
+    let mut utility_views = vec![
+        SETTINGS,
+        PROVIDER_CONFIGURATION,
+        PROVIDER_COMMIT,
+        SAVED_MODEL,
+    ];
+    if structured_flow {
+        utility_views.extend([CHAT_STORE, STRUCTURED_CHAT_STORE]);
+    }
+    let mut profile = registry::profile("prof_registered_conversation", &staged, &utility_views)?;
     profile.startup.ui = Some(UI.parse()?);
     profile
         .ceiling
@@ -468,6 +492,12 @@ async fn registered_fixture_core(
         (PROVIDER_COMMIT.into(), "execute-local".into()),
         (SAVED_MODEL.into(), "select".into()),
     ]);
+    if structured_flow {
+        host.utility_ports.lock().unwrap().extend([
+            (CHAT_STORE.into(), "load".into()),
+            (STRUCTURED_CHAT_STORE.into(), "load".into()),
+        ]);
+    }
     host.approve_literal_user(&profile)?;
     let data = root.join("data");
     let runtime_owner = RuntimeOwner::open(&data)?;

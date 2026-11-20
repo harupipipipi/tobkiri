@@ -6,6 +6,15 @@
   "loop_limits": "profile-default",
   "steps": [
     {
+      "id": "load-history",
+      "call": {
+        "shape": "local.harness-chat.conversation-store@2.0",
+        "op": "load",
+        "args": { "conversation": "$input.conversation" }
+      },
+      "out": "ctx"
+    },
+    {
       "id": "select-model",
       "call": {
         "shape": "local.saved-conversation.model@1.0",
@@ -20,7 +29,7 @@
         "shape": "local.harness-chat.model-response@2.0",
         "op": "start",
         "args": {
-          "ctx": { "conversation": "$input.conversation", "messages": [] },
+          "ctx": "$ctx",
           "model": "$model",
           "max-tokens": 512,
           "input": {
@@ -41,14 +50,14 @@
           }
         }
       },
-      "out": "prompt"
+      "out": "turn"
     },
     {
       "id": "initial-model",
       "call": {
         "shape": "local.harness-chat.llm-provider@2.0",
         "op": "chat",
-        "args": { "prompt": "$prompt" }
+        "args": { "prompt": "$turn.prompt" }
       },
       "stream": { "collect": "events", "emit": "local.harness-chat.assistant-output@2.0" }
     },
@@ -119,16 +128,16 @@
             "call": {
               "shape": "local.harness-chat.model-response@2.0",
               "op": "follow-up",
-              "args": { "previous": "$prompt", "assistant": "$response.message", "results": "$results" }
+              "args": { "previous": "$turn", "assistant": "$response.message", "results": "$results" }
             },
-            "out": "prompt"
+            "out": "turn"
           },
           {
             "id": "follow-up-model",
             "call": {
               "shape": "local.harness-chat.llm-provider@2.0",
               "op": "chat",
-              "args": { "prompt": "$prompt" }
+              "args": { "prompt": "$turn.prompt" }
             },
             "stream": { "collect": "events", "emit": "local.harness-chat.assistant-output@2.0" }
           },
@@ -142,6 +151,31 @@
             "out": "response"
           }
         ]
+      }
+    },
+    {
+      "id": "finish-turn",
+      "call": {
+        "shape": "local.harness-chat.model-response@2.0",
+        "op": "finish-turn",
+        "args": { "turn": "$turn", "assistant": "$response.message" }
+      },
+      "out": "completed"
+    },
+    {
+      "id": "save-turn",
+      "call": {
+        "shape": "local.harness-chat.conversation-store@2.0",
+        "op": "append",
+        "args": {
+          "conversation": "$input.conversation",
+          "input": {
+            "conversation": "$input.conversation",
+            "parts": [{ "tag": "text", "val": "$input.text" }],
+            "tools": "$turn.prompt.tools"
+          },
+          "messages": "$completed"
+        }
       }
     }
   ]

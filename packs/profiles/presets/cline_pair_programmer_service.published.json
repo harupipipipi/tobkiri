@@ -279,7 +279,7 @@
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:1a3d10eefa778fbf99e36072ee3930d22cc800d1229fc924cc3043009fb6867b",
+      "sha256": "sha256:f951aeb4b0d451b836c7e9055fbfa2fe3dd093d31acf12d8b46346034a148f6a",
       "source": "file:../../local.harness-conversation-store",
       "version": "0.1.0"
     },
