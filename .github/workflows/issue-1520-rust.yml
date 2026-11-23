@@ -181,10 +181,15 @@ jobs:
           cargo test -p tobkiri-wasm --lib core_modules::tests --locked
       - name: Decoded Registry original-source comparison
         env:
+          TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE: ${{ runner.temp }}/provider-registry-original
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed
           TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR: ${{ runner.temp }}/provider-registry-native
         run: |
+          git fetch --no-tags --depth=1 origin db44ec25cecd7347285e270301136e6d7ca6d3cd
+          git worktree add --detach "$TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE" \
+            db44ec25cecd7347285e270301136e6d7ca6d3cd
+          trap 'git worktree remove "$TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE"' EXIT
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/provider-registry-units.log" --expected-passed 49 -- \
             cargo test --locked --manifest-path packs/Cargo.toml \

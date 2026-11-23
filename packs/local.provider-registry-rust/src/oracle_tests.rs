@@ -10,6 +10,7 @@
 //! - `TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT`
 //! - `TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256`
 //! - `TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR` (must be a new private path)
+//! - `TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE` (when not using original checkout)
 //!
 //! Run only this ignored test after setting the three variables:
 //! `cargo test --manifest-path packs/local.provider-registry-rust/Cargo.toml --lib oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact`
@@ -38,6 +39,7 @@ use std::{
 const RECEIPT_ENV: &str = "TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT";
 const RECEIPT_HASH_ENV: &str = "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256";
 const EVIDENCE_ENV: &str = "TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR";
+const ORIGINAL_SOURCE_ENV: &str = "TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE";
 const RECEIPT_SCHEMA: &str = "io.tobkiri.original-python-provider-registry-stateful.v1";
 const PINNED_RECEIPT_SHA256: &str =
     "4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed";
@@ -239,7 +241,7 @@ fn run_inner(evidence: &mut Evidence) -> Result<()> {
     let receipt: Value = serde_json::from_slice(&receipt_bytes).context("parse source receipt")?;
     verify_receipt(&receipt)?;
 
-    let repository = repository_root()?;
+    let repository = original_source_root()?;
     verify_source_closure(&repository, &receipt)?;
     let cases = load_cases(&receipt_root, &receipt)?;
     validate_corpus(&cases)?;
@@ -468,7 +470,14 @@ fn verify_receipt(receipt: &Value) -> Result<()> {
     Ok(())
 }
 
-fn repository_root() -> Result<PathBuf> {
+pub(crate) fn original_source_root() -> Result<PathBuf> {
+    if env::var_os(ORIGINAL_SOURCE_ENV).is_some() {
+        let source = required_env_path(ORIGINAL_SOURCE_ENV)?
+            .canonicalize()
+            .context("canonicalize pinned original source root")?;
+        ensure!(source.is_dir(), "original source root is not a directory");
+        return Ok(source);
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -495,7 +504,7 @@ fn safe_relative(text: &str) -> Result<PathBuf> {
     Ok(path.to_owned())
 }
 
-fn read_beneath(root: &Path, relative: &str, maximum: usize) -> Result<Vec<u8>> {
+pub(crate) fn read_beneath(root: &Path, relative: &str, maximum: usize) -> Result<Vec<u8>> {
     let relative_path = safe_relative(relative)?;
     let path = root.join(relative_path);
     let metadata = fs::symlink_metadata(&path).with_context(|| format!("inspect {relative}"))?;

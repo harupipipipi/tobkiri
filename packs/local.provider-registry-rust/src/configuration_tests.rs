@@ -699,8 +699,8 @@ fn absent_and_empty_remote_ports_preserve_original_url_spelling() {
 
 #[test]
 fn preparation_matches_authenticated_original_python_cases() {
+    use crate::oracle_tests::{original_source_root, read_beneath};
     use ordered_python_compat::loads;
-    use std::path::Path;
 
     const FIXTURE: &[u8] = include_bytes!("../evidence/configuration-prepare-python.json");
     let expected_fixture = "fee32566f76b4cca0f7efd3d456f675ff51b7999c0f97a18e44f74699499dd13";
@@ -711,7 +711,7 @@ fn preparation_matches_authenticated_original_python_cases() {
         "io.tobkiri.original-provider-configuration-prepare.v1"
     );
     assert_eq!(fixture["network_attempts"], serde_json::json!([]));
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = original_source_root().unwrap();
     for source in fixture["sources"]
         .as_array()
         .unwrap()
@@ -720,8 +720,7 @@ fn preparation_matches_authenticated_original_python_cases() {
     {
         let relative = source["path"].as_str().unwrap();
         assert!(relative.starts_with("tobkiri_runtime/") || relative.starts_with("tools/quality/"));
-        assert!(!relative.split('/').any(|part| part == ".."));
-        let bytes = std::fs::read(root.join(relative)).unwrap();
+        let bytes = read_beneath(&root, relative, 8 * 1024 * 1024).unwrap();
         assert_eq!(
             format!("{:x}", Sha256::digest(&bytes)),
             source["sha256"].as_str().unwrap(),

@@ -3,7 +3,7 @@
 `original-python/` contains the unchanged synthetic observations produced by
 `tools/quality/python_provider_registry_compat/generate.py` with CPython 3.13.9.
 The receipt SHA-256 is
-`e87762d4647d05ad8800c337c2352a272c767d252cb7ad4c4906760fc5590b37`.
+`4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed`.
 Its 221 input/result/state sidecars are authenticated before replay, together
 with the receipt's complete 346-file original source closure. The fixture
 contains no user Profile, API keys, private conversation or copied source tree.
@@ -33,6 +33,12 @@ For a local run, set `TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT` to the absolute
 path of `original-python/receipt.json`,
 `TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256` to the hash above, and
 `TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR` to a new directory whose parent exists.
+Set `TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE` to the absolute path of a
+separate checkout at `db44ec25cecd7347285e270301136e6d7ca6d3cd`. This is the
+source recorded by [the 2026-10-25 refresh](source-refresh-20261025.json). The
+current Rust tests run from the current checkout and verify the historical
+Python source hashes in the separate checkout. Do not copy those Python files
+over current product sources.
 Then run:
 
 ```sh
@@ -42,9 +48,10 @@ cargo test --locked --manifest-path packs/Cargo.toml \
 ```
 
 Missing inputs, changed hashes, unknown actions and existing evidence output
-directories fail the explicit consumer. A future source change requires new
-original-source observations and reviewed pins; Rust output must not replace
-the original expectations.
+directories fail the explicit consumer. Running against the recorded source
+proves only historical parity in the covered cases. A claim about a later
+Python source revision requires new observations and reviewed pins; Rust output
+must not replace the original expectations.
 
 The current receipt was regenerated from the unchanged original generator on
 2026-10-25 after the captured-input platform artifact refactor. All thirty

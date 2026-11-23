@@ -180,7 +180,9 @@ def test_timeout_fails_closed_and_saves_partial_log(tmp_path: Path) -> None:
         "pytest",
         "--sleep",
         "30",
-        timeout_seconds=0.1,
+        # Allow the subprocess to start and emit its marker on a loaded runner.
+        # The fixture still sleeps for 30 seconds, so only the deadline ends it.
+        timeout_seconds=2.0,
     )
 
     assert result.returncode == 124

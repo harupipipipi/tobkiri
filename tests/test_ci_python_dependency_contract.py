@@ -54,6 +54,7 @@ def test_full_root_suite_installs_locked_runtime_dependencies() -> None:
     assert 'if [ "${{ matrix.python-version }}" = "3.11" ]; then' in install
     assert f"python {LOCKED_INSTALLER}" in install
     assert "-- python -B tools/quality/run_root_pytest.py -v" in job
+    assert "fail-fast: false" in job
 
 
 def _capture_test_functions(source: str) -> set[str]:

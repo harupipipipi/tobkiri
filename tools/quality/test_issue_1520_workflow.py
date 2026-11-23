@@ -174,6 +174,9 @@ class RuntimeRoutingTests(unittest.TestCase):
     def test_decoded_registry_runs_the_pinned_source_consumer_and_retains_evidence(self) -> None:
         comparison = step(self.linux, "Decoded Registry original-source comparison")
         for required in (
+            "TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE:",
+            "db44ec25cecd7347285e270301136e6d7ca6d3cd",
+            'git worktree add --detach "$TOBKIRI_PROVIDER_REGISTRY_ORIGINAL_SOURCE"',
             "TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT:",
             "/evidence/original-python/receipt.json",
             "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: "
