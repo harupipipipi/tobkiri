@@ -51,6 +51,12 @@ pub(super) fn bounded_read(root: &Path, relative: &str, limit: usize) -> Result<
     )?)
 }
 
+/// Select the original input bytes before validating them against frozen records.
+pub(super) fn frozen_source(repo: &Path, relative: &str) -> Result<Vec<u8>> {
+    let root = crate::support::preserved_source_root(repo, relative)?;
+    bounded_read(&root, relative, 16 * 1024 * 1024)
+}
+
 pub(super) fn strict_json(bytes: &[u8]) -> Result<Value> {
     // All evidence is finite JSON metadata; ordered request/response strings
     // remain opaque. This also rejects duplicate metadata keys.
@@ -138,7 +144,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
                     .all(|part| matches!(part, std::path::Component::Normal(_))),
                 "non-relative source provenance"
             );
-            let bytes = bounded_read(repo, relative, 16 * 1024 * 1024)?;
+            let bytes = frozen_source(repo, relative)?;
             ensure!(
                 record["sha256"] == digest(&bytes) && record["bytes"] == bytes.len(),
                 "original source changed since extraction"

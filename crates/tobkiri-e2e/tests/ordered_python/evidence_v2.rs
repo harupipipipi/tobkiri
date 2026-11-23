@@ -1,7 +1,7 @@
 //! Independently pinned V2 evidence. No Python source or guest is executed here.
 use super::{
     consumer::BridgeAbi,
-    evidence::{self, Inputs, bounded_read, digest, environment_hash, no_links, strict_json},
+    evidence::{self, Inputs, digest, environment_hash, no_links, strict_json},
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -40,7 +40,7 @@ fn read_relative(repo: &Path, path: &str) -> Result<Vec<u8>> {
                 .all(|part| matches!(part, Component::Normal(_))),
         "source binding is not a confined relative path"
     );
-    bounded_read(repo, path, 16 * 1024 * 1024)
+    evidence::frozen_source(repo, path)
 }
 
 fn capture_bindings(

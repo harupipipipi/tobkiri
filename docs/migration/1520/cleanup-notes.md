@@ -2402,3 +2402,37 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じJSON文字列/整数の出力処理がcatalog/recoveryに分かれる点は将来の整理候補だが、
   App mappingとprivate policyをCoreへ広げず、同資金・エラー順の一致を示してから共通化する。
   native IO原因・Guest class実生成・実factory failure・GUIの証拠へ範囲を拡大しない。
+
+## PR #1521: 公開 HEAD 起点の CI 復旧（2026-11-23）
+
+- 基準は PR HEAD `8be3110a3` と base `d4bfb3452`。公開されている
+  shared-state は別系統として参照し、履歴全体や別作業コピーの変更を
+  取り込んでいない。ここでの合格はクラウド Linux の作業コピーの証拠。
+- `dd79ad5c` で権限の一括表示の順序と文言を保ったまま loop lint を修正。
+  既存の保存コンテキスト guard を戻り値なしとして記述し、選択された
+  conversation owner が欠ける場合は既存コードどおり拒否する。
+  497 Python ファイルの mypy は既存2件から0件。Launcher Core Host の
+  strict Clippy と grouped permissions を含む Native contract 7件も通過。
+- Defaults 用の暗黙の予算テンプレートを別 Profile に当てない。
+  明示的に別 Profile へ持ち込んだ予算は catalog や credential の前に拒否し、
+  既存の required policy の復元経路は変更しない。`3d600f5e` の
+  回帰では元の実 HTTP/Broker Workflow、予算、保存 workspace を含む61件が通過。
+- `52cd763c` で元の Profile/Gateway の5入力を公開済み Git の固定 SHA と
+  既存の SHA-256 で照合し、一時的なソース木へ分離。現在の製品ファイル、
+  元の署名、receipt、現在の実行契約は書き換えない。アーカイブを
+  現在の Git HEAD から展開するため、未コミットの差分は混入しない。
+  保存された Python/Gateway の transport 8+21件、sharing 5件、workflow
+  構造22+12件、Rust の ordered_python 証拠と型検査37件が Linux で通過。
+  実コンポーネントリプレイ6件はその37件とは別の資格。
+- foundation は0件。complete は1,048件（Host 境界209、移行 inventory 839）。
+  再現した検証入口の失敗と未移植の製品機能を区別する。この結果では
+  PR の必須CI、署名済み macOS/APFS の実 Native、全 launcher GUI、
+  Python runtime/PackVM の廃止は確認済みとしない。
+- 追加検証では Rust 1.94.0 の Linux workspace strict Clippy も通過。
+  テストのファイル同一性5項目、Unicode の定数条件、失敗注入を維持し、
+  allow は追加しない。コマンドの生成 inventory は実際の catalog revision
+  だけを再生成し、55件の ID、SDK と旧投影の既存確認を維持。
+- 実 Wasm への Ordered replay は入力とコンポーネントを照合した後、
+  Linux の allocation owner OS/filesystem 境界で拒否された。33ケースの
+  実行は未確認。Linux の専用 owner 拒否試験は合格。製品の macOS/APFS
+  条件を無効化しない。実再生は対応するクラウド CI の実行が必要。

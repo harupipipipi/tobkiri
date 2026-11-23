@@ -48,12 +48,14 @@ def test_signed_owner_source_rejects_client_policy_overrides(requested):
 
 
 @pytest.mark.parametrize("profile", ["other", "defaults"])
+@pytest.mark.parametrize("explicit", [False, True])
 def test_common_production_capture_selects_policy_before_catalog_or_credential(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    profile,
+    profile: str,
+    explicit: bool,
 ):
-    """No-argument capture gates the exact Native snapshot before other work."""
+    """Ordinary capture proceeds; an explicit cross-Profile policy fails closed."""
     observed = []
     selected = []
 
@@ -78,16 +80,24 @@ def test_common_production_capture_selects_policy_before_catalog_or_credential(
     monkeypatch.setattr(production_v4, "_host_profile_catalog", catalog)
     authority = AuthorityStore(tmp_path / "authority" / "v4.sqlite3")
     active = SimpleNamespace(resolved=SimpleNamespace(profile={"profile_id": profile}))
-    with pytest.raises(AuthorityDenied):
+    crosses_profile = explicit and profile != "defaults"
+    expected_error = (
+        "Host generation budget Profile binding is invalid"
+        if crosses_profile else "Authority store is not bound"
+    )
+    with pytest.raises(AuthorityDenied, match=expected_error):
         production_v4.capture_production_dispatch(
             active,
             authority_store=authority,
             bundle_root=tmp_path / "unused",
             ecosystem_root=tmp_path / "unused",
             credential_store_factory=credential,
+            generation_budget_template=(
+                owner_startup_generation_budget_template() if explicit else None
+            ),
         )
     assert selected == [owner_startup_generation_budget_template()]
-    assert observed == ([] if profile == "other" else ["catalog"])
+    assert observed == ([] if crosses_profile else ["catalog"])
     if profile == "defaults":
         material = HostCredentialMaterialStore(user_data_root=tmp_path / "owner")
         binding = capture_native_generation_budget(

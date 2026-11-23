@@ -962,7 +962,8 @@ def _load_verified_host_provider_factory(
 
 @contextmanager
 def _borrow_selected_saved_context(
-    *, operation: object, consumer: ResolvedOperationBinding, conversation_owner: ResolvedOperationBinding,
+    *, operation: object, consumer: ResolvedOperationBinding,
+    conversation_owner: ResolvedOperationBinding | None,
     project_owner: ResolvedOperationBinding | None, factories: Any, profile_id: str,
     presentation_owner: Callable[[], tuple[str, str]],
     read_project: Callable[[Mapping[str, Any]], Mapping[str, Any]], guard: Callable[[], None],
@@ -1733,12 +1734,20 @@ def capture_production_dispatch(
         raise AuthorityDenied("Authority store path is not canonical")
     authority_user_data = authority_path.parent.parent
     profile_id = str(active.resolved.profile["profile_id"])
+    explicit_budget = generation_budget_template is not None
     generation_budget_template = owner_startup_generation_budget_template(
-        generation_budget_template
+        generation_budget_template,
     )
-    if (generation_budget_template is not None
-            and generation_budget_template.profile_id != profile_id):
-        raise AuthorityDenied("Host generation budget Profile binding is invalid")
+    if (
+        generation_budget_template is not None
+        and generation_budget_template.profile_id != profile_id
+    ):
+        if explicit_budget:
+            raise AuthorityDenied("Host generation budget Profile binding is invalid")
+        # A host-selected startup default is not a budget for another Profile.
+        # Passing no template still lets the credential owner restore any
+        # existing required policy for the exact Profile being captured.
+        generation_budget_template = None
     authority_workspace = authority_user_data / "workspaces" / profile_id
     try:
         catalog = _host_profile_catalog(
@@ -2865,13 +2874,19 @@ def capture_production_dispatch(
                 raise AuthorityDenied("saved Project owner is unavailable")
             return value
 
+        def guard() -> None:
+            saved_target(outer, (
+                "tobkiri.resource.conversation.v1",
+                "rumi_conversation_store_pack.conversation-resource",
+            ))
+
         return _borrow_selected_saved_context(
-            operation=outer, consumer=consumer.resolved_binding, conversation_owner=conversation.resolved_binding,
+            operation=outer, consumer=consumer.resolved_binding,
+            conversation_owner=conversation.resolved_binding,
             project_owner=project_targets[0].resolved_binding if project_targets else None,
             factories=loaded_host_factories, profile_id=str(profile["profile_id"]),
-            presentation_owner=lambda: presentation_owner_for(outer), read_project=read_project,
-            guard=lambda: saved_target(outer, ("tobkiri.resource.conversation.v1",
-                "rumi_conversation_store_pack.conversation-resource")),
+            presentation_owner=lambda: presentation_owner_for(outer),
+            read_project=read_project, guard=guard,
         )
 
     saved_callbacks = SavedBridgeCallbacks(
