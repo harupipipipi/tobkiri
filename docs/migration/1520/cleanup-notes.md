@@ -2436,3 +2436,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Linux の allocation owner OS/filesystem 境界で拒否された。33ケースの
   実行は未確認。Linux の専用 owner 拒否試験は合格。製品の macOS/APFS
   条件を無効化しない。実再生は対応するクラウド CI の実行が必要。
+- Task D の既存 CI と同じ2件を失敗から再現し、`00232fcb` で公式の
+  offline projection 生成器を使い、Conversation Store と Turn Runtime の
+  互換 JSON 4点だけを更新した。署名状態、実行不可のマーカー、元の
+  v4 と証拠は変更なし。生成の `--check` と Task D の2試験が通過。
+- 公開 `9bda68d1` の foundations は Ordered／Gateway を通過し、次の
+  Harness 回帰で未設定の runtime モジュールの検索先により停止した。
+  bootstrap の試験だけで既存の protocol ソースを使い、生成器の
+  相互排他モード一覧に既存の2モードを反映した。製品の import や
+  署名済みソースを変更せず、同じ Harness 検証手順の169件が合格。
