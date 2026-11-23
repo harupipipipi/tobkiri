@@ -30,18 +30,35 @@ def _function(tree: ast.Module, name: str) -> ast.FunctionDef:
 class CapabilityProjectionAdapterSourceTests(unittest.TestCase):
     """Check delegation, schema preservation, and the minimal typed boundary."""
 
-    def test_private_validator_preserves_prechange_bf8_ast_and_public_export(self) -> None:
+    def test_private_validator_preserves_prechange_bf8_source_and_public_export(self) -> None:
         directory = ROOT / "tobkiri_runtime/ecosystem/defaultspack/defaultspack"
-        _, private = _module(directory / "_public_view_input.py")
+        private_source, private = _module(directory / "_public_view_input.py")
         function = _function(private, "validate_public_input")
-        reserved = next(node for node in private.body if isinstance(node, ast.Assign)
-                        and isinstance(node.targets[0], ast.Name)
-                        and node.targets[0].id == "_RESERVED")
-        # Fixed hashes of the real bf8 function and constant, not rewritten code.
-        self.assertEqual(hashlib.sha256(ast.dump(function, include_attributes=False).encode()).hexdigest(),
-                         "f4bb344fa058d5306855dfced62b65bb25c7135bc52c1fe477ea2e80af56d377")
-        self.assertEqual(hashlib.sha256(ast.dump(reserved, include_attributes=False).encode()).hexdigest(),
-                         "01b9e0c225cd7ef41d55e520a631da9b038d3c7f5179990953106a2214ceadaf")
+        reserved = next(
+            node
+            for node in private.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "_RESERVED"
+        )
+        # Exact source segments from bf8cf14664580b7ca226b56d7bd5a311a19f44b4,
+        # v4_view_contract.py (blob 9f9cbbac5ea3d20e32842a96cc3fa2648f27c5a9).
+        # These match the moved function and constant byte for byte, including
+        # bf8's opt-in for nested domain Profile targets. Hash source rather
+        # than ast.dump so supported CPython versions use the same reference.
+        for node, expected in (
+            (
+                function,
+                "419b64d078626442a88014b1c34d58ae2876b579627c954bb4b9c4a36d0d7494",
+            ),
+            (
+                reserved,
+                "d78721f25db5fbddff580b8cca8ed7c585d7884b8d7d93a9e6bb804b5d537d01",
+            ),
+        ):
+            segment = ast.get_source_segment(private_source, node)
+            assert segment is not None
+            self.assertEqual(hashlib.sha256(segment.encode("utf-8")).hexdigest(), expected)
         public_source, public = _module(directory / "v4_view_contract.py")
         self.assertFalse(any(isinstance(n, ast.FunctionDef) and n.name == "validate_public_input"
                              for n in public.body))
