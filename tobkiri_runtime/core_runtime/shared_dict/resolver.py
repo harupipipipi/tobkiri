@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -42,7 +42,7 @@ class SharedDictResolver:
     
     DEFAULT_MAX_HOPS = 10
     
-    def __init__(self, snapshot=None, max_hops: int = None):
+    def __init__(self, snapshot=None, max_hops: int | None = None):
         self._snapshot = snapshot
         self._max_hops = max_hops or self.DEFAULT_MAX_HOPS
         self._lock = threading.RLock()
@@ -61,7 +61,7 @@ class SharedDictResolver:
         self,
         namespace: str,
         token: str,
-        context: Dict[str, Any] = None
+        context: Dict[str, Any] | None = None
     ) -> str:
         """
         token を解決して value を返す
@@ -84,7 +84,7 @@ class SharedDictResolver:
         self,
         namespace: str,
         token: str,
-        context: Dict[str, Any] = None
+        context: Dict[str, Any] | None = None
     ) -> ResolveResult:
         """
         チェーン解決（A→B→C）
@@ -98,7 +98,7 @@ class SharedDictResolver:
             snapshot = self._get_snapshot()
             
             visited = set()
-            hops = [token]
+            hops: List[str] = [token]
             current = token
             
             for _ in range(self._max_hops):
@@ -137,7 +137,7 @@ class SharedDictResolver:
         self,
         namespace: str,
         token: str,
-        context: Dict[str, Any] = None
+        context: Dict[str, Any] | None = None
     ) -> ExplainResult:
         """
         どのルールが適用されたかを説明
@@ -149,7 +149,7 @@ class SharedDictResolver:
             snapshot = self._get_snapshot()
             
             visited = set()
-            hops = []
+            hops: List[Dict[str, Any]] = []
             current = token
             
             for _ in range(self._max_hops):
@@ -227,7 +227,7 @@ def get_shared_dict_resolver() -> SharedDictResolver:
     return _global_resolver
 
 
-def reset_shared_dict_resolver(snapshot=None, max_hops: int = None) -> SharedDictResolver:
+def reset_shared_dict_resolver(snapshot=None, max_hops: int | None = None) -> SharedDictResolver:
     """SharedDictResolverをリセット（テスト用）"""
     global _global_resolver
     with _resolver_lock:

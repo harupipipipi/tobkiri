@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/calculator.py",
+      "role": "runtime",
+      "sha256": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

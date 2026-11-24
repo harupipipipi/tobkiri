@@ -1,7 +1,10 @@
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, normalizePath, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+const compatibilitySurfacePath = normalizePath(path.resolve(__dirname, "src/App.tsx"));
+const localRuntimeTarget = process.env.DEFAULTSPACK_API_TARGET || "http://127.0.0.1:8766";
 
 function staticShellChunkUrls(): Plugin {
   return {
@@ -27,7 +30,11 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: process.env.DEFAULTSPACK_API_TARGET || "http://127.0.0.1:8766",
+        target: localRuntimeTarget,
+        changeOrigin: true,
+      },
+      "/health": {
+        target: localRuntimeTarget,
         changeOrigin: true,
       },
     },
@@ -43,6 +50,9 @@ export default defineConfig({
         entryFileNames: "shell-app.js",
         chunkFileNames: "shell-[name].js",
         manualChunks(id) {
+          if (normalizePath(id.split("?")[0]) === compatibilitySurfacePath) {
+            return "defaultspack-app";
+          }
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("react-markdown") || id.includes("micromark") || id.includes("remark") || id.includes("mdast") || id.includes("hast")) {
             return "markdown";

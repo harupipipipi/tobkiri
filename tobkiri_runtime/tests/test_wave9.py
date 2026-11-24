@@ -503,147 +503,49 @@ steps:
 # ======================================================================
 
 class TestExpectedHandlerKeysConsistency:
-    """_EXPECTED_HANDLER_KEYS の整合性テスト"""
+    """The removed Kernel handler table has no v4 runtime authority."""
 
     def test_expected_keys_is_frozenset(self):
-        """_EXPECTED_HANDLER_KEYS が frozenset であること"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
-        assert isinstance(_EXPECTED_HANDLER_KEYS, frozenset)
+        from tests.legacy_authority_contracts import assert_retired_module_absent
+
+        assert_retired_module_absent("core_runtime.kernel")
 
     def test_expected_keys_all_start_with_kernel(self):
-        """全キーが kernel: プレフィックスで始まること"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
-        for key in _EXPECTED_HANDLER_KEYS:
-            assert key.startswith("kernel:"), f"Key '{key}' does not start with 'kernel:'"
+        """Finite v4 contracts replace Kernel-prefixed dynamic dispatch keys."""
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+        catalog = BundledCatalog.load(
+            Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
+        )
+        assert all(
+            "operations" in contract
+            for pack in catalog.packs.values()
+            for contract in pack["contracts"]
+        )
 
     def test_no_duplicate_keys(self):
-        """重複キーがないこと（frozenset なので自動的に保証されるが明示的に確認）"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
-        # frozenset は重複を排除するので、元のリストと長さが同じことを確認
-        # ただし frozenset から元のリストは復元できないので、
-        # 最低限 len > 0 であることを確認
-        assert len(_EXPECTED_HANDLER_KEYS) > 0
+        """Pack identities in the v4 catalog are unique by construction."""
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+        catalog = BundledCatalog.load(
+            Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
+        )
+        assert len(catalog.packs) == len(set(catalog.packs))
 
     def test_system_handler_keys_in_expected(self):
-        """kernel_handlers_system.py の登録キーが _EXPECTED_HANDLER_KEYS に含まれること"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        # _register_system_handlers が返すキーのサブセットを手動で列挙
-        system_keys = {
-            "kernel:mounts.init", "kernel:registry.load",
-            "kernel:active_ecosystem.load", "kernel:interfaces.publish",
-            "kernel:ir.get", "kernel:ir.call", "kernel:ir.register",
-            "kernel:node.load_all", "kernel:node.list", "kernel:node.get",
-            "kernel:profile.load_all", "kernel:profile.list",
-            "kernel:profile.get", "kernel:profile.node_state",
-            "kernel:graph.load_all", "kernel:graph.get",
-            "kernel:graph.validate", "kernel:graph.compile",
-            "kernel:exec_python", "kernel:ctx.set", "kernel:ctx.get",
-            "kernel:ctx.copy", "kernel:execute_flow", "kernel:save_flow",
-            "kernel:load_flows", "kernel:flow.compose",
-            "kernel:security.init", "kernel:docker.check",
-            "kernel:approval.init", "kernel:approval.scan",
-            "kernel:container.init", "kernel:privilege.init",
-            "kernel:api.init", "kernel:container.start_approved",
-            "kernel:component.discover", "kernel:component.load",
-            "kernel:emit", "kernel:startup.failed",
-            "kernel:vocab.load", "kernel:noop",
-        }
-        missing = system_keys - _EXPECTED_HANDLER_KEYS
-        assert not missing, f"Missing system keys: {missing}"
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
     def test_runtime_handler_keys_in_expected(self):
-        """kernel_handlers_runtime.py の登録キーが _EXPECTED_HANDLER_KEYS に含まれること"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
+        from tests.v4_batch_support import assert_legacy_registry_fails_closed
 
-        runtime_keys = {
-            "kernel:flow.load_all", "kernel:flow.execute_by_id",
-            "kernel:python_file_call",
-            "kernel:modifier.load_all", "kernel:modifier.apply",
-            "kernel:network.grant", "kernel:network.revoke",
-            "kernel:network.check", "kernel:network.list",
-            "kernel:egress_proxy.start", "kernel:egress_proxy.stop",
-            "kernel:egress_proxy.status",
-            "kernel:lib.process_all", "kernel:lib.check",
-            "kernel:lib.execute", "kernel:lib.clear_record",
-            "kernel:lib.list_records",
-            "kernel:audit.query", "kernel:audit.summary",
-            "kernel:audit.flush",
-            "kernel:vocab.list_groups", "kernel:vocab.list_converters",
-            "kernel:vocab.summary", "kernel:vocab.convert",
-            "kernel:shared_dict.resolve", "kernel:shared_dict.propose",
-            "kernel:shared_dict.explain", "kernel:shared_dict.list",
-            "kernel:shared_dict.remove",
-            "kernel:uds_proxy.init", "kernel:uds_proxy.ensure_socket",
-            "kernel:uds_proxy.stop", "kernel:uds_proxy.stop_all",
-            "kernel:uds_proxy.status",
-            "kernel:capability_proxy.init",
-            "kernel:capability_proxy.status",
-            "kernel:capability_proxy.stop_all",
-            "kernel:capability.grant", "kernel:capability.revoke",
-            "kernel:capability.list",
-            "kernel:pending.export",
-        }
-        missing = runtime_keys - _EXPECTED_HANDLER_KEYS
-        assert not missing, f"Missing runtime keys: {missing}"
+        assert_legacy_registry_fails_closed()
 
     def test_no_extra_keys(self):
-        """_EXPECTED_HANDLER_KEYS に system + runtime 以外のキーがないこと"""
-        from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        all_known_keys = {
-            # system
-            "kernel:mounts.init", "kernel:registry.load",
-            "kernel:active_ecosystem.load", "kernel:interfaces.publish",
-            "kernel:ir.get", "kernel:ir.call", "kernel:ir.register",
-            "kernel:node.load_all", "kernel:node.list", "kernel:node.get",
-            "kernel:profile.load_all", "kernel:profile.list",
-            "kernel:profile.get", "kernel:profile.node_state",
-            "kernel:graph.load_all", "kernel:graph.get",
-            "kernel:graph.validate", "kernel:graph.compile",
-            "kernel:exec_python", "kernel:ctx.set", "kernel:ctx.get",
-            "kernel:ctx.copy", "kernel:execute_flow", "kernel:save_flow",
-            "kernel:load_flows", "kernel:flow.compose",
-            "kernel:security.init", "kernel:docker.check",
-            "kernel:approval.init", "kernel:approval.scan",
-            "kernel:container.init", "kernel:privilege.init",
-            "kernel:api.init", "kernel:container.start_approved",
-            "kernel:component.discover", "kernel:component.load",
-            "kernel:emit", "kernel:startup.failed",
-            "kernel:vocab.load", "kernel:noop",
-            "kernel:register_kernel_functions",
-            "kernel:universal_call",
-            "kernel:desktop.launch", "kernel:desktop.stop",
-            # runtime
-            "kernel:flow.load_all", "kernel:flow.execute_by_id",
-            "kernel:python_file_call",
-            "kernel:modifier.load_all", "kernel:modifier.apply",
-            "kernel:network.grant", "kernel:network.revoke",
-            "kernel:network.check", "kernel:network.list",
-            "kernel:egress_proxy.start", "kernel:egress_proxy.stop",
-            "kernel:egress_proxy.status",
-            "kernel:lib.process_all", "kernel:lib.check",
-            "kernel:lib.execute", "kernel:lib.clear_record",
-            "kernel:lib.list_records",
-            "kernel:audit.query", "kernel:audit.summary",
-            "kernel:audit.flush",
-            "kernel:vocab.list_groups", "kernel:vocab.list_converters",
-            "kernel:vocab.summary", "kernel:vocab.convert",
-            "kernel:shared_dict.resolve", "kernel:shared_dict.propose",
-            "kernel:shared_dict.explain", "kernel:shared_dict.list",
-            "kernel:shared_dict.remove",
-            "kernel:uds_proxy.init", "kernel:uds_proxy.ensure_socket",
-            "kernel:uds_proxy.stop", "kernel:uds_proxy.stop_all",
-            "kernel:uds_proxy.status",
-            "kernel:capability_proxy.init",
-            "kernel:capability_proxy.status",
-            "kernel:capability_proxy.stop_all",
-            "kernel:capability.grant", "kernel:capability.revoke",
-            "kernel:capability.list",
-            "kernel:pending.export",
-        }
-        extra = _EXPECTED_HANDLER_KEYS - all_known_keys
-        assert not extra, f"Extra keys in _EXPECTED_HANDLER_KEYS: {extra}"
+        assert_retired_module_absent("core_runtime.kernel")
 
 
 # ======================================================================

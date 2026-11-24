@@ -17,7 +17,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, TypedDict
 
 
 from .paths import (
@@ -84,6 +84,17 @@ class LibExecutionResult:
     execution_time_ms: float = 0.0
 
 
+class PackProcessingResults(TypedDict):
+    """Aggregate result of processing every discovered pack library."""
+
+    processed: int
+    installed: list[str]
+    updated: list[str]
+    skipped: list[Dict[str, str]]
+    failed: list[Dict[str, str | None]]
+    errors: list[Dict[str, str]]
+
+
 class LibExecutor:
     """lib実行管理クラス"""
     
@@ -92,7 +103,8 @@ class LibExecutor:
     INSTALL_FILE = "install.py"
     UPDATE_FILE = "update.py"
     
-    def __init__(self, records_file: str = None, packs_dir: str = ECOSYSTEM_DIR):
+    def __init__(self, records_file: str | None = None,
+                 packs_dir: str = ECOSYSTEM_DIR):
         self._records_file = Path(records_file) if records_file else Path(self.RECORDS_FILE)
         self._records: Dict[str, LibExecutionRecord] = {}
         self._lock = threading.RLock()
@@ -211,7 +223,8 @@ class LibExecutor:
             result.reason = "No changes detected"
         return result
     
-    def execute_lib(self, pack_id: str, lib_file: Path, lib_type: str, context: Dict[str, Any] = None) -> LibExecutionResult:
+    def execute_lib(self, pack_id: str, lib_file: Path, lib_type: str,
+                    context: Dict[str, Any] | None = None) -> LibExecutionResult:
         """
         lib を SecureExecutor 経由で実行
         
@@ -305,7 +318,7 @@ class LibExecutor:
                 executed_at=self._now_ts(),
                 file_hash=file_hash,
                 success=success,
-                error=error
+                error=error or ""
             )
             self._save_records()
     
@@ -322,13 +335,15 @@ class LibExecutor:
                     "lib_type": lib_type,
                     "execution_mode": execution_mode
                 },
-                error=error
+                error=error or ""
             )
         except Exception:
             pass
     
-    def process_all_packs(self, packs_dir: Path, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        results = {
+    def process_all_packs(
+        self, packs_dir: Path, context: Dict[str, Any] | None = None
+    ) -> PackProcessingResults:
+        results: PackProcessingResults = {
             "processed": 0,
             "installed": [],
             "updated": [],
@@ -408,7 +423,7 @@ def get_lib_executor() -> LibExecutor:
     return get_container().get("lib_executor")
 
 
-def reset_lib_executor(records_file: str = None) -> LibExecutor:
+def reset_lib_executor(records_file: str | None = None) -> LibExecutor:
     """LibExecutorをリセット（テスト用）"""
     global _global_lib_executor
     from .di_container import get_container

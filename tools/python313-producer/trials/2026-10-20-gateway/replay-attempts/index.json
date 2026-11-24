@@ -1,0 +1,70 @@
+[
+  {
+    "file": "01-abi-mismatch.json",
+    "bytes": 1743,
+    "sha256": "f6cff0fcd61d9d471c04cdc3d5a1b7c8ae62fa4bb4db53003411f11c11deced3"
+  },
+  {
+    "file": "01-abi-mismatch.supervision.json",
+    "bytes": 585,
+    "sha256": "6a700b826994f49ea08d897e0602d193820adb16651ec02d0d6ea3df861c81a8"
+  },
+  {
+    "attempt": "01-abi-mismatch",
+    "inputs_unchanged": {
+      "unchanged": true,
+      "input_records": 1599
+    }
+  },
+  {
+    "file": "02-abi-diagnostic.json",
+    "bytes": 26385,
+    "sha256": "cf1a74734db7cf8709b1bdc9bfb4824383beb916e65f19e31cf8956767a4d5ef"
+  },
+  {
+    "file": "02-abi-diagnostic.supervision.json",
+    "bytes": 585,
+    "sha256": "5a8862ea1b7ec7a8db70ca76e6e4e59e205267920470cd447f6f2ddc63d19e7e"
+  },
+  {
+    "attempt": "02-abi-diagnostic",
+    "inputs_unchanged": {
+      "unchanged": true,
+      "input_records": 1599
+    }
+  },
+  {
+    "file": "03-reservation-failure.json",
+    "bytes": 61220,
+    "sha256": "4ba506807f188d1ad6bde1c14173f0f5f264864621e54d6c9c755fc886a9d36d"
+  },
+  {
+    "file": "03-reservation-failure.supervision.json",
+    "bytes": 585,
+    "sha256": "2f30026081b557b81d5d85534bfd8b8391ad40394feca3aa84ef9440035aa1d9"
+  },
+  {
+    "attempt": "03-reservation-failure",
+    "inputs_unchanged": {
+      "unchanged": true,
+      "input_records": 1599
+    }
+  },
+  {
+    "file": "04-instance-limit.json",
+    "bytes": 58807,
+    "sha256": "79fba0fc27a0bbff8cda7bc152a57dac7467efaf12d7ad91a82cd481a0347778"
+  },
+  {
+    "file": "04-instance-limit.supervision.json",
+    "bytes": 584,
+    "sha256": "eb4271a6fe3508a9424b7f717bb80ac25b5c433531fce54438c21b580629f21f"
+  },
+  {
+    "attempt": "04-instance-limit",
+    "inputs_unchanged": {
+      "unchanged": true,
+      "input_records": 1599
+    }
+  }
+]

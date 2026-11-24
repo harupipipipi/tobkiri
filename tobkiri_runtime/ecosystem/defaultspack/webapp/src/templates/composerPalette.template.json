@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "maxHeightRem": 24,
+  "header": {
+    "showCount": true
+  },
+  "item": {
+    "showDescription": true
+  }
+}

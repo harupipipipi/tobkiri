@@ -1,7 +1,7 @@
 from blocks._common import ok, error
-from domain.company.service import CompanyService
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
-from ._helpers import company_id_from, invalid, missing_company, require_dict, subagent_team_write_denied
+from ._helpers import company_id_from, invalid, require_dict
 
 
 def run(input_data, context):
@@ -11,15 +11,12 @@ def run(input_data, context):
     task_id = input_data.get("task_id") or input_data.get("id")
     if not company_id:
         return invalid("company_id is required")
-    blocked = subagent_team_write_denied(company_id)
-    if blocked is not None:
-        return blocked
     if not task_id:
         return invalid("task_id is required")
     try:
-        result = CompanyService().dispatch(company_id, str(task_id), input_data)
-        if result is None:
-            return missing_company(company_id)
-        return ok(result)
+        request = {**input_data, "task_id": str(task_id)}
+        return ok(CompanyContractFacade(request, context).run("dispatch_task"))
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company dispatch failed: " + str(exc), "COMPANY_DISPATCH_ERROR")

@@ -1,0 +1,8 @@
+{
+  "flow_id": "acceptance.temporal.turn.without.temporal",
+  "version": "0.1.0",
+  "description": "Removal authoring variant; temporal operation and prompt are absent.",
+  "inputs": ["namespace", "state", "event"],
+  "outputs": [],
+  "steps": []
+}

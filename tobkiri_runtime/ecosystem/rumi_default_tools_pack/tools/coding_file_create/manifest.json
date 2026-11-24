@@ -7,37 +7,58 @@
   "enabled": true,
   "config": {
     "name": "coding_file_create",
-    "summary": "Create a workspace file",
-    "tags": ["coding", "file", "write"],
+    "summary": "Create one new selected-workspace file after native approval",
+    "tags": [
+      "coding",
+      "file",
+      "write"
+    ],
     "ui": {
       "group_id": "coding/files/write",
       "group_label": "Write",
       "group_icon": "file",
-      "drop_capabilities": ["composer.toggle_chip"],
+      "drop_capabilities": [
+        "composer.toggle_chip"
+      ],
       "widget_kind": "tool_toggle",
-      "settings_fields": [
-        {"id": "approval_policy", "label": "Approval Policy", "type": "select", "default": "prompt", "options": [{"value": "prompt", "label": "Prompt"}, {"value": "always_require", "label": "Always Require"}]},
-        {"id": "default_workspace_root", "label": "Default Workspace Root", "type": "text", "default": "", "help": "Durable root used when a workspace root is not provided by the runtime."},
-        {"id": "preflight_by_default", "label": "Preflight By Default", "type": "toggle", "default": true}
-      ]
+      "settings_fields": []
     },
     "tool_category": "filesystem_write",
     "action_type": "create",
     "risk": "high",
     "approval_policy": "ask",
-    "capability_grants": ["file.write"],
+    "capability_grants": [
+      "file.write"
+    ],
     "write_action": true,
     "requires_approval": true,
     "schema": {
       "parameters": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "path": {"type": "string"},
-          "content": {"type": "string"}
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path",
+          "content"
+        ]
       }
     },
-    "execution": {"type": "rumi_function", "qualified_name": "defaultspack:coding_file_create"}
+    "execution": {
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.file-create-tool",
+      "operation": "rumi_default_tools_pack.file-create-operation"
+    }
   }
 }

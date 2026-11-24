@@ -1,0 +1,25 @@
+{
+  "format": "tobkiri.native-caller-trial-index/1",
+  "execution_base": "42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8",
+  "execution_patch_sha256": "e4bcd6cd129bda65ee0b6998fd5d7fe36062857e1cf6b2132254376eda227e41",
+  "files": {
+    "native-caller.json": {
+      "bytes": 48643,
+      "sha256": "54b327f5dfd0f4044661eb2e59478832cf50abeb8a4af6566d198e7cc89523a9"
+    },
+    "cargo-test.log": {
+      "bytes": 3982,
+      "sha256": "473696e5bb9e0df48239d3a612703747ce356c8df119c4dc9622cc636bacc82a"
+    },
+    "supervision.json": {
+      "bytes": 934,
+      "sha256": "c2fe8c416f91cffcab64e406c1398cf647036446b9ee47e52e59a0812c685e9f"
+    },
+    "execution-source.patch": {
+      "bytes": 15453,
+      "sha256": "e4bcd6cd129bda65ee0b6998fd5d7fe36062857e1cf6b2132254376eda227e41"
+    }
+  },
+  "production_enabled": false,
+  "full_gateway_migration_claimed": false
+}

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from .models import SettingContribution, SettingSectionId
 
 BLOCKED_RAW_LABELS = {"mimo", "computer_use_gradient", "openrouter_auto"}
 
 
-def localized_to_text(value: str | dict[str, str]) -> str:
+def localized_to_text(value: str | Mapping[str, str]) -> str:
     if isinstance(value, str):
         return value
     return value.get("en") or value.get("ja") or next(iter(value.values()), "")

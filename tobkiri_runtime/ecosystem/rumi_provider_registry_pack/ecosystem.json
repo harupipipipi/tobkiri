@@ -1,0 +1,73 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.ai.provider.registry.manage.v1",
+      "rumi.resource.ai.provider.health.v1",
+      "rumi.resource.ai.provider.registry.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Provider-neutral connection state, migration, rollback, and verified health evidence.",
+  "display_name": "Rumi Provider Registry",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:85d313c9c1f442d580f298be25bf63b78bd54702eb0138a7e94195fe97919ae4",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:43dd2705f99ee1befe383d2c8f65b6458f3968713b218b2720c93f5cce52a82d"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:43dd2705f99ee1befe383d2c8f65b6458f3968713b218b2720c93f5cce52a82d"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "provider_instances",
+      "provider_connection_health"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "adapter_owner": false,
+      "catalog_owner": false,
+      "opaque_credentials_only": true,
+      "remote_health_unknown_until_verified": true
+    },
+    "storage_namespace": "rumi.provider_connections"
+  },
+  "pack_id": "rumi_provider_registry_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_registry_pack",
+  "provenance": {
+    "build_identity": "rumi_provider_registry_pack:1.0.0",
+    "content_hash": "sha256:991cd828113e105937b7e32dab3215bad38292a16b2b62caadd710b63a1c8ec1",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.provider.health.read",
+    "ai.provider.registry.manage",
+    "ai.provider.registry.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

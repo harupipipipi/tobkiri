@@ -39,6 +39,7 @@ def run(context):
     routes = [
         # --- Catalog / provider / model routes ---
         ("GET", "/api/ai/catalog", _lazy("blocks.ai.catalog"), {}),
+        ("GET", "/api/ai/strategies", _lazy("blocks.ai.strategies"), {}),
         ("GET", "/api/ai/providers", _lazy("blocks.ai.providers"), {}),
         ("GET", "/api/ai/models", _lazy("blocks.ai.models"), {}),
         ("POST", "/api/ai/models/search", _lazy("blocks.ai.search_models"), {}),

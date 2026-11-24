@@ -50,7 +50,7 @@
     "handoff_owner": {
       "type": "string",
       "enum": [
-        "rumi_reference_ui_pack",
+        "rumi_frontend_design_pack",
         "defaultspack",
         "rumi_default_tools_pack",
         "none"

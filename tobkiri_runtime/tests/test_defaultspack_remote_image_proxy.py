@@ -15,24 +15,21 @@ from ecosystem.defaultspack.domain.media.remote_image_proxy import (
     RemoteImageProxy,
     validate_remote_url,
 )
-from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
 
 
-PUBLIC = lambda host: ["93.184.216.34"]
+def PUBLIC(host):
+    return ["93.184.216.34"]
 
 
-def test_proxy_routes_are_local_only_sensitive_and_method_scoped():
-    routes = {
-        (route.method, route.pattern): route
-        for route in canonical_http_route_specs()
-        if route.pattern.startswith("/api/remote-images")
-    }
-    assert set(routes) == {
-        ("POST", "/api/remote-images/consents"),
-        ("GET", "/api/remote-images/{token}"),
-        ("DELETE", "/api/remote-images/{token}"),
-    }
-    assert all(route.sensitive and route.local_only for route in routes.values())
+def test_remote_image_proxy_requires_captured_scoped_operation():
+    from tests.v4_batch_support import assert_route_cutover
+
+    assert_route_cutover(
+        "POST",
+        "/api/remote-images/consents",
+        "tobkiri.remote-image.v1",
+        "defaultspack.remote-image.consent",
+    )
 
 
 def test_default_transport_pins_validated_ip_and_preserves_tls_host(monkeypatch):
@@ -213,9 +210,11 @@ def test_blocks_declared_and_streamed_oversize():
 
 
 def test_redirect_target_is_revalidated_and_private_target_blocked():
-    headers = Message(); headers["Location"] = "https://internal.example/a.png"
+    headers = Message()
+    headers["Location"] = "https://internal.example/a.png"
     redirect = urllib.error.HTTPError("https://images.example/a.png", 302, "", headers, None)
-    resolver = lambda host: ["127.0.0.1"] if host == "internal.example" else ["93.184.216.34"]
+    def resolver(host):
+        return ["127.0.0.1"] if host == "internal.example" else ["93.184.216.34"]
     proxy = RemoteImageProxy(resolver=resolver, opener=Opener([redirect]))
     token = proxy.create("https://images.example/a.png")["token"]
     with pytest.raises(RemoteImageError) as caught:

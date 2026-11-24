@@ -57,7 +57,7 @@ def test_rumi_workspace_pack_is_discoverable_by_setup_selector() -> None:
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.conflicts_with == []
     assert candidate.overlap_policy["tool_aliases"] == "prefer_explicit_pack_namespace"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
     assert candidate.marketplace["id"] == "rumi.workspace_pack"
     assert candidate.signing["mode"] == "repository_reviewed"
 

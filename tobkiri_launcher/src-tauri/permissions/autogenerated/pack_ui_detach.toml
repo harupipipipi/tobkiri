@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pack-ui-detach"
+description = "Enables the pack_ui_detach command without any pre-configured scope."
+commands.allow = ["pack_ui_detach"]
+
+[[permission]]
+identifier = "deny-pack-ui-detach"
+description = "Denies the pack_ui_detach command without any pre-configured scope."
+commands.deny = ["pack_ui_detach"]

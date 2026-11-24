@@ -1,0 +1,1167 @@
+{
+  "format": "tobkiri.ordered-python-tool-bridge-replay/2",
+  "protocol": "ordered-finite-json-v2",
+  "abi": "core-typed-development",
+  "execution_observation_scope": "execution is observed only after an actual guest function returns; traps alone are attempts, not completed-call proof",
+  "core_runtime_acceptance": false,
+  "native_core_acceptance": false,
+  "full_host_replay_performed": false,
+  "legacy_http_error_parity_claimed": false,
+  "production_enabled": false,
+  "compilation_wall_time_bounded": false,
+  "external_process_supervisor_required": true,
+  "guest_call_timeout_seconds": 30,
+  "guest_timeout_scope": "entire case including instantiation and both lifecycle calls",
+  "fuel_per_call": 2000000000,
+  "fuel_scope": "entire case including instantiation and both lifecycle calls",
+  "store_limits": {
+    "memory_size": 134217728,
+    "table_elements": 65536,
+    "instances": 64,
+    "tables": 64,
+    "memories": 4
+  },
+  "host_import_policy": "canonical minimal imports trap if called; no host effects",
+  "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+  "oracle_sha256": "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8",
+  "build_receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d",
+  "original_reference_runtime": {
+    "implementation": "CPython",
+    "python": "3.13.5",
+    "unicode": "15.1.0",
+    "int_max_str_digits": 4300
+  },
+  "reviewed_expected_guest_runtime": {
+    "python": "3.13.16",
+    "unicode": "15.1.0"
+  },
+  "replay_sha256": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe",
+  "imports": [
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "exports": [
+    "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+    "tobkiri:core/lifecycle@1.0.0"
+  ],
+  "admitted_parity_scope": "18 exact normalized strings and 12 typed INVALID mappings; three nonfinite INTERNAL boundaries are not admitted parity",
+  "observations": [
+    {
+      "id": "base:empty",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      },
+      "fuel_consumed": 3599960
+    },
+    {
+      "id": "base:ordinary",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4949408
+    },
+    {
+      "id": "base:unicode-repr-15-1",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4822800
+    },
+    {
+      "id": "base:opaque-inner-json",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4988311
+    },
+    {
+      "id": "base:invalid-name",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3933003
+    },
+    {
+      "id": "base:invalid-item",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3790280
+    },
+    {
+      "id": "base:invalid-arguments",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4159074
+    },
+    {
+      "id": "base:invalid-json",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4093774
+    },
+    {
+      "id": "base:inner-bigint-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4739128
+    },
+    {
+      "id": "base:inner-nonfinite-excluded",
+      "classification": "excluded-not-parity",
+      "profile_exclusion_not_parity": true,
+      "admitted_parity": false,
+      "nonfinite_boundary_verified": true,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "internal",
+        "message": "provider output contains a non-finite number"
+      },
+      "fuel_consumed": 4499382
+    },
+    {
+      "id": "base:inner-depth-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 6816094
+    },
+    {
+      "id": ".generate:empty",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      },
+      "fuel_consumed": 3600419
+    },
+    {
+      "id": ".generate:ordinary",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4949867
+    },
+    {
+      "id": ".generate:unicode-repr-15-1",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4823259
+    },
+    {
+      "id": ".generate:opaque-inner-json",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4988770
+    },
+    {
+      "id": ".generate:invalid-name",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3933462
+    },
+    {
+      "id": ".generate:invalid-item",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3790739
+    },
+    {
+      "id": ".generate:invalid-arguments",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4159533
+    },
+    {
+      "id": ".generate:invalid-json",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4094233
+    },
+    {
+      "id": ".generate:inner-bigint-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4739587
+    },
+    {
+      "id": ".generate:inner-nonfinite-excluded",
+      "classification": "excluded-not-parity",
+      "profile_exclusion_not_parity": true,
+      "admitted_parity": false,
+      "nonfinite_boundary_verified": true,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "internal",
+        "message": "provider output contains a non-finite number"
+      },
+      "fuel_consumed": 4499841
+    },
+    {
+      "id": ".generate:inner-depth-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 6816475
+    },
+    {
+      "id": ".stream:empty",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      },
+      "fuel_consumed": 3600515
+    },
+    {
+      "id": ".stream:ordinary",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4949963
+    },
+    {
+      "id": ".stream:unicode-repr-15-1",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4823355
+    },
+    {
+      "id": ".stream:opaque-inner-json",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4988866
+    },
+    {
+      "id": ".stream:invalid-name",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3933558
+    },
+    {
+      "id": ".stream:invalid-item",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 3790835
+    },
+    {
+      "id": ".stream:invalid-arguments",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4159629
+    },
+    {
+      "id": ".stream:invalid-json",
+      "classification": "original-invalid",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "fuel_consumed": 4094329
+    },
+    {
+      "id": ".stream:inner-bigint-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 4739683
+    },
+    {
+      "id": ".stream:inner-nonfinite-excluded",
+      "classification": "excluded-not-parity",
+      "profile_exclusion_not_parity": true,
+      "admitted_parity": false,
+      "nonfinite_boundary_verified": true,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "error",
+        "code": "internal",
+        "message": "provider output contains a non-finite number"
+      },
+      "fuel_consumed": 4499937
+    },
+    {
+      "id": ".stream:inner-depth-excluded",
+      "classification": "success",
+      "profile_exclusion_not_parity": false,
+      "admitted_parity": true,
+      "nonfinite_boundary_verified": false,
+      "case_completed": true,
+      "lifecycle": {
+        "init": true,
+        "shutdown": true
+      },
+      "guest_calls_attempted": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_calls_returned": [
+        "init",
+        "runtime-info",
+        "normalize",
+        "shutdown"
+      ],
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "actual": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      },
+      "fuel_consumed": 6816571
+    }
+  ],
+  "wasm_execution_attempted": true,
+  "wasm_execution_performed": true,
+  "complete_case_set": true,
+  "all_guest_calls_returned": true,
+  "all_lifecycles_completed": true,
+  "all_cases_completed": true,
+  "all_admitted_parity": true,
+  "all_nonfinite_boundaries_verified": true,
+  "guest_matches_reviewed_producer": true,
+  "replay_succeeded": true
+}

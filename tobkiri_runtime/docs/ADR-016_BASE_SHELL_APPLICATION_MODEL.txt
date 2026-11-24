@@ -1,0 +1,246 @@
+# ADR-016: Base Pack, Shell Pack, and application presentation model
+
+- Status: Accepted
+- Date: 2026-08-04
+- Decision owners: Tobkiri Runtime / Pack Architecture
+- Applies to: Profile composition, Base Packs, GUI/CLI shells, frontend
+  contributions, standalone applications, Tauri/Electron integration, and
+  development toolchains
+- Must be read with: ADR-014_BOUNDARY_CAPABILITY_GRANTS.txt,
+  ADR-015_RUNTIME_SECURITY_LIFECYCLE.txt, and
+  TOBKIRI_PACK_ARCHITECTURE_IMPLEMENTATION_PLAN.txt
+
+Implementation revision: Profile composition now uses the closed v4 schemas
+`base_definition_v4`, `shell_definition_v4`, `profile_v4`,
+`composition_catalog_v4`, and `profile_lock_v4`. Base/Shell v1 definition
+schemas and ProfileLock v1 have been removed. Legacy input is accepted only by
+the review-only migration adapter and is never activation eligible.
+
+## Context
+
+The legacy Startup Profile stores one `base_pack` and treats a launchable frontend as
+`launch.kind=desktop_app` plus an arbitrary `desktop_app.command`. `pack-shell` parses
+and spawns that command. This can launch a completed Tauri, Electron, Qt, Python, or
+CLI program, but the Runtime does not know which technology it is, which artifact is
+frontend or native backend, which Contracts it implements, or how it should be
+isolated and updated. A command such as `cargo tauri dev` works only because it is an
+arbitrary Host process; it is not Tauri support.
+
+The repository Tauri launcher is fixed Host application code, not a replaceable Pack.
+The current setup `basepack` is bootstrap metadata targeting `defaultspack`; it does
+not contain a Tauri runtime. There is no canonical Tauri Pack, Electron Pack, or CLI
+Base Pack.
+
+Duplicating every functional Base Pack for every presentation technology would create
+`defaults-tauri`, `defaults-electron`, `defaults-cli`, and the same cross product for
+every future Base Pack. Their backend graphs and migration state would drift.
+
+## Decision
+
+### 1. Base Pack and Shell Pack are orthogonal
+
+A Base Pack is the Profile composition root. It selects the application capability
+graph, default routing, state owners, backend Providers, Tool/Workflow catalogs, and
+required/optional Shell capabilities. It does not select a UI framework, bundle a
+Tauri/Electron runtime by implication, or receive Host authority because it is base.
+
+A Shell Pack implements the user interaction boundary through `app.shell.v1`. It owns
+normal navigation, presentation lifecycle, contribution hosting, and technology-
+specific rendering. Shell examples are:
+
+- `shell.tauri.default`
+- `shell.electron.default`
+- `shell.cli.default`
+- future `shell.web`, `shell.mobile`, `shell.voice`, or `shell.headless`
+
+The user first selects a Base Pack and then one compatible Shell Provider. The
+ProfileLock pins both exact artifacts and their binding. An interactive Profile has
+exactly one active Shell Provider; a headless Profile explicitly selects a headless
+Shell or declares no interactive Shell according to its Base Pack requirements.
+
+### 2. Profile schema and resolution
+
+The conceptual Profile form is:
+
+  base:
+    pack: defaults-basepack
+
+  shell:
+    contract: app.shell.v1
+    provider: shell.tauri.default
+
+  packs:
+    - model.openai
+    - storage.local
+    - tool.github
+
+The UI may display `Tauri Desktop`, `Electron Desktop`, and `CLI`, but the stored
+selection is an exact Shell Provider request, never a Runtime enum which grants
+special behavior. Resolver compatibility is Contract- and capability-based.
+
+A Base Pack declares requirements such as navigation, commands, notification display,
+rich text, windows, file drop, interactive prompt, or terminal table. It may permit
+presentation families `graphical`, `terminal`, and `headless`. Resolver rejects a
+Shell that cannot satisfy required capabilities and never silently falls back to a
+different presentation family.
+
+Adding a new Shell technology requires a new Pack implementing the Shell Contract and
+conformance suite, not a new `if technology == ...` branch in Runtime Core.
+
+### 3. Presentation roles are separate from technologies
+
+The model uses independent fields:
+
+- experience role: `shell`, `frontend_contribution`, `standalone_app`, `cli`,
+  `headless`;
+- presentation kind: `declarative`, `isolated_web`, `packaged_process`,
+  `terminal_stdio`, `remote_ui`;
+- technology metadata: `tauri`, `electron`, `native`, `web`, or another build stack;
+- execution domain and trust class as defined by ADR-014/015.
+
+`tauri` and `electron` are packaging/application technologies, not trust classes,
+authority classes, or frontend kinds. `base_pack.type=tauri` is therefore rejected as
+an insufficient model.
+
+### 4. Contribution filtering
+
+Backend Provider Packs are independent of Shell selection. A Pack may provide zero,
+one, or multiple presentation contributions alongside the same backend Contracts.
+
+Graphical Shells consume exact, pinned contributions such as:
+
+- `ui.route.contribution.v1`
+- `ui.panel.contribution.v1`
+- `ui.command.contribution.v1`
+- `ui.renderer.contribution.v1`
+
+CLI Shells consume:
+
+- `cli.command.contribution.v1`
+- `cli.prompt.contribution.v1`
+- `cli.renderer.contribution.v1`
+- `cli.completion.contribution.v1`
+
+Selecting a CLI Shell does not activate GUI routes, WebViews, GUI assets, or window
+lifecycle. Selecting a graphical Shell does not expose terminal/TTY authority unless
+explicitly required. A Pack supporting both publishes both contribution families;
+Resolver includes only those consumed by the selected Shell. Unselected contribution
+artifacts remain unmaterialized.
+
+Contributions register metadata or Contract Operations. They do not inject native
+code into another Pack or the Host launcher. Shell choice does not change backend
+Provider identity, state ownership, or Host Grants.
+
+### 5. Tauri integration has three separate roles
+
+`shell.tauri.*` is a replaceable Shell Pack. It is a prebuilt Tauri application which
+implements `app.shell.v1`, hosts isolated/declarative graphical contributions, and
+connects to the Host Kernel through authenticated Protocol/Contract requests.
+
+`runtime.tauri.application.*` is an optional application-runtime Provider for
+recognizing, validating, launching, stopping, and observing completed standalone
+Tauri application artifacts. It does not build source during activation.
+
+`dev.tauri.toolchain.*` is a Development Realm Host Extension which may implement
+project creation, dependency materialization, `npm run dev`, `cargo tauri dev`, build,
+bundle, signing preparation, and diagnostics. Its process/filesystem/network/toolchain
+authority requires explicit development policy and never becomes a production launch
+fallback.
+
+The same separation applies to Electron. CLI normally needs a Shell and structured
+stdio/TTY runtime, while a compiler/toolchain remains a separate Development Realm
+Provider.
+
+### 6. Standalone application model
+
+A standalone Tauri/Electron/native Application Pack declares:
+
+- application ID and role;
+- presentation artifact and entrypoint;
+- native backend artifact;
+- optional sidecar artifacts;
+- provided and required Contracts;
+- per-component ExecutionDomain and authority requirements;
+- exact OS/architecture ArtifactVariants, signatures, bundle identity, and digest;
+- lifecycle, readiness, cancellation, update, and state ownership.
+
+Tauri web frontend to Tauri native command traffic may remain internal to the
+application domain. Any operation published to other Packs is a Contract Provider.
+Any Host or external effect follows ADR-014. Optional Python/Node/native sidecars use
+their own ExecutionDomains unless an explicitly verified authority-equivalence class
+allows co-location.
+
+A frontend contribution loaded into Tobkiri's selected Tauri Shell is not itself a
+Tauri application. It is declarative UI or an isolated web contribution that issues
+Contract Requests to backend Providers. Arbitrary Pack Rust commands/plugins are never
+linked into the Host Tauri launcher or Shell process.
+
+### 7. Production artifacts are prebuilt
+
+Production activation never runs `cargo tauri dev`, `npm run dev`, package-manager
+install, or a source build. A logical release supplies completed, signed platform
+variants such as macOS `.app`, Windows executable/bundle, and Linux AppImage/deb/rpm
+according to the selected distribution format. ProfileLock pins the selected variant,
+frontend/native/sidecar subartifact digests, bundle identifier, runtime ABI, and
+security-relevant entitlements.
+
+Tauri code signing/notarization and Electron/native bundle signatures are verified by
+the installation pipeline. Missing toolchains do not affect a light user's ability to
+run a supported prebuilt Shell or Application Pack.
+
+### 8. Shell security boundary
+
+The Host launcher retains approval UI, trusted-attention surface, authority status,
+credential consent, and security errors. A Shell Pack cannot replace or cover those
+TCB surfaces.
+
+Tauri/Electron Shell web content follows ADR-015 GUI origin partitioning. Shell native
+backend executes in its declared domain and receives no ambient Host filesystem,
+network, process, device, credential, or arbitrary Tauri-plugin authority. Shell and
+contribution operations use the canonical Broker. Electron's runtime and memory are
+charged to the Profile; sharing a framework runtime does not permit origin, process,
+state, Handle, or authority sharing between non-equivalent principals.
+
+CLI Shell input/output is structured by a versioned protocol covering command schema,
+arguments, stdin/stdout/stderr, TTY presence, prompt, completion, resize, signal,
+exit status, streaming, cancellation, and output limits. A CLI Shell does not receive
+an unrestricted Host terminal or process capability merely because it is textual.
+
+### 9. Legacy transition
+
+Legacy `desktop_app.command` is inventory-only during migration. It maps to an opaque
+legacy packaged process and does not prove Tauri/Electron/CLI support. Migration must
+classify each command as Shell, standalone Application, CLI contribution, backend
+Provider, or Development toolchain, then generate exact ArtifactVariants and
+Contracts. Production v4 deletes arbitrary command-string launch.
+
+The fixed repository Tauri launcher is reduced to Host/TCB security chrome and Shell
+bootstrap. Defaultspack's backend graph becomes `defaults-basepack`; its normal UI
+moves to an explicit Shell Pack. The setup flow asks for Base Pack first and compatible
+Shell second.
+
+## Security and compatibility invariants
+
+1. Base Pack selection never implies a UI framework or Host authority.
+2. Shell selection is an exact Provider binding, not a privileged Runtime enum.
+3. CLI selection does not activate GUI contribution artifacts, and vice versa.
+4. Backend Provider identity/state/Grant does not change merely because Shell changes.
+5. Tauri/Electron production launch uses prebuilt verified variants, never dev commands.
+6. Pack frontend/native code is not injected into the Host launcher or another Pack.
+7. Host security UI remains outside replaceable Shell control.
+8. A new Shell technology is added through Contracts and conformance, without a new
+   Runtime Core technology branch.
+9. Development toolchain authority is separate from production application launch.
+10. Legacy arbitrary command strings are not treated as a stable application ABI.
+
+## Consequences
+
+- `defaults-basepack` can be reused with Tauri, Electron, CLI, and future Shells
+  without copying backend graphs or state migrations.
+- Packs can share one backend implementation while supplying presentation-specific
+  GUI and CLI contributions.
+- The setup experience gains a clear Base Pack then Shell selection flow.
+- Tauri support becomes an explicit ecosystem capability instead of an accidental
+  subprocess behavior.
+- Additional schemas and conformance suites are required for Shell, contributions,
+  structured CLI I/O, and standalone application artifacts.

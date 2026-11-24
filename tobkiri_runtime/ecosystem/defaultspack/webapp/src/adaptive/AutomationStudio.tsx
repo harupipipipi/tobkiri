@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 
 import type { AdaptiveAutomation, AdaptiveAutomationState } from "../lib/adaptiveApi";
 import { fetchAdaptiveAutomations, updateAdaptiveAutomation } from "../lib/adaptiveApi";
+import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
   ResourceBanner,
@@ -80,6 +81,7 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
   });
   const [enabledOverrides, setEnabledOverrides] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const automations = useMemo(
     () => (data?.automations ?? []).map((automation) => ({
       ...automation,
@@ -91,12 +93,14 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
   const handleToggle = async (automation: AdaptiveAutomation) => {
     const nextEnabled = !(enabledOverrides[automation.id] ?? automation.enabled);
     setEnabledOverrides((current) => ({ ...current, [automation.id]: nextEnabled }));
+    setOperationError(null);
     setMessage(nextEnabled ? "Automation enabled locally." : "Automation paused locally.");
     try {
       await updateAdaptiveAutomation(automation.id, { enabled: nextEnabled });
       setMessage(nextEnabled ? "Automation enabled." : "Automation paused.");
     } catch (err) {
-      setMessage(`Kept local automation state. ${err instanceof Error ? err.message : String(err)}`);
+      setMessage(null);
+      setOperationError(`Kept local automation state. ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -120,6 +124,15 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
         }
       />
       <ResourceBanner status={status} error={error} onRefresh={refresh} />
+      {operationError ? (
+        <ErrorNotice
+          className="rounded-none border-x-0 border-b-0 px-3 py-2 text-xs"
+          copyLabel="Copy automation update error"
+          copyText={operationError}
+          errorIcon="automation-update"
+          message={operationError}
+        />
+      ) : null}
       {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">{message}</div> : null}
       {!data ? (
         <AdaptiveEmptyState>Adaptive automations are unavailable until the API returns live state.</AdaptiveEmptyState>

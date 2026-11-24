@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/subagent-placement-map/v1.json",
+  "title": "Tobkiri Subagent Placement Map v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "revision",
+    "main",
+    "placements",
+    "team_bindings",
+    "exposed_ports",
+    "governance"
+  ],
+  "properties": {
+    "schema_version": {"const": "tobkiri.subagent-placement-map/v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "revision": {"type": "integer", "minimum": 1},
+    "previous_revision": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "main": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement_id", "mode"],
+      "properties": {
+        "placement_id": {"$ref": "#/$defs/id"},
+        "mode": {"enum": ["interactive", "coordinator", "facade"]}
+      }
+    },
+    "placements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["placement_id", "kind", "role"],
+        "properties": {
+          "placement_id": {"$ref": "#/$defs/id"},
+          "kind": {"enum": ["main", "subagent"]},
+          "role": {"$ref": "#/$defs/id"},
+          "nested_map_ref": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "team_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slot", "provider_ref"],
+        "properties": {
+          "slot": {"$ref": "#/$defs/id"},
+          "provider_ref": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "exposed_ports": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input": {"$ref": "#/$defs/stringList"},
+        "output": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "governance": {"type": "object"}
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

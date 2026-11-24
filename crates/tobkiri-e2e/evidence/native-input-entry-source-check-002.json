@@ -1,0 +1,95 @@
+{
+  "Cargo_native_build_download_executed": false,
+  "E_legacy_vectors_inventory_historical_receipts_edits": false,
+  "SDK_or_producer_edits": false,
+  "actual_checks": [
+    {
+      "command": "rustfmt --check --edition 2024 --config skip_children=true crates/tobkiri-profile/src/lib.rs crates/tobkiri-profile/src/compile.rs crates/tobkiri-profile/tests/input_entry_compile.rs",
+      "exit": 0,
+      "syntax_and_format_only_files": 3
+    },
+    {
+      "command": "python3 -B -m unittest discover -s packs/tests -v",
+      "exit": 0,
+      "passed": 3,
+      "scope": "unchanged manifest/Profile fixture pin checks; no guest or unit codec execution"
+    }
+  ],
+  "capacity": {
+    "free_bytes_before_receipt": 5982613504,
+    "hard_floor_GiB": 5
+  },
+  "codec_boundary": {
+    "Wasm_codec_files_edited_by_E": false,
+    "error_branch_requirement": "read failure; no successful physical receipt or ingress delivery",
+    "known_gap": "historical generic host facade flattens some unit results to null; native common-codec zero-result forwarding and error-no-delivery proof require next Wasm ownership checkpoint",
+    "no_zero_result_representation_selected_by_E": true,
+    "raw_codec_source_facts": {
+      "empty_record": "{}",
+      "result_ok_with_empty_record": "{\"tag\":\"ok\",\"val\":{}}",
+      "result_ok_without_payload": "{\"tag\":\"ok\"}"
+    },
+    "runtime_proof": false,
+    "shared_owner_consulted": "capacity_llama_inventory"
+  },
+  "format": "tobkiri.native-input-source-check/2",
+  "grant_approval_receipt_binding_changes": false,
+  "new_targets_or_dependencies": 0,
+  "policy_reference": "docs/migration/1520/astra-answers.md: Exact Native Input signatures",
+  "predecessor": {
+    "path": "crates/tobkiri-e2e/evidence/native-input-entry-source-check-001.json",
+    "preserved": true,
+    "sha256": "3602cd004fa85019c152892d02b1ad6be920b675e8a661e1a639bc9e3b8ad0a3"
+  },
+  "producer_checkpoint_002_identity_reverified": "124bc3e83799ea3629d8f2a7fed111d0df5b04ac2782054d8143ee3a59c829ed",
+  "public_API_changes": "none; CompiledInputEntry.function()/arguments() retain exact metadata and per-parameter structural arguments",
+  "remaining": [
+    "root leased Cargo checks of Manifest/Profile tests",
+    "common native WIT codec zero-result/unit/result forwarding with no ingress normalization",
+    "result Err read-failure/no receipt/no ingress runtime regression",
+    "stream/callback lifetime delivery compatibility proof"
+  ],
+  "resolved_previous_policy_question": true,
+  "rust_regression_sources_unrun": {
+    "current_input_entry_compile_tests": 11,
+    "current_input_entry_wire_tests": 5,
+    "followup_cases": [
+      "multiple empty-record parameters through chained aliases",
+      "nonempty optional-field record alias remains denied",
+      "five distinct direct/no-result/empty-record/result signatures preserved",
+      "stream/callback unavailable message retains lifetime compatibility gap"
+    ],
+    "new_followup_tests": 4
+  },
+  "source_behavior": [
+    "direct T remains allowed, result<T,E> is not required",
+    "all parameter aliases are resolved by the authoritative manifest converter; only actual field-zero records are admitted",
+    "every admitted parameter gets its own named exact-type validated empty-record argument; no arbitrary required values or Profile args field",
+    "zero-result, direct empty record, payloadless result success and result carrying empty record remain distinct in CompiledInputEntry.function()",
+    "no ingress payload or zero-result representation is constructed by the compiler",
+    "stream/callback success-payload lifetime forwarding remains explicitly unavailable, not completed compatibility"
+  ],
+  "source_changes": {
+    "crates/tobkiri-profile/src/compile.rs": {
+      "current_bytes": 51006,
+      "current_sha256": "1c2f1e97f2d6119fb177abc258df7aaac13c31d957cdbb6643d01627652be595",
+      "previous_checkpoint_sha256": "f57e4705f3f67d40c7cabed55e08815e8053bb40efdec7093f0a9f713514de27"
+    },
+    "crates/tobkiri-profile/src/lib.rs": {
+      "current_bytes": 15930,
+      "current_sha256": "f059dcc73aba19f74ce269c97e7b25afb47d7f2b9aefa4859248107499a299d2",
+      "previous_checkpoint_sha256": "c88149ed7b0a9a3b1428ba63a66f654685efa515a5585d4aa78a2b8f6ba38c3e"
+    },
+    "crates/tobkiri-profile/tests/input_entry_compile.rs": {
+      "current_bytes": 12754,
+      "current_sha256": "e8c3f71746780351ded46c13f7bce7ac1cde6e07a78079cd5a846924fc1ef754",
+      "previous_checkpoint_sha256": "dcf0f84eddfe255ab00af7f4fb69a3a2b7202989f861506e4e403cc9997f133d"
+    },
+    "docs/migration/1520/native-input-entry.md": {
+      "current_bytes": 3667,
+      "current_sha256": "13c919de374ecf0d9bdec18e4a8f1291c18db470190a277a42c924dd6345ce1f",
+      "previous_checkpoint_sha256": "a6ff3f53a71ed9b1b75957b23f55c384b58f8cda0b6ca50c3b57b052d39ff9c2"
+    }
+  },
+  "status": "High final signature source follow-up; Rust/runtime checks pending root lease"
+}

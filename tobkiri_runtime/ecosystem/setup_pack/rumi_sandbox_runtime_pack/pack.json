@@ -14,7 +14,7 @@
     "security_review": "handoff_to_rumi_security_review_pack",
     "release_jobs": "handoff_to_rumi_devops_release_pack"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Sandbox Runtime is a high-risk declarative boundary and evidence pack; defaultspack promotion is blocked until runtime execution owners prove isolation, secret handling, and receipt evidence outside this pack.",
     "criteria": [

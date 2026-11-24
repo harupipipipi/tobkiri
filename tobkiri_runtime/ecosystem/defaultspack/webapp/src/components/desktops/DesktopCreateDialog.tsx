@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, Monitor, X } from "lucide-react";
 
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import {
   providerIsDesktopReady,
   providerLabel,
@@ -20,6 +21,7 @@ type DesktopCreateDialogProps = {
   providers: RuntimeProviderStatus[];
   selectedProviderId?: string | null;
   loading?: boolean;
+  createSupported?: boolean;
   error?: string | null;
   onClose: () => void;
   onCreate: (request: CreateDesktopRequest) => Promise<void> | void;
@@ -87,6 +89,7 @@ export function DesktopCreateDialog({
   providers,
   selectedProviderId,
   loading = false,
+  createSupported = true,
   error,
   onClose,
   onCreate,
@@ -134,9 +137,9 @@ export function DesktopCreateDialog({
       null
     );
   }, [providerId, providers, selectedProviderId]);
-  const selectedProviderReady = selectedProvider
+  const selectedProviderReady = createSupported && (selectedProvider
     ? providerIsDesktopReady(selectedProvider)
-    : providers.length === 0;
+    : providers.length === 0);
   const visibleTemplates = useMemo(() => {
     if (!selectedProvider) return templates;
     return templates.filter((template) =>
@@ -521,9 +524,11 @@ export function DesktopCreateDialog({
           )}
 
           {error && (
-            <p className="mt-4 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-100">
-              {error}
-            </p>
+            <ErrorNotice
+              className="mt-4 text-xs"
+              copyLabel="デスクトップ作成エラーをコピー"
+              message={error}
+            />
           )}
         </div>
 

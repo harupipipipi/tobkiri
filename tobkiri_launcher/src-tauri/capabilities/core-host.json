@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "core-host",
+  "description": "Only the bundled generic Core host may forward its private frame channels.",
+  "local": true,
+  "windows": ["core-host"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "allow-core-start-profile", "allow-core-stop-session", "allow-core-host-output-ack", "allow-pack-ui-invoke", "allow-pack-ui-register", "allow-pack-ui-cancel", "allow-pack-ui-ack", "allow-pack-ui-detach", "allow-core-terminal-reply", "allow-pack-ui-stream-pull", "allow-pack-ui-stream-cancel"]
+}

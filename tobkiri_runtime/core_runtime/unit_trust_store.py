@@ -25,7 +25,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 DEFAULT_TRUST_DIR = "user_data/units/trust"
@@ -115,7 +115,7 @@ class UnitTrustStore:
     def _log_audit(
         self,
         event_type: str,
-        severity: str,
+        severity: Literal["info", "warning", "error", "critical"],
         description: str,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -126,7 +126,7 @@ class UnitTrustStore:
                 event_type=event_type,
                 severity=severity,
                 description=description,
-                details=details,
+                details=details or {},
             )
         except Exception:
             pass
@@ -364,20 +364,20 @@ class UnitTrustStore:
 
         # F-2: kind validation
         if kind not in VALID_TRUST_KINDS:
-            exc = ValueError(
+            invalid_kind_error = ValueError(
                 f"kind must be one of {sorted(VALID_TRUST_KINDS)}, got {kind!r}"
             )
             self._log_audit(
                 "trust_add_rejected",
                 "warning",
-                str(exc),
+                str(invalid_kind_error),
                 details={
                     "unit_id": unit_id,
                     "version": version,
                     "kind": kind,
                 },
             )
-            raise exc
+            raise invalid_kind_error
 
         with self._lock:
             self._trusted[(unit_id, version)] = TrustedUnit(
@@ -481,7 +481,7 @@ def get_unit_trust_store() -> UnitTrustStore:
     return _global_unit_trust
 
 
-def reset_unit_trust_store(trust_dir: str = None) -> UnitTrustStore:
+def reset_unit_trust_store(trust_dir: str | None = None) -> UnitTrustStore:
     global _global_unit_trust
     with _unit_trust_lock:
         _global_unit_trust = UnitTrustStore(trust_dir)

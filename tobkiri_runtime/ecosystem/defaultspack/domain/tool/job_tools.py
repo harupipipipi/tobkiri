@@ -43,7 +43,7 @@ def job_create(arguments: dict[str, Any], context: dict[str, Any] | None = None)
     kind = str(arguments.get("kind") or "task")
     job_id = str(arguments.get("job_id") or "job_" + uuid.uuid4().hex[:12])
     jobs = _load(context)
-    record = {
+    record: dict[str, Any] = {
         "job_id": job_id,
         "kind": kind,
         "status": "queued",

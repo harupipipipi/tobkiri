@@ -20,6 +20,7 @@ import { mobileApiResources } from "../features/mobile/resources/mobileApiResour
 import type { MobileDevice, P2PPairing } from "../features/mobile/resources/mobileApiResources";
 import { allowCleartextMobileQr } from "../lib/mobileCleartextQr";
 import { buildMobilePairingBaseUrls } from "../lib/mobilePairingUrls";
+import { ErrorNotice } from "./ErrorNotice";
 import { MobilePairingApproval } from "./MobilePairingApproval";
 import {
   LiquidButton,
@@ -199,27 +200,40 @@ function PairingProgress({
 
   if (pairing.status === "rejected") {
     return (
-      <div className="rounded-3xl border border-rose-300/25 bg-rose-400/10 p-4">
-        <div className="text-sm font-extrabold text-rose-100">今回は接続しませんでした</div>
-        <p className="mt-1 text-xs leading-5 text-rose-100/70">必要になったら、新しいQRを作り直せます。</p>
+      <ErrorNotice
+        className="rounded-3xl border-rose-300/25 bg-rose-400/10 p-4 text-xs leading-5 text-rose-100"
+        copyLabel="ペアリング拒否の内容をコピー"
+        copyText="今回は接続しませんでした\n\n必要になったら、新しいQRを作り直せます。"
+        message="必要になったら、新しいQRを作り直せます。"
+        messageClassName="mt-1 text-rose-100/70"
+        title="今回は接続しませんでした"
+        titleClassName="text-sm text-rose-100"
+      >
         <LiquidButton type="button" quiet className="mt-3" onClick={onRestart}>
           <RefreshCw size={14} />
           新しいQRを作る
         </LiquidButton>
-      </div>
+      </ErrorNotice>
     );
   }
 
   if (pairing.status === "expired" || isExpired) {
     return (
-      <div className="rounded-3xl border border-amber-300/25 bg-amber-300/10 p-4">
-        <div className="text-sm font-extrabold text-amber-100">QRの期限が切れました</div>
-        <p className="mt-1 text-xs leading-5 text-amber-100/75">安全のため、接続用QRは短時間だけ使えます。</p>
+      <ErrorNotice
+        className="rounded-3xl border-amber-300/25 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100"
+        copyLabel="QR期限切れの内容をコピー"
+        copyText="QRの期限が切れました\n\n安全のため、接続用QRは短時間だけ使えます。"
+        message="安全のため、接続用QRは短時間だけ使えます。"
+        messageClassName="mt-1 text-amber-100/75"
+        severity="warning"
+        title="QRの期限が切れました"
+        titleClassName="text-sm text-amber-100"
+      >
         <LiquidButton type="button" quiet className="mt-3" onClick={onRestart}>
           <RefreshCw size={14} />
           新しいQRを作る
         </LiquidButton>
-      </div>
+      </ErrorNotice>
     );
   }
 
@@ -441,9 +455,11 @@ function PairingV2Section({
           )}
 
           {error && (
-            <div className="mt-4 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-4 py-3 text-xs text-rose-100">
-              {error}
-            </div>
+            <ErrorNotice
+              className="mt-4 rounded-2xl border-rose-300/25 bg-rose-400/10 px-4 py-3 text-xs text-rose-100"
+              copyLabel="ペアリングエラーをコピー"
+              message={error}
+            />
           )}
         </div>
 
@@ -455,17 +471,22 @@ function PairingV2Section({
               <div className="relative grid h-56 w-56 place-items-center rounded-3xl border border-white/10 bg-black/20 text-center text-xs text-zinc-500">
                 <div>
                   <QrCode className="mx-auto mb-3 text-zinc-600" />
-                  {qr.error ? (
-                    <span className="text-rose-200">{qr.error}</span>
-                  ) : busy ? (
+                  {busy ? (
                     "QRを準備しています"
                   ) : (
-                    "スマホをつなぐとQRが出ます"
+                    qr.error ? "QRを生成できませんでした" : "スマホをつなぐとQRが出ます"
                   )}
                 </div>
               </div>
             )}
           </div>
+          {qr.error && (
+            <ErrorNotice
+              className="mt-3 px-3 py-2 text-[11px]"
+              copyLabel="QR生成エラーをコピー"
+              message={qr.error}
+            />
+          )}
 
           {hasActivePairing && (
             <div className="mt-3 text-center">

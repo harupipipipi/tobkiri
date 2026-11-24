@@ -1,0 +1,61 @@
+{
+  "schema": "io.tobkiri.voice-session.port.v1",
+  "status": "staged_adapter_unavailable",
+  "entrypoint": "voice.session.VoiceSession",
+  "boundary": "captured_host_injected_port_only",
+  "requirements": [
+    {"contract_id": "tobkiri.action.media.capture.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.service.ai.audio.transcribe.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.action.turn.saved.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.resource.turn.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.resource.conversation.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.service.ai.audio.speech.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.action.media.output.v1", "version_range": ">=1.0.0,<2.0.0"},
+    {"contract_id": "tobkiri.action.turn.stop.v1", "version_range": ">=1.0.0,<2.0.0"}
+  ],
+  "provider_cardinality": "exactly_one_per_required_contract",
+  "binding": ["profile_id", "plan_digest", "conversation_id", "conversation_revision", "session_id", "generation", "request_id"],
+  "media_completion": {
+    "adapter_required": true,
+    "method": "complete_media(call, intent)",
+    "host_intent_is_completion": false,
+    "authority": "existing_host_broker_and_os_permissions",
+    "statuses": ["captured", "played", "silence", "denied"],
+    "payload": "opaque_artifact_id_only",
+    "capture_duration_ms": 45000,
+    "automatic_permission_grant": false
+  },
+  "cancellation": {
+    "adapter_required": true,
+    "method": "cancel_calls(scope, calls)",
+    "completion": "verified_drain_only",
+    "turn_stop": "tobkiri.action.turn.stop.v1",
+    "unconfirmed_state": "cancelling",
+    "interrupt_edits_conversation_history": false
+  },
+  "bounds": {
+    "session_lifetime_seconds": 600,
+    "default_operation_timeout_seconds": 60,
+    "maximum_operation_timeout_seconds": 300,
+    "maximum_turns": 4,
+    "maximum_voice_calls": 20,
+    "maximum_text_utf8_bytes": 16384,
+    "maximum_playback_segments": 6,
+    "maximum_segment_delay_seconds": 120
+  },
+  "dispatch": {
+    "transcript_review_required": true,
+    "model_source": "saved_conversation_owner",
+    "tool_selection_source": "captured_validated_local_preferences",
+    "tool_authority": "normal_saved_turn_policy_and_approval",
+    "waiting_recovery": "owner_read_only_never_resend",
+    "speech_requires": "completed_turn_receipt_and_owned_complete_assistant_message"
+  },
+  "optional_decision_model": {
+    "startup_requirement": false,
+    "status": "not_wired",
+    "speculative_tool_execution": false,
+    "automatic_turn_end_dispatch": false
+  },
+  "installed_execution": "unverified_and_unregistered"
+}

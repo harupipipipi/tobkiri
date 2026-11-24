@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:cb3777a42f34299a9ad41d9808adcd2c2555395d1efdd84ce686256add268517",
+  "pack_id": "rumi_mobile_pairing_connector_pack",
+  "source_identity": "sha256:da724561c797e0e7d7f0ca5c251cfda7eaa5b0c5d4ce7e7d0ce694433ae2973c",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_mobile_pairing_connector_pack.connector.mobile_pairing",
+      "implementation_digest": "sha256:a36fb70dcb0688c414dd734e1398b64a8799f74d2ddbb707595ebb47a42dae87",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.connector.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_mobile_pairing_connector_pack.mobile-pairing-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:afde263510cb01641f3135fe0e3cb2f0e5be239ca1ae3ff84778357f5fb61e18",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_mobile_pairing_connector_pack.connector.mobile_pairing.python"
+    }
+  ]
+}

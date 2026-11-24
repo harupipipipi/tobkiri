@@ -123,7 +123,10 @@ export function useToolSelectionController({
         include,
         exclude,
         scope,
-        must_use: false,
+        // A turn-level Tool chip is an explicit execution request.  Mark it
+        // required so the backend cannot silently downgrade the user's
+        // "今回使う" selection to provider tool_choice=auto.
+        must_use: turnTargets.length > 0,
       };
     }
     return {
@@ -204,6 +207,13 @@ export function useToolSelectionController({
     if (!keepSelectedTools) setSelectedToolIds([]);
   };
 
+  const resetDraft = () => {
+    setTurnModeOverride(null);
+    setTurnExclude([]);
+    setPendingReview(null);
+    setLatestDecision(null);
+  };
+
   return {
     state: {
       effectiveMode,
@@ -224,6 +234,7 @@ export function useToolSelectionController({
     continueWithoutTools,
     cancelReview,
     clearTurnStateAfterSend,
+    resetDraft,
   };
 }
 

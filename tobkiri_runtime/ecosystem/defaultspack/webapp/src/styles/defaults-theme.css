@@ -1,0 +1,68 @@
+/* Shared neutral surfaces for the Defaults shell. State/error colors stay semantic. */
+:root {
+  --rumi-surface-base: #111111;
+  --rumi-surface-raised: #222222;
+  --rumi-surface-overlay: #292929;
+  --rumi-border-subtle: #363636;
+  --rumi-border-strong: #555555;
+}
+
+.rumi-app-shell {
+  --rumi-surface-base: #111111;
+  --rumi-surface-raised: #222222;
+  --rumi-surface-overlay: #292929;
+  --rumi-border-subtle: #363636;
+  --rumi-border-strong: #555555;
+}
+
+.rumi-app-shell .rumi-composer-main-panel,
+.rumi-app-shell .rumi-composer-frame:not(.rumi-composer-new),
+.rumi-app-shell .rumi-composer-new:focus-within .rumi-composer-main-panel,
+.rumi-app-shell .rumi-composer-frame:not(.rumi-composer-new):focus-within {
+  background: var(--rumi-surface-raised);
+  border-color: var(--rumi-border-subtle);
+  box-shadow: none;
+}
+
+.rumi-app-shell .rumi-composer-main-panel {
+  border-radius: 24px;
+}
+
+.rumi-app-shell .rumi-composer-new:focus-within .rumi-composer-main-panel,
+.rumi-app-shell .rumi-composer-frame:not(.rumi-composer-new):focus-within {
+  border-color: var(--rumi-border-strong);
+}
+
+.rumi-app-shell .rumi-popover,
+.rumi-app-shell .rumi-project-menu {
+  background: var(--rumi-surface-overlay);
+  border-color: var(--rumi-border-strong);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 25%);
+  backdrop-filter: none;
+}
+
+.rumi-app-shell .rumi-composer-dock {
+  background: var(--rumi-surface-base);
+}
+
+.rumi-app-shell .rumi-nav-icon {
+  color: #eeeeee;
+  filter: drop-shadow(0 0 3px rgb(255 255 255 / 18%));
+}
+
+.rumi-app-shell .rumi-tool-activity {
+  width: min(100%, 32rem);
+  max-width: 100%;
+}
+
+.rumi-app-shell .rumi-wordmark,
+.rumi-app-shell .rumi-greeting {
+  text-shadow: none;
+}
+
+/* Tab labels stay fixed while selecting and pressing a workspace tab. */
+#root .rumi-workspace-tabbar button {
+  transform: none;
+  scale: none;
+  transition-property: color, background-color, border-color, opacity;
+}

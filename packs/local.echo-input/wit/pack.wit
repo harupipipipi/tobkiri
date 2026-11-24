@@ -1,0 +1,7 @@
+package local:echo-input@1.0.0;
+
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  import tobkiri:core/host-io@1.0.0;
+  export local:echo-chat/user-input@1.0.0;
+}

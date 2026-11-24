@@ -1,0 +1,8 @@
+package local:pi-adapter-guest@1.0.0;
+world pack {
+ include tobkiri:core/pack-minimal@1.0.0;
+ import local:pi-adapter/pi-extension@1.0.0;
+ export local:harness-agent/tool-provider@1.0.0;
+ export local:harness-agent/tool-call-guard@1.0.0;
+ export local:harness-chat/command-provider@1.0.0;
+}

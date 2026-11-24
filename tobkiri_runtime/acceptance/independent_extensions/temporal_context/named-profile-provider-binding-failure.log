@@ -1,0 +1,32 @@
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/acceptance/independent_extensions/temporal_context/build_profile.py", line 16, in build_profile
+    return build_named_profile(
+        output, template_bundle=RUNTIME_ROOT / "ecosystem/defaultspack/v4",
+    ...<2 lines>...
+        additional_pack_roots=(pack_root,),
+    )
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/core_runtime/profile_authoring.py", line 123, in build_named_profile
+    _compile(stage, sources)
+    ~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/core_runtime/profile_authoring.py", line 135, in _compile
+    outputs = render(
+        bundle_root=root,
+    ...<7 lines>...
+        },
+    )
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/scripts/generate_profile_artifacts.py", line 637, in render
+    profile, selected, _, pins, projection_inputs = _compile_profile(
+                                                    ~~~~~~~~~~~~~~~~^
+        catalog, intent, compatibility_path, projection_pack_sources
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/scripts/generate_profile_artifacts.py", line 377, in _compile_profile
+    manifest, function, contract, variant = _edge_variant(catalog, selected, edge)
+                                            ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/haru/.codex/worktrees/pack-extension-conformance/tobikiri-pr-1322/tobkiri_runtime/scripts/generate_profile_artifacts.py", line 333, in _edge_variant
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Profile edge must resolve to one executable Provider: acceptance.temporal.context.provider / timing.project.owner

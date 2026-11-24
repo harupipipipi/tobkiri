@@ -1,0 +1,11 @@
+package local:pi-adapter@1.0.0;
+
+interface pi-extension {
+  use tobkiri:core/types@1.0.0.{error, json};
+  record tool-definition { name: string, label: string, description: string, parameters: json }
+  record registrations { tools: list<tool-definition>, events: list<string>, commands: list<string> }
+  load: func() -> result<registrations, error>;
+  invoke-tool: func(name: string, tool-call-id: string, arguments: json) -> result<json, error>;
+  on-event: func(name: string, event: json, has-ui: bool) -> result<option<json>, error>;
+  run-command: func(name: string, args: string) -> result<json, error>;
+}

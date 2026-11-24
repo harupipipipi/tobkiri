@@ -28,11 +28,12 @@
         "additionalProperties": false,
         "properties": {
           "workspace_id": {"type": "string"},
+          "sandbox_id": {"type": "string", "minLength": 1},
           "path": {"type": "string"},
           "content": {"type": "string"},
           "include_paths": {"type": "array", "items": {"type": "string"}}
         },
-        "required": ["path", "content"]
+        "required": ["sandbox_id", "path", "content"]
       }
     },
     "execution": {"type": "rumi_function", "qualified_name": "defaultspack:sandbox_file_write"}

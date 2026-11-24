@@ -50,7 +50,7 @@
       "It remains useful without rumi_workspace_pack by producing analysis plans, recipes, and specs."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Optional domain pack; defaultspack remains the runtime core."
   },

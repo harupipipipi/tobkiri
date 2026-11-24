@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_memory_knowledge_pack",
+  "source_identity": "sha256:b743328a4217715fb3b78664f58c328fd59aaeee0dabb5499758088df80fd4b2",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:f8dc77b9a2701722694d28533552fc0c89eee3e6095ea593629319765eb12d36",
+  "catalog_digest": "sha256:0b76b24dba03fdb8505eb1251a136d85322b5f5965a9cdecedd46aaa13509865"
+}

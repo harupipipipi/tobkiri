@@ -1,30 +1,26 @@
 import json
-import os
-import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import error, ok  # noqa: E402
+from blocks._common import error, ok
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from domain.tool.mcp_client import McpClient  # noqa: E402
-from domain.tool.mcp_approval import (  # noqa: E402
+from domain.tool.mcp_client import McpClient
+from domain.tool.mcp_approval import (
     build_mcp_snapshot,
     create_mcp_approval_request,
     obsolete_mcp_approvals,
     verify_mcp_approval,
 )
-from domain.tool.mcp_registry import McpRegistry  # noqa: E402
-from domain.tool.registry import ToolRegistry  # noqa: E402
-from domain.tool_policy.internal_context import (  # noqa: E402
+from domain.tool.mcp_registry import McpRegistry
+from domain.tool.registry import ToolRegistry
+from domain.tool_policy.internal_context import (
     tool_server_approval_context_is_internal,
 )
-from blocks.tool._safety import (  # noqa: E402
+from blocks.tool._safety import (
     record_tool_attempt,
     record_tool_execution,
     record_tool_failure,
 )
-from domain.safety.audit import record_approval, record_denial  # noqa: E402
+from domain.safety.audit import record_approval, record_denial
 
 
 OPERATION = "tool.mcp_connect"
@@ -153,9 +149,10 @@ def run(input_data, context):
     effective_config = snapshot["effective_config"]
     transport = effective_config["transport"]
     approval_input = dict(snapshot["binding_args"])
+    approval_verified = tool_server_approval_context_is_internal(context)
 
     record_tool_attempt(OPERATION, RISK, approval_input)
-    if not tool_server_approval_context_is_internal(context):
+    if not approval_verified:
         token = _approval_token(input_data)
         if not token:
             obsolete_mcp_approvals(
@@ -195,6 +192,7 @@ def run(input_data, context):
             verification.request_id,
             "token_accepted",
         )
+        approval_verified = verification.valid
 
     mcp_registry = McpRegistry()
     mcp_registry.add_server(
@@ -285,7 +283,11 @@ def run(input_data, context):
     record_tool_execution(
         OPERATION, RISK, approval_input, server_name=server_name, tools_added=tools_added
     )
-    mcp_registry.mark_connected(server_name, tools=registered_tools, approved=True)
+    mcp_registry.mark_connected(
+        server_name,
+        tools=registered_tools,
+        approved=approval_verified,
+    )
     inspect = mcp_registry.inspect_server(server_name)
     return ok(
         {
@@ -294,7 +296,10 @@ def run(input_data, context):
             "status": "connected",
             "tools_added": tools_added,
             "tools": registered_tools,
-            "permission": {"approved": True, "source": "approval"},
+            "permission": {
+                "approved": approval_verified,
+                "source": "verified_local_approval",
+            },
             "server": {
                 "name": server_name,
                 "transport": transport,

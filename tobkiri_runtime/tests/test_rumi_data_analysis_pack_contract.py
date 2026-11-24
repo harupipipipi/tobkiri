@@ -79,7 +79,7 @@ def test_data_analysis_pack_setup_metadata_and_selector_discoverability():
     assert setup["conflicts_with"] == []
     assert setup["overlap_policy"]["workspace_pack"] == "complement_not_replace"
     assert setup["overlap_policy"]["defaultspack_core"] == "do_not_override"
-    assert setup["defaultspack_promotion"]["eligible"] is False
+    assert setup["base_pack_promotion"]["eligible"] is False
     assert ecosystem["runtime"]["type"] == "declarative_pack"
 
     dependencies = {item["pack_id"]: item.get("version") for item in setup["depends_on"]}
@@ -95,7 +95,7 @@ def test_data_analysis_pack_setup_metadata_and_selector_discoverability():
 
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
     assert candidate.overlap_policy["workspace_pack"] == "complement_not_replace"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
     assert candidate.marketplace["id"] == "rumi.data_analysis_pack"
     assert candidate.signing["mode"] == "repository_reviewed"
 

@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_omnichannel_agent_inbox_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 REQUIRED_ASSETS = ['README.md', 'asset_index.json', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/migration.md', 'docs/operations.md', 'docs/overlap_policy.md', 'examples/notification_preference.example.yaml', 'examples/outbound_draft_approval.example.yaml', 'examples/slack_gmail_identity.example.yaml', 'examples/unauthorized_channel_block.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'frontend_extensions/omnichannel_inbox.ui.json', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/inbox_router.profile.yaml', 'prompts/inbox_router.system.md', 'schemas/channel_acl.schema.json', 'schemas/channel_message.schema.json', 'schemas/channel_payload.schema.json', 'schemas/connector_handoff.schema.json', 'schemas/draft_approval.schema.json', 'schemas/identity_map.schema.json', 'schemas/inbox_item.schema.json', 'schemas/inbox_thread.schema.json', 'schemas/inbox_ui_view.schema.json', 'schemas/notification_preference.schema.json', 'schemas/outbound_draft.schema.json', 'schemas/routing_rule.schema.json', 'schemas/thread_route.schema.json', 'templates/handoff.template.md', 'templates/review_report.template.md', 'templates/ui_contract.template.md']
 SCHEMA_EXPECTATIONS = {'schemas/channel_acl.schema.json': ['acl_id', 'identity_id', 'channel', 'allowed_intents', 'tool_access', 'review_owner', 'default_effect', 'remote_input_can_elevate', 'sensitive_action_policy'], 'schemas/channel_message.schema.json': ['message_id', 'channel', 'external_thread_id', 'sender_ref', 'payload_summary', 'ingress_owner', 'received_at_state'], 'schemas/channel_payload.schema.json': ['payload_id', 'channel', 'provider_message_ref', 'sender_ref', 'idempotency_key', 'redaction_state', 'connector_owner', 'raw_payload_policy', 'secret_material_allowed'], 'schemas/connector_handoff.schema.json': ['handoff_id', 'channel', 'owner_pack', 'operation', 'payload_ref', 'approval_receipt_id', 'send_allowed', 'secrets_included', 'provider_client_included'], 'schemas/draft_approval.schema.json': ['approval_id', 'draft_id', 'approval_state', 'approver_ref', 'body_hash', 'expires_at', 'remote_input_can_approve', 'hash_algorithm', 'approval_scope', 'replay_policy', 'remote_input_can_issue_token'], 'schemas/identity_map.schema.json': ['identity_id', 'linked_sender_refs', 'verification_state', 'merge_evidence_ids', 'risk_notes', 'remote_input_can_merge', 'conflict_resolution'], 'schemas/inbox_item.schema.json': ['item_id', 'thread_id', 'identity_id', 'severity', 'state', 'source_message_ids', 'audit_ref'], 'schemas/inbox_thread.schema.json': ['thread_id', 'identity_id', 'channel_message_ids', 'state', 'assigned_agent', 'routing_rule_id'], 'schemas/inbox_ui_view.schema.json': ['view_id', 'lanes', 'filters', 'visible_actions', 'approval_actions', 'readonly', 'forbidden_actions', 'remote_input_can_authorize'], 'schemas/notification_preference.schema.json': ['preference_id', 'identity_id', 'channels', 'quiet_hours', 'scheduler_handoff', 'state', 'notification_execution', 'remote_input_can_schedule', 'notification_owner'], 'schemas/outbound_draft.schema.json': ['draft_id', 'thread_id', 'channel', 'body_summary', 'approval_state', 'delivery_owner', 'approval_receipt', 'body_hash', 'approval_expires_at', 'pack_send_allowed'], 'schemas/routing_rule.schema.json': ['routing_rule_id', 'conditions', 'target_agent', 'required_acl_state', 'handoff_owner'], 'schemas/thread_route.schema.json': ['route_id', 'thread_id', 'target_agent', 'acl_id', 'decision', 'idempotency_key', 'audit_ref', 'idempotency_scope', 'replay_policy', 'execution_effect', 'remote_input_can_execute']}
@@ -44,7 +45,8 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == []
     assert ecosystem["host_execution"] is False
@@ -55,7 +57,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["declarative_only"] is True
     assert metadata["consumes_existing_sources_only"] is True
     assert metadata["output_effect"] == "draft_and_handoff_only"
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert metadata["provider_clients"] == []
     assert metadata["pre_auth_routes"] == []
     assert metadata["remote_input_authority"] is False
@@ -64,14 +66,20 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     assert {item["owner_ref"] for item in metadata["optional_integrations"]} == OPTIONAL_OWNER_REFS
     assert all("pack_id" not in item for item in metadata["optional_integrations"])
-    actual = {path.relative_to(PACK_DIR).as_posix() for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        path.relative_to(PACK_DIR).as_posix()
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == actual
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
 
 
 def test_yaml_json_assets_parse() -> None:
@@ -95,10 +103,10 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
         assert candidate.overlap_policy[key] == value
     assert any(value.startswith("owned_by_") for value in candidate.overlap_policy.values())
     assert any("handoff" in value for value in candidate.overlap_policy.values())
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert {"must_prove_remote_input_has_no_authority", "must_prove_route_idempotency"} <= set(candidate.defaultspack_promotion["promotion_blockers"])
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert {"must_prove_remote_input_has_no_authority", "must_prove_route_idempotency"} <= set(candidate.base_pack_promotion["promotion_blockers"])
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == 'omnichannel-agent-inbox'
     assert candidate.signing["verified"] is True

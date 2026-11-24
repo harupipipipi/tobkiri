@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json",
+  "title": "Tobkiri Pack Architecture v4 common definitions",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 128
+    },
+    "contractId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$",
+      "maxLength": 128
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "opaqueReference": {
+      "type": "string",
+      "pattern": "^(?:authority-ref|lease|handle):[a-z0-9][a-z0-9._-]{7,127}$"
+    },
+    "provenance": {
+      "oneOf": [
+        {"$ref": "#/$defs/provenanceV1"},
+        {"$ref": "#/$defs/provenanceV2"}
+      ]
+    },
+    "provenanceV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "source_kind",
+        "source_path",
+        "source_digest",
+        "repository_commit",
+        "repository_tree",
+        "generator",
+        "generator_version",
+        "normative",
+        "evidence"
+      ],
+      "properties": {
+        "schema": {"const": "io.tobkiri.provenance.v1"},
+        "source_kind": {"enum": ["repository", "migration", "generated", "external"]},
+        "source_path": {"type": "string", "minLength": 1},
+        "source_digest": {"$ref": "#/$defs/digest"},
+        "repository_commit": {"type": "string", "pattern": "^(working-tree|[0-9a-f]{40})$"},
+        "repository_tree": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "generator": {"type": "string", "minLength": 1},
+        "generator_version": {"$ref": "#/$defs/semver"},
+        "normative": {"type": "boolean"},
+        "evidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "rule_id", "digest"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "rule_id": {"type": "string", "minLength": 1},
+              "digest": {"$ref": "#/$defs/digest"},
+              "line": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "provenanceV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "source_kind",
+        "source_path",
+        "source_digest",
+        "repository_commit",
+        "repository_commit_trusted",
+        "content_root_digest",
+        "generator",
+        "generator_version",
+        "generator_path",
+        "generator_digest",
+        "input_inventory_digest",
+        "normative",
+        "evidence"
+      ],
+      "properties": {
+        "schema": {"const": "io.tobkiri.provenance.v2"},
+        "source_kind": {"const": "generated"},
+        "source_path": {"type": "string", "minLength": 1},
+        "source_digest": {"$ref": "#/$defs/digest"},
+        "repository_commit": {
+          "type": "string",
+          "pattern": "^(working-tree|[0-9a-f]{40})$"
+        },
+        "repository_commit_trusted": {"const": false},
+        "content_root_digest": {"$ref": "#/$defs/digest"},
+        "generator": {"type": "string", "minLength": 1},
+        "generator_version": {"$ref": "#/$defs/semver"},
+        "generator_path": {"type": "string", "minLength": 1},
+        "generator_digest": {"$ref": "#/$defs/digest"},
+        "input_inventory_digest": {"$ref": "#/$defs/digest"},
+        "normative": {"const": true},
+        "evidence": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "rule_id", "digest"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "rule_id": {
+                "enum": ["normative-generator-bytes", "normative-input-bytes"]
+              },
+              "digest": {"$ref": "#/$defs/digest"},
+              "line": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

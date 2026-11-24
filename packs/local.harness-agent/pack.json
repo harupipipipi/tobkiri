@@ -1,0 +1,98 @@
+{
+  "files": [
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/harness-agent.wit",
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26",
+      "size": 384
+    },
+    {
+      "path": "wit/tool-call-guard.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-call.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-provider.shape.json",
+      "sha256": "sha256:2924604725f3e794b4ceb5ebbf431b677233b376d7064f91e13e903c3b22b3d4",
+      "size": 87
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.harness-agent",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "kind": "data"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.harness-agent.tool-provider",
+      "version": "1.0",
+      "wit": "wit/harness-agent.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.harness-agent.tool-call-guard",
+      "version": "1.0",
+      "wit": "wit/harness-agent.wit"
+    },
+    {
+      "kind": "role",
+      "name": "local.harness-agent.tool-call",
+      "version": "1.0",
+      "wit": "wit/harness-agent.wit"
+    }
+  ],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

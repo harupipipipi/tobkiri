@@ -1,0 +1,65 @@
+{
+  "format": "tobkiri.python-build/3",
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "pack",
+  "entrypoint": "app",
+  "sources": [
+    {
+      "source": "app.py",
+      "destination": "app.py",
+      "sha256": "13aeb755387089e0151f38d25a3f917b5b417cba7210d91334a5f1e3a1eeb07f"
+    },
+    {
+      "source": "caller_adapter.py",
+      "destination": "caller_adapter.py",
+      "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528"
+    },
+    {
+      "source": "inventory.json",
+      "destination": "inventory.json",
+      "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
+    },
+    {
+      "source": "ordered_json.py",
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "source": "original_bridge.py",
+      "destination": "original_bridge.py",
+      "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+    },
+    {
+      "source": "provenance.json",
+      "destination": "provenance.json",
+      "sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5"
+    },
+    {
+      "source": "reviewed-inputs.json",
+      "destination": "reviewed-inputs.json",
+      "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553"
+    },
+    {
+      "source": "wit/deps/core.wit",
+      "destination": "wit/deps/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    },
+    {
+      "source": "wit/pack.wit",
+      "destination": "wit/pack.wit",
+      "sha256": "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75"
+    }
+  ],
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:ai-tool-bridge-ordered-python/bridge@1.0.0"
+  ],
+  "allowed_imports": [
+    "tobkiri:core/types@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0"
+  ]
+}

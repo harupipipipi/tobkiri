@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -9,6 +8,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+
+from core_runtime.host_contract import host_contract_value
 
 
 GITHUB_URL_RE = re.compile(
@@ -66,7 +67,7 @@ class GitHubReadClient:
     """Small read-only GitHub client with token-first REST and gh CLI fallback."""
 
     def __init__(self, token: str | None = None) -> None:
-        self.token = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+        self.token = token or host_contract_value("github_token", provider_id="github")
 
     def pr(self, url: str) -> dict[str, Any]:
         ref = parse_github_url(url)
@@ -195,7 +196,7 @@ class GitHubWriteClient:
     """Small GitHub write client for approval-gated coding workflows."""
 
     def __init__(self, token: str | None = None) -> None:
-        self.token = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+        self.token = token or host_contract_value("github_token", provider_id="github")
 
     def resolve_pull_request_args(self, arguments: dict[str, Any], *, cwd: str | None = None) -> dict[str, Any]:
         repo = str(arguments.get("repo") or arguments.get("repository") or "").strip()

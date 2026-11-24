@@ -1,0 +1,18 @@
+package local:harness-setup-python@1.0.0;
+
+interface setup {
+    use tobkiri:core/types@1.0.0.{error};
+    // Opaque ordered-finite-json-v2 DATA. Core's json alias instead applies
+    // CoreStrictV1 encoding, which would encode this string a second time.
+    bootstrap-confirmation: func(payload: string) -> result<string, error>;
+    profile-confirmation: func(payload: string) -> result<string, error>;
+    decision: func(payload: string) -> result<string, error>;
+    success: func(payload: string) -> result<string, error>;
+    failure: func(payload: string) -> result<string, error>;
+    retired: func(payload: string) -> result<string, error>;
+}
+
+world pack {
+    include tobkiri:core/pack-minimal@1.0.0;
+    export setup;
+}

@@ -1,0 +1,155 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:0a0c0831511da2037fd9a357e91fed7133db7b7f1d9426199196c00fd3be151f",
+  "pack_id": "rumi_sandbox_runtime_pack",
+  "source_identity": "sha256:c80e8130b765337898f62148e91fefbe42eb2ebdc6402b679b57ee00f626c6b8",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri.managed-desktops.read",
+      "implementation_digest": "sha256:3a8e0bef3683cc92e99a0eadc2637169231804fe9bda953472ed4760d9e2230e",
+      "implementation_path": "runtime/managed_desktops.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_sandbox_runtime_pack.desktops-list",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-providers-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_sandbox_runtime_pack.runtime-doctor-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.resource.managed-desktops.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_sandbox_runtime_pack.sandbox-templates-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a60b6eb2eab9da9f87f18ecb6e86978b01d49b7cdddaa7cb79aaad315ca781c1",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri.managed-desktops.read.python"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 from blocks._common import ok, error
-from domain.company.settings_store import CompanySettingsStore
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
-from ._helpers import company_id_from, invalid, missing_company, require_dict, subagent_team_write_denied
+from ._helpers import company_id_from, invalid, missing_company, require_dict
 
 
 def run(input_data, context):
@@ -11,24 +11,22 @@ def run(input_data, context):
     if not company_id:
         return invalid("company_id is required")
     action = str(input_data.get("action") or "get").lower()
-    store = CompanySettingsStore()
     try:
         if action == "get":
-            settings = store.get(company_id)
+            settings = CompanyContractFacade(input_data, context).run("get_settings")
             if settings is None:
                 return missing_company(company_id)
             return ok({"settings": settings})
         if action in {"update", "set"}:
-            blocked = subagent_team_write_denied(company_id)
-            if blocked is not None:
-                return blocked
             settings = input_data.get("settings")
             if not isinstance(settings, dict):
                 return invalid("settings must be a dict")
-            updated = store.update(company_id, settings, replace=bool(input_data.get("replace", False)))
+            updated = CompanyContractFacade(input_data, context).run("update_settings")
             if updated is None:
                 return missing_company(company_id)
             return ok({"settings": updated})
         return invalid("unsupported settings action: " + action)
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company settings failed: " + str(exc), "COMPANY_SETTINGS_ERROR")

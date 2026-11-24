@@ -180,22 +180,49 @@ class DirectBackend:
         return self._call_block("blocks.chat.delete_conversation", params)
 
     def send_message(self, params):
-        return self._call_flow(
-            "defaultspack.chat_turn",
-            params,
-            fallback_block_module="blocks.chat.send",
-        )
+        from core_runtime.di_container import get_container
+        from core_runtime.global_contract_dispatch import invoke_global_contract
+
+        session = get_container().get_or_none("v4_dispatch_session")
+        if session is None:
+            return error(
+                "Captured Pack v4 session is unavailable",
+                "V4_SESSION_UNAVAILABLE",
+            )
+        payload = dict(params or {})
+        request = {
+            key: payload[key]
+            for key in (
+                "model",
+                "messages",
+                "tools",
+                "params",
+                "context",
+                "runtime_context",
+                "timezone",
+            )
+            if key in payload
+        }
+        if not isinstance(request.get("messages"), list):
+            content = str(payload.get("content") or payload.get("message") or "")
+            if content:
+                request["messages"] = [{"role": "user", "content": content}]
+        try:
+            return invoke_global_contract(
+                session,
+                "conversation.turn.v1",
+                "complete",
+                request,
+            )
+        except Exception as exc:
+            return error(str(exc), "V4_CONVERSATION_FAILED")
 
     def send_message_stream(self, conversation_id, message_content, model):
-        """Send a message through the canonical stream flow and yield CLI chunks."""
-        result = self._call_flow(
-            "defaultspack.chat_stream_turn",
-            {
-                "conversation_id": conversation_id,
-                "message": {"role": "user", "content": message_content},
-                "model": model,
-            },
-            fallback_block_module="blocks.chat.stream",
+        """Reject streaming until the captured v4 plan pins a stream operation."""
+        del conversation_id, message_content, model
+        result = error(
+            "Chat streaming is absent from the captured Pack v4 catalog",
+            "V4_OPERATION_UNAVAILABLE",
         )
         events = _sse_events_from_result(result)
         if events is None:

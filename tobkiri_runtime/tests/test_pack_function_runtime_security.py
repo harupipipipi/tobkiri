@@ -13,12 +13,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def test_repo_defaultspack_allows_in_process_function_runtime() -> None:
+def test_verified_system_descriptor_allows_in_process_function_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from core_runtime.pack_function_runtime import is_pack_function_in_process_allowed
 
-    function_dir = PROJECT_ROOT / "ecosystem" / "defaultspack" / "functions" / "list_modules"
+    pack_root = tmp_path / "ecosystem" / "system_ui"
+    function_dir = pack_root / "functions" / "list_modules"
+    function_dir.mkdir(parents=True)
+    (pack_root / "ecosystem.json").write_text(
+        '{"pack_id":"system_ui","version":"1.0.0"}',
+        encoding="utf-8",
+    )
+    manager = MagicMock()
+    manager.is_pack_in_process_allowed.side_effect = (
+        lambda pack_id, root: pack_id == "system_ui" and Path(root) == pack_root
+    )
+    monkeypatch.setattr(
+        "core_runtime.pack_function_runtime.get_approval_manager",
+        lambda: manager,
+    )
 
-    assert is_pack_function_in_process_allowed("defaultspack", function_dir)
+    assert is_pack_function_in_process_allowed("system_ui", function_dir)
+    manager.is_pack_in_process_allowed.assert_called_once_with("system_ui", pack_root)
 
 
 def test_invoke_pack_function_rejects_untrusted_pack_before_import(tmp_path: Path) -> None:

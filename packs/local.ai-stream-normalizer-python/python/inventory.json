@@ -1,0 +1,274 @@
+{
+  "accepted_operation_aliases": {
+    "normalize": "normalize",
+    "rumi_ai_stream_pack.ai-stream-normalize": "rumi_ai_stream_pack.ai-stream-normalize",
+    "validate": "validate"
+  },
+  "caller_edges": [
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/71",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/71",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+      "target_provider_id": "rumi_ai_stream_pack.ai-stream.normalize"
+    }
+  ],
+  "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+  "gateway_dependency_call_sites": [
+    {
+      "sha256": "86124525e52788f0c7524790913f918c49c0c4f672afe22461179fe7a1036c5d",
+      "source_end_byte": 22720,
+      "source_end_line": 618,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 22476,
+      "source_start_line": 610,
+      "symbol": "STREAM_NORMALIZE_CONTRACT"
+    }
+  ],
+  "gateway_evidence": [
+    {
+      "sha256": "26ceb115ef432d2d9377c0fcf4b4d06e7aa2b4cb487729c6f510928d0a4816c0",
+      "source_end_byte": 2345,
+      "source_end_line": 55,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2276,
+      "source_start_line": 55,
+      "symbol": "STREAM_NORMALIZE_CONTRACT"
+    },
+    {
+      "sha256": "053c2313cce90f62cd4b7e46b440e2ba98962f02a172a8d9e20cb89d96080a22",
+      "source_end_byte": 2416,
+      "source_end_line": 56,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2345,
+      "source_start_line": 56,
+      "symbol": "STREAM_NORMALIZE_OPERATION"
+    }
+  ],
+  "host_dispatch_evidence": {
+    "sha256": "c74d157839b1864d6d11270033455039ece8af84644e980c76ef23bb16f5ac49",
+    "source_end_byte": 4372,
+    "source_end_line": 124,
+    "source_path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/runtime/normalizer.py",
+    "source_start_byte": 3248,
+    "source_start_line": 93,
+    "symbol": "AIStreamHostFactoryV4"
+  },
+  "notes": [
+    "Source-only dependency candidate, not complete Gateway migration.",
+    "Usage aliases include the original Host's base-ID to calculate mapping.",
+    "Stream normalization has only the original stream caller edge.",
+    "Text/messages wrappers delegate to generate and are not migrated.",
+    "Whole Gateway hashes must be explicitly refreshed after helper integration.",
+    "Host capture, registrations, tokenizer, credentials and broker are omitted.",
+    "Cost projection is not billing, reservation or payment authority.",
+    "DATA-domain parity is not parity for arbitrary Python objects."
+  ],
+  "operations": [
+    {
+      "declarations": [
+        {
+          "json_pointer": "/contracts/0/operations/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/contracts.v4.json"
+        },
+        {
+          "json_pointer": "/variants/0/operations/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/executables.v4.json"
+        },
+        {
+          "json_pointer": "/operation_catalog/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/pack.v4.json"
+        }
+      ],
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize"
+    }
+  ],
+  "provider": "stream-normalizer",
+  "provider_function_id": "rumi_ai_stream_pack.ai-stream.normalize",
+  "schema": "io.tobkiri.gateway-finalization-provider-inventory.v1",
+  "sources": [
+    {
+      "bytes": 5701,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/runtime/normalizer.py",
+      "sha256": "ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54"
+    },
+    {
+      "bytes": 17989,
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+    },
+    {
+      "bytes": 66097,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "sha256": "9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
+    },
+    {
+      "bytes": 2702,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/contracts.v4.json",
+      "sha256": "ab5aad4f16b9b8cb17cc5ebde231ee5e23346555633695dcfaba872d2fe4e0ae"
+    },
+    {
+      "bytes": 1590,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/executables.v4.json",
+      "sha256": "cacbd870b832da949051686761f40916685640d1b0984b116d30b1a673e491e8"
+    },
+    {
+      "bytes": 4010,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/pack.v4.json",
+      "sha256": "1ef0bdb9b50d1b8f86b4c54c0917e28e15b80112ccf62cdbcc8050c8db98b0a9"
+    },
+    {
+      "bytes": 255256,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+      "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2"
+    },
+    {
+      "bytes": 220761,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+      "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
+    },
+    {
+      "bytes": 5223,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+      "sha256": "7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7"
+    },
+    {
+      "bytes": 4210,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+      "sha256": "594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415"
+    },
+    {
+      "bytes": 8961,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "bytes": 8184,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+    },
+    {
+      "bytes": 5732,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    }
+  ],
+  "wrapper_evidence": [
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "definitions": [
+        {
+          "sha256": "802e2195e6cffd075a9661fd5bc154e5e0a03e60883cbea2f65a25e7013c28b2",
+          "source_end_byte": 996,
+          "source_end_line": 25,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+          "source_start_byte": 934,
+          "source_start_line": 25,
+          "symbol": "FUNCTION_ID"
+        },
+        {
+          "sha256": "af286a153d7d2286f9d03907193119dd1016f99ac36b0cbaeb9559abd58b0794",
+          "source_end_byte": 3604,
+          "source_end_line": 95,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+          "source_start_byte": 1090,
+          "source_start_line": 32,
+          "symbol": "create_text_generate_operation"
+        },
+        {
+          "sha256": "c7c1f28533e03623c4eb46209ba0d8ee3b5abac7b7ac1a19942cf99d45fbfd04",
+          "source_end_byte": 5223,
+          "source_end_line": 143,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+          "source_start_byte": 4891,
+          "source_start_line": 134,
+          "symbol": "HOST_PROVIDER_FACTORY"
+        }
+      ],
+      "gateway_delegation_calls": [
+        {
+          "sha256": "a47231db1d71ba5e069f764f5ce0cb871d352ccd4cc966529530153803da573c",
+          "source_end_byte": 1342,
+          "source_end_line": 36,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+          "source_start_byte": 1285,
+          "source_start_line": 36,
+          "symbol": "gateway.create_generate_operation"
+        },
+        {
+          "sha256": "78b8173321fc54afc4ef651259c83227eab89206c9c7014a5bbf17140911e117",
+          "source_end_byte": 2897,
+          "source_end_line": 77,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+          "source_start_byte": 2568,
+          "source_start_line": 67,
+          "symbol": "generate"
+        }
+      ],
+      "migrated": false,
+      "uses_this_provider": false
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "definitions": [
+        {
+          "sha256": "718508209630c76866a55d488765874e72158df1bc6684ab32a4335dd427332e",
+          "source_end_byte": 461,
+          "source_end_line": 9,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+          "source_start_byte": 395,
+          "source_start_line": 9,
+          "symbol": "FUNCTION_ID"
+        },
+        {
+          "sha256": "981890649918a1c43750c626c3de5313fba12b943a218f5ec730f02831466e3d",
+          "source_end_byte": 3896,
+          "source_end_line": 66,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+          "source_start_byte": 1845,
+          "source_start_line": 36,
+          "symbol": "create_messages_generate_operation"
+        },
+        {
+          "sha256": "445519cf54f4bba3f1af149f34f88860997d10b426ce84635fad789faf6673ae",
+          "source_end_byte": 4210,
+          "source_end_line": 75,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+          "source_start_byte": 3898,
+          "source_start_line": 69,
+          "symbol": "HOST_PROVIDER_FACTORY"
+        }
+      ],
+      "gateway_delegation_calls": [
+        {
+          "sha256": "a47231db1d71ba5e069f764f5ce0cb871d352ccd4cc966529530153803da573c",
+          "source_end_byte": 2118,
+          "source_end_line": 40,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+          "source_start_byte": 2061,
+          "source_start_line": 40,
+          "symbol": "gateway.create_generate_operation"
+        },
+        {
+          "sha256": "b8f7fd88b216f2cb89be21ea93ff2b719a3b2460905fc459da3fd380a4d37568",
+          "source_end_byte": 3246,
+          "source_end_line": 56,
+          "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+          "source_start_byte": 3047,
+          "source_start_line": 53,
+          "symbol": "generate"
+        }
+      ],
+      "migrated": false,
+      "uses_this_provider": false
+    }
+  ]
+}

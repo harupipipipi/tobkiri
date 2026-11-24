@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "tobkiri.ui.surface-resource.v1"
+    },
+    "selection_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{32,128}$"
+    },
+    "kind": {
+      "enum": [
+        "file",
+        "image",
+        "audio"
+      ]
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "expires_at_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "stage": {
+      "enum": [
+        "selected",
+        "exchanged"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "selection_id",
+    "kind",
+    "display_name",
+    "expires_at_ms",
+    "stage"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tobkiri.ui.surface-resource.v1"
+}

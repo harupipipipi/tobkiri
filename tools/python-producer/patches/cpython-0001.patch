@@ -1,0 +1,531 @@
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -1,4 +1,7 @@
+ #include "Python.h"
++#if defined(__wasi__)
++#include "pycore_tobkiri_entropy.h"
++#endif
+ #include "pycore_fileutils.h"     // _Py_fstat_noraise()
+ #include "pycore_initconfig.h"
+ #include "pycore_pyhash.h"        // _Py_HashSecret_t
+@@ -477,6 +480,9 @@
+ static int
+ pyurandom(void *buffer, Py_ssize_t size, int blocking, int raise)
+ {
++#if defined(__wasi__)
++    return _PyTobkiri_EntropyFill(buffer, size, raise);
++#endif
+ #if defined(PY_GETRANDOM) || defined(PY_GETENTROPY)
+     int res;
+ #endif
+--- a/Modules/_randommodule.c
++++ b/Modules/_randommodule.c
+@@ -71,6 +71,9 @@
+ #endif
+ 
+ #include "Python.h"
++#if defined(__wasi__)
++#include "pycore_tobkiri_entropy.h"
++#endif
+ #include "pycore_long.h"          // _PyLong_NumBits()
+ #include "pycore_modsupport.h"    // _PyArg_NoKeywords()
+ #include "pycore_moduleobject.h"  // _PyModule_GetState()
+@@ -111,11 +114,78 @@
+ #define _randomstate_type(type) \
+     (get_random_state(PyType_GetModuleByDef(type, &_randommodule)))
+ 
+-typedef struct {
++typedef struct RandomObject {
+     PyObject_HEAD
+     int index;
+     uint32_t state[N];
++#if defined(__wasi__)
++    struct RandomObject *tobkiri_previous, *tobkiri_next;
++    int tobkiri_provenance;
++#endif
+ } RandomObject;
++
++#if defined(__wasi__)
++static RandomObject *tobkiri_rng_head;
++enum { RNG_UNKNOWN, RNG_IMPLICIT_BUILD, RNG_IMPLICIT_LIVE, RNG_EXPLICIT_LIVE, RNG_STATELESS };
++static int random_seed_urandom(RandomObject *self);
++static int tobkiri_rng_audit(void)
++{
++    for (RandomObject *rng = tobkiri_rng_head; rng; rng = rng->tobkiri_next) {
++        if (rng->tobkiri_provenance != RNG_IMPLICIT_BUILD &&
++            rng->tobkiri_provenance != RNG_STATELESS) return -1;
++    }
++    return 0;
++}
++static int tobkiri_rng_reseed(void)
++{
++    for (RandomObject *rng = tobkiri_rng_head; rng; rng = rng->tobkiri_next) {
++        if (rng->tobkiri_provenance == RNG_STATELESS) continue;
++        if (rng->tobkiri_provenance != RNG_IMPLICIT_BUILD) return -1;
++        if (random_seed_urandom(rng) < 0) return -1;
++    }
++    return 0;
++}
++static PyObject *tobkiri_mark_system_random(RandomObject *self, PyObject *unused)
++{
++    (void)unused;
++    if (!_PyTobkiri_EntropyIsBuild() && _PyTobkiri_EntropyRequireActive() != 0) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG outside active Core epoch");
++        return NULL;
++    }
++    if (self->tobkiri_provenance != RNG_UNKNOWN &&
++        self->tobkiri_provenance != RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "cannot relabel existing RNG state");
++        return NULL;
++    }
++    memset(self->state, 0, sizeof(self->state));
++    self->index = 0;
++    self->tobkiri_provenance = RNG_STATELESS;
++    Py_RETURN_NONE;
++}
++static PyObject *tobkiri_random_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
++{
++    PyObject *object = PyType_GenericNew(type, args, kwds);
++    if (object == NULL) return NULL;
++    RandomObject *self = (RandomObject *)object;
++    self->tobkiri_provenance = RNG_UNKNOWN;
++    self->tobkiri_previous = NULL;
++    self->tobkiri_next = tobkiri_rng_head;
++    if (tobkiri_rng_head) tobkiri_rng_head->tobkiri_previous = self;
++    tobkiri_rng_head = self;
++    return object;
++}
++static void tobkiri_random_dealloc(PyObject *object)
++{
++    RandomObject *self = (RandomObject *)object;
++    if (self->tobkiri_previous) self->tobkiri_previous->tobkiri_next = self->tobkiri_next;
++    else tobkiri_rng_head = self->tobkiri_next;
++    if (self->tobkiri_next) self->tobkiri_next->tobkiri_previous = self->tobkiri_previous;
++    PyTypeObject *type = Py_TYPE(object);
++    type->tp_free(object);
++    Py_DECREF(type);
++}
++#endif
++
+ 
+ #define RandomObject_CAST(op)   ((RandomObject *)(op))
+ 
+@@ -188,6 +258,12 @@
+ _random_Random_random_impl(RandomObject *self)
+ /*[clinic end generated code: output=117ff99ee53d755c input=26492e52d26e8b7b]*/
+ {
++#if defined(__wasi__)
++    if (self->tobkiri_provenance == RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG has no base C state"); return NULL;
++    }
++    if (_PyTobkiri_EntropyRequireRng(self->tobkiri_provenance != RNG_EXPLICIT_LIVE) < 0) return NULL;
++#endif
+     uint32_t a=genrand_uint32(self)>>5, b=genrand_uint32(self)>>6;
+     return PyFloat_FromDouble((a*67108864.0+b)*(1.0/9007199254740992.0));
+ }
+@@ -251,15 +327,30 @@
+ static int
+ random_seed_urandom(RandomObject *self)
+ {
++#if defined(__wasi__)
++    if (self->tobkiri_provenance == RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG cannot be reseeded or retagged"); return -1;
++    }
++#endif
+     uint32_t key[N];
+ 
+-    if (_PyOS_URandomNonblock(key, sizeof(key)) < 0) {
+-        return -1;
+-    }
++#if defined(__wasi__)
++    if (_PyTobkiri_EntropySeedEnter() < 0) return -1;
++#endif
++    int entropy_result = _PyOS_URandomNonblock(key, sizeof(key));
++#if defined(__wasi__)
++    _PyTobkiri_EntropySeedLeave();
++#endif
++    if (entropy_result < 0) return -1;
+     init_by_array(self, key, Py_ARRAY_LENGTH(key));
++#if defined(__wasi__)
++    self->tobkiri_provenance = _PyTobkiri_EntropyIsBuild() ? RNG_IMPLICIT_BUILD : RNG_IMPLICIT_LIVE;
++#endif
++    memset(key, 0, sizeof(key));
+     return 0;
+ }
+ 
++#if !defined(__wasi__)
+ static int
+ random_seed_time_pid(RandomObject *self)
+ {
+@@ -290,9 +381,16 @@
+     return 0;
+ }
+ 
++#endif
++
+ static int
+ random_seed(RandomObject *self, PyObject *arg)
+ {
++#if defined(__wasi__)
++    if (self->tobkiri_provenance == RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG cannot be reseeded or retagged"); return -1;
++    }
++#endif
+     int result = -1;  /* guilty until proved innocent */
+     PyObject *n = NULL;
+     uint32_t *key = NULL;
+@@ -301,6 +399,10 @@
+     int res;
+ 
+     if (arg == NULL || arg == Py_None) {
++#if defined(__wasi__)
++        /* Denial never falls back to time, PID, public seed or ambient WASI. */
++        return random_seed_urandom(self);
++#else
+        if (random_seed_urandom(self) < 0) {
+             PyErr_Clear();
+ 
+@@ -311,7 +413,19 @@
+             }
+         }
+         return 0;
+-    }
++#endif
++    }
++
++#if defined(__wasi__)
++    if (_PyTobkiri_EntropyIsBuild()) {
++        PyErr_SetString(PyExc_RuntimeError, "Unavailable: preinit explicit seed provenance (SEED-01)");
++        return -1;
++    }
++    if (_PyTobkiri_EntropyRequireActive() != 0) {
++        PyErr_SetString(PyExc_RuntimeError, "explicit seed outside active Core epoch");
++        return -1;
++    }
++#endif
+ 
+     /* This algorithm relies on the number being unsigned.
+      * So: if the arg is a PyLong, use its absolute value.
+@@ -371,6 +485,9 @@
+     init_by_array(self, key, keyused);
+ 
+     result = 0;
++#if defined(__wasi__)
++    self->tobkiri_provenance = RNG_EXPLICIT_LIVE;
++#endif
+ 
+ Done:
+     Py_XDECREF(n);
+@@ -415,6 +532,12 @@
+ _random_Random_getstate_impl(RandomObject *self)
+ /*[clinic end generated code: output=bf6cef0c092c7180 input=b6621f31eb639694]*/
+ {
++#if defined(__wasi__)
++    if (self->tobkiri_provenance == RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG has no base C state"); return NULL;
++    }
++    if (_PyTobkiri_EntropyRequireRng(self->tobkiri_provenance != RNG_EXPLICIT_LIVE) < 0) return NULL;
++#endif
+     PyObject *state;
+     PyObject *element;
+     int i;
+@@ -455,6 +578,10 @@
+ _random_Random_setstate_impl(RandomObject *self, PyObject *state)
+ /*[clinic end generated code: output=babfc2c2eac6b027 input=358e898ec07469b7]*/
+ {
++#if defined(__wasi__)
++    PyErr_SetString(PyExc_RuntimeError, "Unavailable: unaudited restored RNG state (SEED-02)");
++    return NULL;
++#endif
+     int i;
+     unsigned long element;
+     long index;
+@@ -507,6 +634,12 @@
+ _random_Random_getrandbits_impl(RandomObject *self, uint64_t k)
+ /*[clinic end generated code: output=c30ef8435f3433cf input=64226ac13bb4d2a3]*/
+ {
++#if defined(__wasi__)
++    if (self->tobkiri_provenance == RNG_STATELESS) {
++        PyErr_SetString(PyExc_RuntimeError, "stateless RNG has no base C state"); return NULL;
++    }
++    if (_PyTobkiri_EntropyRequireRng(self->tobkiri_provenance != RNG_EXPLICIT_LIVE) < 0) return NULL;
++#endif
+     Py_ssize_t i, words;
+     uint32_t r;
+     uint32_t *wordarray;
+@@ -574,6 +707,9 @@
+ 
+ 
+ static PyMethodDef random_methods[] = {
++#if defined(__wasi__)
++    {"_tobkiri_mark_system_random", (PyCFunction)tobkiri_mark_system_random, METH_NOARGS, NULL},
++#endif
+     _RANDOM_RANDOM_RANDOM_METHODDEF
+     _RANDOM_RANDOM_SEED_METHODDEF
+     _RANDOM_RANDOM_GETSTATE_METHODDEF
+@@ -588,7 +724,12 @@
+ static PyType_Slot Random_Type_slots[] = {
+     {Py_tp_doc, (void *)random_doc},
+     {Py_tp_methods, random_methods},
++#if defined(__wasi__)
++    {Py_tp_new, tobkiri_random_new},
++    {Py_tp_dealloc, tobkiri_random_dealloc},
++#else
+     {Py_tp_new, PyType_GenericNew},
++#endif
+     {Py_tp_init, random_init},
+     {Py_tp_free, PyObject_Free},
+     {0, 0},
+@@ -609,6 +750,13 @@
+ _random_exec(PyObject *module)
+ {
+     _randomstate *state = get_random_state(module);
++#if defined(__wasi__)
++    if (_PyTobkiri_EntropySetReseed(tobkiri_rng_reseed) != 0 ||
++        _PyTobkiri_EntropySetRngAudit(tobkiri_rng_audit) != 0) {
++        PyErr_SetString(PyExc_RuntimeError, "Unavailable: stdlib random must be declared and preinitialized (MODULE-01)");
++        return -1;
++    }
++#endif
+ 
+     state->Random_Type = PyType_FromModuleAndSpec(
+         module, &Random_Type_spec, NULL);
+--- a/Lib/random.py
++++ b/Lib/random.py
+@@ -914,6 +914,8 @@
+ 
+     def seed(self, *args, **kwds):
+         "Stub method.  Not used for a system random number generator."
++        if hasattr(_random.Random, "_tobkiri_mark_system_random"):
++            _random.Random._tobkiri_mark_system_random(self)
+         return None
+ 
+     def _notimplemented(self, *args, **kwds):
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -487,6 +487,7 @@
+ 		Python/pytime.o \
+ 		Python/qsbr.o \
+ 		Python/bootstrap_hash.o \
++		Python/tobkiri_entropy.o \
+ 		Python/specialize.o \
+ 		Python/stackrefs.o \
+ 		Python/structmember.o \
+--- /dev/null
++++ b/Include/internal/pycore_tobkiri_entropy.h
+@@ -0,0 +1,29 @@
++/* Private source-patched WASI implementation API. No public component export. */
++#ifndef Py_INTERNAL_TOBKIRI_ENTROPY_H
++#define Py_INTERNAL_TOBKIRI_ENTROPY_H
++#include "Python.h"
++#include <stddef.h>
++#include <stdint.h>
++
++typedef int (*_PyTobkiriLiveFill)(uint64_t owner, uint64_t epoch,
++                                 void *bytes, size_t length);
++typedef int (*_PyTobkiriLiveCheck)(uint64_t owner, uint64_t epoch);
++typedef int (*_PyTobkiriReseed)(void);
++typedef int (*_PyTobkiriRngAudit)(void);
++
++int _PyTobkiri_EntropyBeginBuild(const unsigned char seed[32]);
++int _PyTobkiri_EntropySeal(void);
++int _PyTobkiri_EntropyFill(void *bytes, Py_ssize_t length, int raise);
++int _PyTobkiri_EntropyRequireActive(void);
++int _PyTobkiri_EntropyRequireRng(int implicit);
++int _PyTobkiri_EntropyIsBuild(void);
++int _PyTobkiri_EntropySeedEnter(void);
++void _PyTobkiri_EntropySeedLeave(void);
++int _PyTobkiri_EntropySetReseed(_PyTobkiriReseed callback);
++int _PyTobkiri_EntropySetRngAudit(_PyTobkiriRngAudit callback);
++/* Core-private bridge must provide Gate-backed callbacks and own the epoch. */
++int _PyTobkiri_EntropyActivate(uint64_t owner, uint64_t epoch,
++                              _PyTobkiriLiveFill fill,
++                              _PyTobkiriLiveCheck check);
++void _PyTobkiri_EntropyInvalidate(void);
++#endif
+--- /dev/null
++++ b/Python/tobkiri_entropy.c
+@@ -0,0 +1,183 @@
++/* Public build entropy is never a runtime cryptographic provider.
++ * This single-threaded WASI guard is source-only and not a runtime acceptance
++ * proof. The host bridge is absent, so an admitted runtime cannot become ACTIVE.
++ */
++#include "Python.h"
++#if defined(__wasi__)
++#include "pycore_tobkiri_entropy.h"
++#include <string.h>
++
++enum entropy_mode { NEW, BUILD_PREINIT, DORMANT, ACTIVATING, ACTIVE, QUARANTINED };
++static enum entropy_mode mode = NEW;
++static uint64_t build_state[4];
++static uint64_t build_counter;
++static unsigned seed_depth;
++static uint64_t live_owner, live_epoch;
++static _PyTobkiriLiveFill live_fill;
++static _PyTobkiriLiveCheck live_check;
++static _PyTobkiriReseed reseed;
++static _PyTobkiriRngAudit rng_audit;
++
++static int unavailable(int raise, const char *reason)
++{
++    if (raise && Py_IsInitialized()) {
++        PyErr_SetString(PyExc_RuntimeError, reason);
++    }
++    return -1;
++}
++
++int _PyTobkiri_EntropyBeginBuild(const unsigned char seed[32])
++{
++    if (mode != NEW || seed == NULL) return -1;
++    for (size_t word = 0; word < 4; word++) {
++        uint64_t value = 0;
++        for (size_t byte = 0; byte < 8; byte++)
++            value |= (uint64_t)seed[word * 8 + byte] << (byte * 8);
++        build_state[word] = value;
++    }
++    build_counter = 0;
++    mode = BUILD_PREINIT;
++    return 0;
++}
++
++int _PyTobkiri_EntropyIsBuild(void) { return mode == BUILD_PREINIT; }
++
++int _PyTobkiri_EntropySeedEnter(void)
++{
++    /* Only _random's audited implicit initialization/reseed may consume build
++     * entropy. Public os.urandom at module import would retain an unaudited
++     * cache and is unavailable. This is not a generic Python taint tracker. */
++    if (seed_depth != 0) return unavailable(1, "entropy seed reentry denied");
++    if (mode != BUILD_PREINIT && mode != ACTIVE && mode != ACTIVATING)
++        return unavailable(1, "entropy mode inactive");
++    seed_depth = 1;
++    return 0;
++}
++void _PyTobkiri_EntropySeedLeave(void) { seed_depth = 0; }
++
++static uint64_t public_build_word(void)
++{
++    /* Fixed seed-word/counter mixer over the public declaration. This is
++     * noncryptographic; fixed byte order and overflow arithmetic are defined.
++     * Both seed and state are erased before snapshot sealing. */
++    uint64_t value = build_state[build_counter & 3] + build_counter;
++    build_counter++;
++    value += UINT64_C(0x9e3779b97f4a7c15);
++    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
++    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
++    return value ^ (value >> 31);
++}
++
++int _PyTobkiri_EntropyFill(void *bytes, Py_ssize_t length, int raise)
++{
++    if (length < 0 || (length && bytes == NULL)) return unavailable(raise, "invalid entropy length");
++    if (mode == BUILD_PREINIT) {
++        if (seed_depth != 1) return unavailable(raise, "Unavailable: preinit public entropy cache (CACHE-01)");
++        if ((uint64_t)length / 8 + 1 > UINT64_MAX - build_counter)
++            return unavailable(raise, "public entropy counter exhausted");
++        unsigned char *output = bytes;
++        for (Py_ssize_t position = 0; position < length;) {
++            uint64_t word = public_build_word();
++            for (unsigned shift = 0; shift < 8 && position < length; shift++, position++)
++                output[position] = (unsigned char)(word >> (shift * 8));
++        }
++        return 0;
++    }
++    if (mode != ACTIVE && !(mode == ACTIVATING && seed_depth == 1))
++        return unavailable(raise, "entropy mode inactive");
++    if (!live_check || live_check(live_owner, live_epoch) != 0 || !live_fill) {
++        _PyTobkiri_EntropyInvalidate();
++        return unavailable(raise, "live Core entropy authority unavailable");
++    }
++    if (live_fill(live_owner, live_epoch, bytes, (size_t)length) != 0) {
++        if (bytes && length > 0) memset(bytes, 0, (size_t)length);
++        _PyTobkiri_EntropyInvalidate();
++        return unavailable(raise, "live Core entropy denied");
++    }
++    return 0;
++}
++
++int _PyTobkiri_EntropySetReseed(_PyTobkiriReseed callback)
++{
++    if (mode != BUILD_PREINIT || reseed != NULL || callback == NULL) return -1;
++    reseed = callback;
++    return 0;
++}
++
++int _PyTobkiri_EntropySetRngAudit(_PyTobkiriRngAudit callback)
++{
++    if (mode != BUILD_PREINIT || rng_audit != NULL || callback == NULL) return -1;
++    rng_audit = callback;
++    return 0;
++}
++
++int _PyTobkiri_EntropySeal(void)
++{
++    if (mode != BUILD_PREINIT || seed_depth != 0) return -1;
++    if (rng_audit && rng_audit() != 0) {
++        _PyTobkiri_EntropyInvalidate();
++        return -1;
++    }
++    memset(build_state, 0, sizeof(build_state));
++    build_counter = 0;
++    live_fill = NULL;
++    live_check = NULL;
++    live_owner = live_epoch = 0;
++    mode = DORMANT;
++    return 0;
++}
++
++int _PyTobkiri_EntropyActivate(uint64_t owner, uint64_t epoch,
++                              _PyTobkiriLiveFill fill, _PyTobkiriLiveCheck check)
++{
++    /* Callback presence is mandatory; no random grant is requested until fill
++     * is actually needed. A no-random subset still installs a denying broker. */
++    if (mode != DORMANT || !owner || !epoch || !check || !fill) return -1;
++    mode = ACTIVATING;
++    live_owner = owner;
++    live_epoch = epoch;
++    live_fill = fill;
++    live_check = check;
++    /* Reseed's primitive calls see ACTIVATING but public reentry does not. */
++    if (check(owner, epoch) != 0 || (reseed && reseed() != 0) || check(owner, epoch) != 0) {
++        _PyTobkiri_EntropyInvalidate();
++        return -1;
++    }
++    mode = ACTIVE;
++    return 0;
++}
++
++int _PyTobkiri_EntropyRequireActive(void)
++{
++    if (mode != ACTIVE || !live_check || live_check(live_owner, live_epoch) != 0) {
++        if (mode == ACTIVE) _PyTobkiri_EntropyInvalidate();
++        return -1;
++    }
++    return 0;
++}
++
++int _PyTobkiri_EntropyRequireRng(int implicit)
++{
++    if (mode == BUILD_PREINIT)
++        return unavailable(1, "Unavailable: preinit public RNG state/cache (CACHE-01)");
++    if (_PyTobkiri_EntropyRequireActive() != 0)
++        return unavailable(1, "RNG use outside active Core epoch");
++    /* Explicit application seeds remain noncrypto/reproducible. Implicit
++     * retained generators require the live entropy route to remain present. */
++    if (implicit && !live_fill) return unavailable(1, "implicit RNG entropy unavailable");
++    return 0;
++}
++
++void _PyTobkiri_EntropyInvalidate(void)
++{
++    mode = QUARANTINED;
++    memset(build_state, 0, sizeof(build_state));
++    build_counter = 0;
++    seed_depth = 0;
++    live_fill = NULL;
++    live_check = NULL;
++    live_owner = live_epoch = 0;
++    reseed = NULL;
++    rng_audit = NULL;
++}
++#endif /* __wasi__: native CPython behavior is unchanged. */

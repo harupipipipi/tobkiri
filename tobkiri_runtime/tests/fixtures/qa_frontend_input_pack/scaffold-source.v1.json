@@ -1,0 +1,9 @@
+{
+  "authority": "none",
+  "display_name": "QA Frontend Input",
+  "intent": "",
+  "pack_id": "qa.frontend.input",
+  "profile": "minimal",
+  "source_api_version": "io.tobkiri.pack-scaffold-source.v1",
+  "version": "0.1.0"
+}

@@ -1,0 +1,51 @@
+{
+  "format": "tobkiri.preset-migration/1",
+  "legacy": {
+    "behavior": [
+      "read_before_edit",
+      "scoped_patch",
+      "test_then_summarize",
+      "preserve_user_changes"
+    ],
+    "enabled_capabilities": [
+      "coding_workspace",
+      "planning",
+      "artifact_delivery",
+      "safety_review"
+    ],
+    "id": "claude_code_service",
+    "name": "Claude Code Style Workspace Service",
+    "policy": {
+      "file_write_requires_approval": true,
+      "git_push_requires_approval": true,
+      "network_default": "deny",
+      "terminal_requires_approval": true
+    },
+    "profile": "rumi_agent_services.coding_operator",
+    "task_defaults": {
+      "output": {
+        "type": "files_changed_tests_summary"
+      }
+    },
+    "ui_panels": [
+      "chat",
+      "plan",
+      "diff",
+      "terminal",
+      "tests"
+    ],
+    "workflow": "coding_service_loop"
+  },
+  "legacy_path": "tobkiri_runtime/profile_projections/agent-services/presets/claude_code_service.preset.yaml",
+  "legacy_sha256": "9137fcdc0e596db67055f9a55cacfbb41f777b9f1b11b2a2e2b5d1806a5e6e68",
+  "name": "Claude Code Style Workspace Service",
+  "pending_capabilities": [
+    "coding_workspace",
+    "planning",
+    "artifact_delivery",
+    "safety_review"
+  ],
+  "prompt_pack": "local.preset-claude-code-service",
+  "published_profile": "packs/profiles/presets/claude_code_service.published.json",
+  "status": "style-defaults-published; legacy capability parity todo"
+}

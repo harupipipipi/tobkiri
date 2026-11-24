@@ -50,13 +50,27 @@ def select_model_pack(
     if pack is None:
         return None
     routing_request = _coerce_request(request)
-    matching_members = [member for member in pack.members if _member_matches(member, routing_request, profiles=profiles)]
+    matching_members = [
+        member
+        for member in pack.members
+        if _member_matches(
+            member,
+            routing_request,
+            profiles=profiles,
+            settings=settings,
+        )
+    ]
     has_hard_requirements = _has_hard_requirements(routing_request)
     selected_members = matching_members or ([] if has_hard_requirements else list(pack.members))
     ordered_members = [_member_payload(member) for member in selected_members if member.model]
     for fallback_model in pack.fallback:
         if fallback_model and fallback_model not in {item.get("model") for item in ordered_members}:
-            if has_hard_requirements and not _model_matches(fallback_model, routing_request, profiles=profiles):
+            if has_hard_requirements and not _model_matches(
+                fallback_model,
+                routing_request,
+                profiles=profiles,
+                settings=settings,
+            ):
                 continue
             ordered_members.append({"model": fallback_model, "conditions": {}, "fallback_on": ["any"], "metadata": {"source": "pack_fallback"}})
     reason_codes = ["model_pack", pack.mode]
@@ -107,8 +121,13 @@ def _member_matches(
     request: ModelPackRoutingRequest,
     *,
     profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
 ) -> bool:
-    raw_capabilities = get_model_capabilities(member.model, profiles=profiles)
+    raw_capabilities = get_model_capabilities(
+        member.model,
+        profiles=profiles,
+        settings=settings,
+    )
     capabilities = raw_capabilities if isinstance(raw_capabilities, dict) else {}
     capabilities_known = _capabilities_known(capabilities)
     conditions = member.conditions if isinstance(member.conditions, dict) else {}
@@ -172,8 +191,14 @@ def _model_matches(
     request: ModelPackRoutingRequest,
     *,
     profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
 ) -> bool:
-    return _member_matches(ModelPackMember(model=model), request, profiles=profiles)
+    return _member_matches(
+        ModelPackMember(model=model),
+        request,
+        profiles=profiles,
+        settings=settings,
+    )
 
 
 def _has_hard_requirements(request: ModelPackRoutingRequest) -> bool:

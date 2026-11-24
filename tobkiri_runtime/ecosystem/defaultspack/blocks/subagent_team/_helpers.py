@@ -66,7 +66,12 @@ def lifecycle_actor(input_data: dict[str, Any], context: dict[str, Any] | None =
     return "subagent_creator"
 
 
-def direct_lifecycle_denied(input_data: dict[str, Any], context: dict[str, Any] | None = None):
+def direct_lifecycle_denied(
+    input_data: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    *,
+    settings_owner: Any = None,
+):
     context = context if isinstance(context, dict) else {}
     actor = str(
         context.get("trusted_actor_id")
@@ -92,7 +97,7 @@ def direct_lifecycle_denied(input_data: dict[str, Any], context: dict[str, Any] 
         return error("company_id is required", "INVALID_INPUT")
     from domain.subagent_team.service import SubagentTeamService
 
-    auth = SubagentTeamService().authorize_pm_actor(
+    auth = SubagentTeamService(settings_owner=settings_owner).authorize_pm_actor(
         company_id,
         actor,
         channel_id=input_data.get("channel_id") or input_data.get("id"),

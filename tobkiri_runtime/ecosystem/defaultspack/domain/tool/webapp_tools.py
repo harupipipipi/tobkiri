@@ -25,7 +25,7 @@ def project_scaffold(arguments: dict[str, Any], context: dict[str, Any] | None =
             write_text_file(root / "app.js", "document.body.dataset.rumiWebapp = 'ready';\n")
         elif template == "vite_react":
             write_text_file(index, "<!doctype html><div id=\"root\"></div><script type=\"module\" src=\"/src/main.jsx\"></script>\n")
-            write_text_file(root / "src" / "main.jsx", "import React from 'react';\nimport { createRoot } from 'react-dom/client';\ncreateRoot(document.getElementById('root')).render(<h1>{}</h1>);\n".format(name))
+            write_text_file(root / "src" / "main.jsx", "import React from 'react';\nimport {{ createRoot }} from 'react-dom/client';\ncreateRoot(document.getElementById('root')).render(<h1>{}</h1>);\n".format(name))
             write_text_file(root / "package.json", json.dumps({"scripts": {"build": "vite"}, "dependencies": {"@vitejs/plugin-react": "latest", "vite": "latest", "react": "latest", "react-dom": "latest"}}, indent=2))
         else:
             return err("unsupported template: " + template, "UNSUPPORTED_TEMPLATE")

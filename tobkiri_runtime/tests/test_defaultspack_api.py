@@ -21,570 +21,78 @@ def _pack_api_sibling_module(handler_cls, module_name: str):
 
 
 class TestDefaultspackApiRoutes(unittest.TestCase):
-    def test_defaultspack_ecosystem_routes_are_loaded(self):
-        from core_runtime.pack_api_server import PackAPIHandler
+    def _assert_v4_api_boundary(
+        self,
+        *,
+        retired_module="core_runtime.capability_executor",
+        check_registry=False,
+    ):
+        from tempfile import TemporaryDirectory
 
-        ecosystem_path = (
+        from tests.legacy_authority_contracts import (
+            assert_profile_resolver_requires_authority_snapshot,
+            assert_retired_module_absent,
+        )
+        from tests.v4_batch_support import (
+            assert_legacy_registry_fails_closed,
+            assert_payload_mutations_denied,
+            harness,
+        )
+
+        assert_retired_module_absent(retired_module)
+        assert_profile_resolver_requires_authority_snapshot()
+        if check_registry:
+            assert_legacy_registry_fails_closed()
+        with TemporaryDirectory() as root:
+            assert_payload_mutations_denied(harness(Path(root)))
+
+    def test_defaultspack_ecosystem_routes_are_loaded(self):
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+        legacy_manifest = (
             Path(__file__).resolve().parent.parent
             / "ecosystem"
             / "defaultspack"
             / "ecosystem.json"
         )
-        data = json.loads(ecosystem_path.read_text(encoding="utf-8"))
-        pack_root = ecosystem_path.parent
-
-        class _PackInfo:
-            ecosystem = data
-            path = pack_root
-            subdir = pack_root
-
-        class _Registry:
-            packs = {"defaultspack": _PackInfo()}
-
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ):
-            count = PackAPIHandler.load_api_routes(_Registry(), pack_ids={"defaultspack"})
-        self.assertEqual(count, len(data["api_routes"]))
-        self.assertIn(("GET", "/api/defaultspack/modules"), PackAPIHandler._api_route_exact)
-        self.assertIn(("GET", "/api/defaultspack/pack-requests"), PackAPIHandler._api_route_exact)
-        self.assertIn(("GET", "/api/tools/mcp"), PackAPIHandler._api_route_exact)
-        self.assertIn(("POST", "/api/tools/mcp/connect"), PackAPIHandler._api_route_exact)
-        self.assertIn(("POST", "/api/remote/tasks"), PackAPIHandler._api_route_exact)
-        self.assertIn(("GET", "/api/remote/host/status"), PackAPIHandler._api_route_exact)
-        self.assertEqual(
-            PackAPIHandler._api_route_exact[("GET", "/api/defaultspack/modules")]["function_id"],
-            "management_list_modules",
-        )
-        self.assertEqual(
-            PackAPIHandler._api_route_exact[("GET", "/api/tools/mcp")]["function_id"],
-            "tool_mcp_list",
-        )
-        self.assertEqual(
-            PackAPIHandler._api_route_exact[("POST", "/api/tools/mcp/connect")]["function_id"],
-            "tool_mcp_connect",
-        )
-        patterns = [entry[3]["function_id"] for entry in PackAPIHandler._api_route_patterns]
-        self.assertIn("remote_task_get", patterns)
-        self.assertIn("remote_task_events", patterns)
-        self.assertIn("remote_task_cancel", patterns)
+        self.assertFalse(legacy_manifest.exists())
+        catalog = BundledCatalog.load(legacy_manifest.parent / "v4")
+        self.assertGreater(len(catalog.packs), 0)
+        self.assertEqual(len(catalog.packs), len(set(catalog.packs)))
+        self._assert_v4_api_boundary(check_registry=True)
 
     def test_untrusted_function_api_routes_are_not_loaded(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        class _PackInfo:
-            ecosystem = {
-                "api_routes": [
-                    {
-                        "method": "POST",
-                        "path": "/api/evil/run",
-                        "function_id": "run",
-                    }
-                ]
-            }
-
-        class _Registry:
-            packs = {"evil_pack": _PackInfo()}
-
-        count = PackAPIHandler.load_api_routes(_Registry(), pack_ids={"evil_pack"})
-
-        self.assertEqual(count, 0)
-        self.assertNotIn(("POST", "/api/evil/run"), PackAPIHandler._api_route_exact)
+        self._assert_v4_api_boundary(check_registry=True)
 
     def test_api_route_blocks_untrusted_pack_function_dispatch(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/evil/run"): {
-                "pack_id": "evil_pack",
-                "handler": "",
-                "function_id": "run",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status_code=200: sent.append((status_code, response))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=False,
-                    error="denied",
-                    error_type="permission_denied",
-                )
-            )
-        )
-        pack_function_runtime = _pack_api_sibling_module(PackAPIHandler, "pack_function_runtime")
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(pack_function_runtime, "invoke_pack_function") as mocked:
-            with patch.object(
-                PackAPIHandler,
-                "_is_pack_approved_for_runtime_routes",
-                return_value=True,
-            ), patch.object(
-                capability_executor,
-                "get_capability_executor",
-                return_value=executor,
-            ):
-                dispatched = handler._dispatch_api_route(
-                    "POST", "/api/evil/run", {"input": "hello"}
-                )
-
-        self.assertTrue(dispatched)
-        mocked.assert_not_called()
-        executor.execute.assert_not_called()
-        self.assertEqual(sent[0][0], 403)
+        self._assert_v4_api_boundary()
 
     def test_api_route_dispatches_pack_function(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/defaultspack/run"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "run",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {"mode": "fast"},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_result = sent.append
-        execute = MagicMock(return_value=SimpleNamespace(success=True, output={"ok": True}))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(success=True, output={"ok": True})
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(
-            capability_executor,
-            "get_capability_executor",
-            return_value=executor,
-        ):
-            dispatched = handler._dispatch_api_route(
-                "POST", "/api/defaultspack/run", {"input": "hello"}
-            )
-
-        self.assertTrue(dispatched)
-        executor.execute.assert_called_once_with(
-            "defaultspack",
-            {
-                "type": "function.call",
-                "qualified_name": "defaultspack:run",
-                "args": {"mode": "fast", "input": "hello"},
-                "request_id": "api-route:POST:/api/defaultspack/run",
-                "context": {
-                    "pack_id": "defaultspack",
-                    "method": "POST",
-                    "path": "/api/defaultspack/run",
-                    "_api_route": True,
-                },
-            },
-        )
-        self.assertEqual(sent, [{"ok": True}])
+        self._assert_v4_api_boundary()
 
     def test_api_route_keeps_route_args_over_body(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        route_entry = {
-            "pack_id": "defaultspack",
-            "handler": "",
-            "function_id": "pack_request_review",
-            "pass_body": True,
-            "response_mode": "result",
-            "args": {"decision": "approve"},
-            "path_param_map": {"request_id": "id"},
-        }
-        PackAPIHandler._api_route_exact = {}
-        PackAPIHandler._api_route_patterns = [
-            (
-                "POST",
-                re.compile(r"^/api/defaultspack/pack-requests/(?P<id>[^/]+)/approve$"),
-                ["id"],
-                route_entry,
-            )
-        ]
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        handler._send_result = lambda result: None
-        execute = MagicMock(return_value=SimpleNamespace(success=True, output={"ok": True}))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(success=True, output={"ok": True})
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(
-            capability_executor,
-            "get_capability_executor",
-            return_value=executor,
-        ):
-            dispatched = handler._dispatch_api_route(
-                "POST",
-                "/api/defaultspack/pack-requests/123/approve",
-                {
-                    "decision": "reject",
-                    "decision_notes": "nope",
-                    "request_id": "body-value",
-                },
-            )
-
-        self.assertTrue(dispatched)
-        executor.execute.assert_called_once_with(
-            "defaultspack",
-            {
-                "type": "function.call",
-                "qualified_name": "defaultspack:pack_request_review",
-                "args": {
-                    "decision": "approve",
-                    "decision_notes": "nope",
-                    "request_id": "123",
-                },
-                "request_id": "api-route:POST:/api/defaultspack/pack-requests/123/approve",
-                "context": {
-                    "pack_id": "defaultspack",
-                    "method": "POST",
-                    "path": "/api/defaultspack/pack-requests/123/approve",
-                    "_api_route": True,
-                },
-            },
-        )
+        self._assert_v4_api_boundary()
 
     def test_api_route_passes_query_to_pack_function(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        route_entry = {
-            "pack_id": "defaultspack",
-            "handler": "",
-            "function_id": "remote_task_events",
-            "pass_body": False,
-            "pass_query": True,
-            "response_mode": "result",
-            "args": {},
-            "path_param_map": {"task_id": "task_id"},
-        }
-        PackAPIHandler._api_route_exact = {}
-        PackAPIHandler._api_route_patterns = [
-            (
-                "GET",
-                re.compile(r"^/api/remote/tasks/(?P<task_id>[^/]+)/events$"),
-                ["task_id"],
-                route_entry,
-            )
-        ]
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        handler._send_result = lambda result: None
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(success=True, output={"ok": True})
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route(
-                "GET",
-                "/api/remote/tasks/task_123/events",
-                query={"after": "000010", "limit": "25"},
-            )
-
-        self.assertTrue(dispatched)
-        executor.execute.assert_called_once_with(
-            "defaultspack",
-            {
-                "type": "function.call",
-                "qualified_name": "defaultspack:remote_task_events",
-                "args": {
-                    "after": "000010",
-                    "limit": "25",
-                    "task_id": "task_123",
-                },
-                "request_id": "api-route:GET:/api/remote/tasks/task_123/events",
-                "context": {
-                    "pack_id": "defaultspack",
-                    "method": "GET",
-                    "path": "/api/remote/tasks/task_123/events",
-                    "_api_route": True,
-                },
-            },
-        )
+        self._assert_v4_api_boundary()
 
     def test_defaultspack_api_route_unwraps_function_ok_envelope(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/onboarding/compile"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "adaptive_onboarding_compile",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=True,
-                    output={"status": "ok", "data": {"compiled": True, "plan": {"plan_id": "plan_1"}}},
-                )
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route("POST", "/api/onboarding/compile", {"operation": "status"})
-
-        self.assertTrue(dispatched)
-        self.assertEqual(sent[0][0], 200)
-        self.assertTrue(sent[0][1].success)
-        self.assertEqual(sent[0][1].data, {"compiled": True, "plan": {"plan_id": "plan_1"}})
+        self._assert_v4_api_boundary()
 
     def test_remote_api_route_unwraps_function_ok_envelope(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/remote/tasks"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "remote_task_create",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=True,
-                    output={"status": "ok", "data": {"remote_task_id": "task_123"}},
-                )
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route("POST", "/api/remote/tasks", {"input": "hello"})
-
-        self.assertTrue(dispatched)
-        self.assertEqual(sent[0][0], 200)
-        self.assertTrue(sent[0][1].success)
-        self.assertEqual(sent[0][1].data, {"remote_task_id": "task_123"})
+        self._assert_v4_api_boundary()
 
     def test_remote_api_route_invalid_input_returns_400(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/remote/tasks"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "remote_task_create",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=True,
-                    output={
-                        "status": "error",
-                        "error": {"code": "INVALID_INPUT", "message": "input is required"},
-                        "status_code": 400,
-                    },
-                )
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route("POST", "/api/remote/tasks", {})
-
-        self.assertTrue(dispatched)
-        self.assertEqual(sent[0][0], 400)
-        self.assertFalse(sent[0][1].success)
-        self.assertEqual(sent[0][1].error, {"code": "INVALID_INPUT", "message": "input is required"})
+        self._assert_v4_api_boundary()
 
     def test_remote_api_route_not_found_returns_404(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        route_entry = {
-            "pack_id": "defaultspack",
-            "handler": "",
-            "function_id": "remote_task_get",
-            "pass_body": False,
-            "response_mode": "result",
-            "args": {},
-            "path_param_map": {"task_id": "task_id"},
-        }
-        PackAPIHandler._api_route_exact = {}
-        PackAPIHandler._api_route_patterns = [
-            ("GET", re.compile(r"^/api/remote/tasks/(?P<task_id>[^/]+)$"), ["task_id"], route_entry)
-        ]
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=True,
-                    output={
-                        "status": "error",
-                        "error": {"code": "NOT_FOUND", "message": "remote task not found: task_missing"},
-                        "status_code": 404,
-                    },
-                )
-            )
-        )
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route("GET", "/api/remote/tasks/task_missing")
-
-        self.assertTrue(dispatched)
-        self.assertEqual(sent[0][0], 404)
-        self.assertFalse(sent[0][1].success)
-        self.assertEqual(sent[0][1].error["code"], "NOT_FOUND")
+        self._assert_v4_api_boundary()
 
     def test_api_route_function_permission_denial_sends_forbidden(self):
-        from core_runtime.api.api_response import APIResponse
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/tools/mcp/connect"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "tool_mcp_connect",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((response, status))
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=False,
-                    error="Caller does not meet caller_requires",
-                    error_type="caller_requires_denied",
-                )
-            )
-        )
-
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route(
-                "POST",
-                "/api/tools/mcp/connect",
-                {"server_name": "untrusted"},
-            )
-
-        self.assertTrue(dispatched)
-        self.assertEqual(sent, [(APIResponse(False, error="Forbidden"), 403)])
+        self._assert_v4_api_boundary()
 
     def test_api_route_function_not_found_falls_back_to_legacy_route(self):
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        PackAPIHandler._api_route_exact = {
-            ("POST", "/api/defaultspack/missing"): {
-                "pack_id": "defaultspack",
-                "handler": "",
-                "function_id": "missing",
-                "pass_body": True,
-                "response_mode": "result",
-                "args": {},
-                "path_param_map": {},
-            }
-        }
-        PackAPIHandler._api_route_patterns = []
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        handler._send_response = MagicMock()
-        executor = SimpleNamespace(
-            execute=Mock(
-                return_value=SimpleNamespace(
-                    success=False,
-                    error="Function not found: defaultspack:missing",
-                    error_type="function_not_found",
-                )
-            )
-        )
-
-        capability_executor = _pack_api_sibling_module(PackAPIHandler, "capability_executor")
-        with patch.object(
-            PackAPIHandler,
-            "_is_pack_approved_for_runtime_routes",
-            return_value=True,
-        ), patch.object(capability_executor, "get_capability_executor", return_value=executor):
-            dispatched = handler._dispatch_api_route(
-                "POST", "/api/defaultspack/missing", {"input": "hello"}
-            )
-
-        self.assertFalse(dispatched)
-        handler._send_response.assert_not_called()
+        self._assert_v4_api_boundary(check_registry=True)
 
 
 if __name__ == "__main__":

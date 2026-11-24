@@ -1,0 +1,135 @@
+{
+  "build_performed": false,
+  "byte_offsets": "zero-based-half-open",
+  "extraction": "verbatim-complete-source-lines",
+  "generator": "scripts/wasm/prepare_gateway_finalization_providers.py",
+  "inventory": {
+    "bytes": 14406,
+    "path": "inventory.json",
+    "sha256": "af5dd63cae7fc513d378d937d6777e0a0ae3992dd600a7e28bd465ae47be6d80"
+  },
+  "line_numbers": "one-based-inclusive",
+  "output": {
+    "bytes": 2334,
+    "path": "original_usage_cost.py",
+    "sha256": "b4eccb3633fba3341599ed017271c427a20b5628a8629fe7e4c626b6261b4954"
+  },
+  "production_enabled": false,
+  "protocol": "ordered-finite-json-v2",
+  "provider": "usage-cost",
+  "schema": "io.tobkiri.gateway-finalization-provider-extraction.v1",
+  "slices": [
+    {
+      "output_end_byte": 162,
+      "output_end_line": 4,
+      "output_start_byte": 127,
+      "output_start_line": 4,
+      "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+      "source_end_byte": 108,
+      "source_end_line": 3,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "source_start_byte": 73,
+      "source_start_line": 3,
+      "symbol": "import:__future__"
+    },
+    {
+      "output_end_byte": 176,
+      "output_end_line": 7,
+      "output_start_byte": 164,
+      "output_start_line": 7,
+      "sha256": "085ea91d7cfeb4f5695793f882c7463cbfdf7be9f98e6c5133847a245bbea366",
+      "source_end_byte": 133,
+      "source_end_line": 6,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "source_start_byte": 121,
+      "source_start_line": 6,
+      "symbol": "import:math"
+    },
+    {
+      "output_end_byte": 220,
+      "output_end_line": 10,
+      "output_start_byte": 178,
+      "output_start_line": 10,
+      "sha256": "06a8e93e3fe4a71a5e9e8809353e3bdf39e493381ff84b0e9a385705f8e8e94e",
+      "source_end_byte": 175,
+      "source_end_line": 7,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "source_start_byte": 133,
+      "source_start_line": 7,
+      "symbol": "import:typing"
+    },
+    {
+      "output_end_byte": 2127,
+      "output_end_line": 63,
+      "output_start_byte": 222,
+      "output_start_line": 13,
+      "sha256": "32b3f15b391290ba879aa5ac9e4d182cd9dc1fcb3038ca54ffa3ada1a8837eba",
+      "source_end_byte": 3007,
+      "source_end_line": 90,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "source_start_byte": 1102,
+      "source_start_line": 40,
+      "symbol": "create_cost_operation"
+    },
+    {
+      "output_end_byte": 2334,
+      "output_end_line": 71,
+      "output_start_byte": 2129,
+      "output_start_line": 66,
+      "sha256": "b87153a6c4967fbf29a185c1ae9412d575f1ecf4cfa7f73fa4d910170956911c",
+      "source_end_byte": 3214,
+      "source_end_line": 98,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "source_start_byte": 3009,
+      "source_start_line": 93,
+      "symbol": "_number"
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 6276,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+      "sha256": "16b80027e2859cff8515525ee87e16e4c33a6c222d54168d1f5fa9a145195316"
+    }
+  ],
+  "staged_references": [
+    {
+      "bytes": 8961,
+      "copy_unchanged": true,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "stage_path": "python/ordered_json.py"
+    },
+    {
+      "bytes": 8184,
+      "copy_unchanged": true,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "stage_path": "python/ordered_json_v2.py"
+    },
+    {
+      "bytes": 5732,
+      "copy_unchanged": true,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "stage_path": "wit/deps/tobkiri-core/core.wit"
+    }
+  ],
+  "transport_dependencies": [
+    {
+      "bytes": 8961,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "bytes": 8184,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+    },
+    {
+      "bytes": 5732,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    }
+  ]
+}

@@ -5,10 +5,6 @@ input_data:
   - name: str（必須）— 削除するtool名
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 
@@ -22,7 +18,6 @@ def run(input_data, context):
     if not name or not isinstance(name, str):
         return error("name is required and must be a non-empty string", "MISSING_PARAM")
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from domain.tool.runtime_creator import RuntimeToolCreator
 
     creator = RuntimeToolCreator()

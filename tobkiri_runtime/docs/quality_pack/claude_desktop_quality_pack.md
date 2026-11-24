@@ -76,7 +76,7 @@ cd pack-shell && cargo test && cd ..
 
 ## 3.4 設定 / 権限 / 失敗系
 - CI workflow に root pytest / package pytest / cargo test が定義されていること
-- release workflow が `v*` tag trigger と `cargo tauri build` を持つこと
+- release workflow が `v*` tag trigger と `python -B scripts/run_tauri_build.py build --target` を持つこと
 
 ---
 

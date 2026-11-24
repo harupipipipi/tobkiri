@@ -1,0 +1,38 @@
+{
+  "check": "native-caller-core-replay",
+  "command": [
+    "cargo",
+    "+1.94.0",
+    "test",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "tobkiri-e2e",
+    "--test",
+    "ordered_python",
+    "gateway_tool_caller::original_python_tool_caller_replays_through_real_core",
+    "--",
+    "--ignored",
+    "--exact",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "source_before": {
+    "head": "42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8",
+    "diff_sha256": "e4bcd6cd129bda65ee0b6998fd5d7fe36062857e1cf6b2132254376eda227e41"
+  },
+  "source_after": {
+    "head": "42dfc6e02d7477ccbbf0e3692256d6c6e781c9a8",
+    "diff_sha256": "e4bcd6cd129bda65ee0b6998fd5d7fe36062857e1cf6b2132254376eda227e41"
+  },
+  "source_unchanged": true,
+  "exit": 0,
+  "guard_stop": null,
+  "seconds": 335.51,
+  "free_before": 3524530176,
+  "minimum_free": 3400663040,
+  "free_after": 3410538496,
+  "log": "native-caller-core-replay.log"
+}

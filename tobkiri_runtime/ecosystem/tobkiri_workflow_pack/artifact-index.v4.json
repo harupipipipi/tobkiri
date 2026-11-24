@@ -1,0 +1,67 @@
+{
+  "artifact_set_digest": "sha256:554ac10f71b594db331f270d4a08804e96a06ebf1838fe42f81595703acefa5b",
+  "artifacts": [
+    {
+      "digest": "sha256:75ca562a676edc5ad15880fc1a531492b2dc11bfff5c258aff7c0754265d43a9",
+      "path": "backend-integrity.v4.json",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:555815013e2da7b72cf5916dbd8d799dab9be01eb24b03058f2cb701085839ed",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:f9c3f1e0809257fb24f99007ecfafdc9b422c573ae380a1a65310091026fac05",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:8586209456b2cf10cad7a90e958fb9d5c4cf3435de3fe6b759c701e0448cea2c",
+      "path": "frontend_contract_map.v4.json",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:67af8860fda4aab6f4d0d076448048313c488060a65ee092f5bcdbfe42b610ed",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:fa72b1d696ada6653277c341afc34d73098777d382dfe33b51630a461257f3e8",
+      "path": "runtime/provider.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:cedae53c8689c63b51ed41d5e8438ea0249e0dd8ffaa1cb1dd1f528b5e84da5d",
+      "path": "schemas/frontend-contract-map.v4.schema.json",
+      "role": "schema"
+    },
+    {
+      "digest": "sha256:771666139606d1ed36dc71eb1eb8de226d3c5496d75eb8fdd5e80382a3b4cacc",
+      "path": "schemas/workflow-definition.v4.schema.json",
+      "role": "schema"
+    },
+    {
+      "digest": "sha256:f53591d6733669515655f01feae9d3dc249dc72666bf62c9a494b4b1d915a63e",
+      "path": "schemas/workflow-error.v4.schema.json",
+      "role": "schema"
+    },
+    {
+      "digest": "sha256:e4e9d62afc0f41dd9ac026010f588e9e6829933ba87e71b31e9cf3b67c5cad4e",
+      "path": "schemas/workflow-operation.v4.schema.json",
+      "role": "schema"
+    },
+    {
+      "digest": "sha256:59ae8ec6c690bc6f11025fdd8a31d4d7d23d8e1138d87f77da49a6e02a277580",
+      "path": "schemas/workflow-result.v4.schema.json",
+      "role": "schema"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:05efd8d283403a42af1c7c9838e9467c9d0eeb6846b1de6d93b806e26e6bffff"
+  },
+  "pack_id": "tobkiri_workflow_pack",
+  "source_identity": "sha256:e8ed480ddb042d65a21f046485423dce187239429bef05190a90ee7cf1922c4c"
+}

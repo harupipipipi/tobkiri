@@ -17,11 +17,9 @@ def main():
     try:
         raw = sys.stdin.read()
         if raw.strip():
-            request = json.loads(raw)
-        else:
-            request = {}
+            json.loads(raw)
     except json.JSONDecodeError:
-        request = {}
+        pass
 
     response = {
         "success": False,

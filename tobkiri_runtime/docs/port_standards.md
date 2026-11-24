@@ -1,3 +1,5 @@
+> **旧仕様・移行用の参照資料**: この文書は Python runtime / Capability Graph / StartupProfile を前提にした旧アーキテクチャの記録です。現行の正の要件は [issue #1520](https://github.com/harupipipipi/tobkiri/issues/1520) です。新しい実装には [Rust 移行契約](../../docs/migration/1520/rust-contract.md) と [資源境界の修正](../../docs/migration/1520/resource-boundaries.md) を参照してください。この表示は移行の完了を意味しません。
+
 # Port Standards
 
 Port standards are string identifiers used to decide whether two ports can connect.

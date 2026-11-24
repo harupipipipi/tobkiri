@@ -74,7 +74,11 @@ class CapabilityUsageStore:
     USAGE_DIR = "user_data/permissions/capability_usage"
     SECRET_KEY_FILE = "user_data/permissions/.secret_key"
 
-    def __init__(self, usage_dir: str = None, secret_key: str = None):
+    def __init__(
+        self,
+        usage_dir: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ) -> None:
         self._usage_dir = Path(usage_dir) if usage_dir else Path(self.USAGE_DIR)
         self._secret_key = secret_key or self._load_secret_key()
         self._lock = threading.RLock()
@@ -271,7 +275,9 @@ def get_capability_usage_store() -> CapabilityUsageStore:
     return _global_usage_store
 
 
-def reset_capability_usage_store(usage_dir: str = None) -> CapabilityUsageStore:
+def reset_capability_usage_store(
+    usage_dir: Optional[str] = None,
+) -> CapabilityUsageStore:
     global _global_usage_store
     with _usage_lock:
         _global_usage_store = CapabilityUsageStore(usage_dir)

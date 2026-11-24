@@ -1,7 +1,43 @@
 
 # defaultspack
 
+Tobkiri's `@` candidate menu prioritizes exact names, IDs, and skill aliases,
+then name prefixes, then matches in descriptions. For example, `@coding` puts
+an available `Coding` candidate first. Empty searches retain the usual category
+order, and scoped or excluded mentions retain their selection rules.
+
+The Coding workspace picker verifies the exact registered workspace before
+changing its local selection. The saved-workspace read does not include Git or
+file observations, so the composer displays those as unobserved instead of
+claiming an empty folder or missing Git repository. Selecting a workspace does
+not grant trust or replace the Host's execution-time workspace and approval
+checks. A missing selected workspace displays a selection prompt, never another
+workspace's name.
+
+The Coding tab uses the same finite v4 workspace list and exact-owner read.
+Add workspace opens the native folder picker and completes the existing Host
+mount effect through Tobkiri Launcher approval. Picker and mount failures stay
+visible in the Coding tab. Git observations, reviews, branch mutations, and the
+legacy coding side panels are unavailable until their finite captured contracts
+are provided; opening this tab does not invoke retired routes or run checks.
+
 ## Canonical implementation
+
+The captured full-UI conversation CRUD routes use the conversation
+owner Pack through Authority/Broker. Creation requires a stable client UUID and
+the list's `store_revision`; a stale write is rejected, not retried with a fresh
+identity. The source Profile includes the required conversation-manage edge;
+existing activations must review that addition before using it. This does not
+yet complete full-UI message sending, streaming or stopping. Record updates and
+deletion require the displayed record's revision; stale writes fail unchanged.
+See [Chat API](docs/chat.md) for the canonical/legacy distinction.
+
+The isolated saved-turn computation in `runtime/saved_conversation.py` now
+produces four bounded v2 intents: read, append user, generate, append assistant.
+It preserves stable IDs and owner revisions and reports uncertain writes without
+retrying them. It is not registered or wired into the guest runner or ChatApp;
+do not expose its resume-state ABI to HTTP callers. See
+[saved-turn integration requirements](../../docs/saved-turn-bridge-v2.md).
 
 For Tobkiri, the canonical defaultspack implementation is
 `tobkiri_runtime/ecosystem/defaultspack/`.
@@ -83,7 +119,11 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
-`webapp/` は `rumi DP` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+`webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+
+チャットのエラーと完了のお知らせは、会話を押し下げない画面上部の通知カードに表示します。8秒後に通知アイコンへたたみ、アイコンから内容を再表示できます。ピンボタンで通知を固定すると、自動ではたたまれません。もう一度押すと固定を解除できます。マウスやキーボードで通知を読む間も表示を維持し、エラーのコピー・再試行・閉じる操作も利用できます。
+
+Tobkiri ペットは会話画面とは別の小さなウィンドウに表示します。デスクトップ版ではキャラクターや移動ハンドルをドラッグして、画面上の好きな位置へ移動できます。タスクの状態が更新されても位置は変わりません。Pet の「非表示」は会話画面を閉じず、会話画面の「ペットを表示」から再表示できます。ブラウザ版では別の小窓で開きます。ポップアップが制限されている場合は、会話画面の表示ボタンを押してください。
 
 ## AI Agent Service Defaults
 
@@ -869,3 +909,33 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 - **VS Code Extension** — defaults の handler を呼び出す Pack で実現可能
 
 これらは全て defaultspack の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。
+
+### Hosted provider setup
+
+Settings keeps categories in a left sidebar at window widths of 768px or more;
+smaller windows use compact, horizontally scrollable categories. In the advanced
+settings view, the manual execution-mode selector can be enabled and saved as a
+boolean preference. Selecting a mode preserves the normal tool approval path.
+
+Open **Settings → Models** and add an API connection by choosing a provider
+and saving its API name and key. The connection URL and protocol are preset.
+Existing connections stay visible; the form for adding another connection
+can be expanded when needed.
+While saved connections load, the selector shows **接続を確認中…** and the new-key
+form stays collapsed. A failed lookup is reported separately from a successful
+lookup with no connections.
+
+Under **チャットで使うモデル** (chat model), select the connection, search for a model, set the output
+token limit, and choose **このモデルを使う** (use this model). Model IDs and route IDs are filled
+automatically. **モデル利用範囲** (model access) manages which models the connection permits;
+expand it to edit individual models or OpenRouter filters. Review and save
+the intended model-access policy for a new connection. Saving a key,
+model-access policy, or model selection does not send a paid test request.
+Provider and Native approval restrictions still apply to saved models; model
+selection does not expand a credential's approved generation scope.
+An existing connection without an additional model-access policy shows
+**既存の許可設定を使用**; Provider, Profile, and Native restrictions still apply.
+An explicitly saved policy with zero models continues to deny every model.
+The provider catalog is shipped as JSON, including the complete OpenRouter
+public model inventory captured during refresh. See
+[AI providers](docs/ai-providers.md) for source, license and refresh details.

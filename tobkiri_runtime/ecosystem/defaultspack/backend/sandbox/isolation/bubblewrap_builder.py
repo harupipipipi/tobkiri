@@ -37,6 +37,10 @@ def build_bubblewrap_argv(spec: BubblewrapSandboxSpec) -> list[str]:
         argv.append("--unshare-net")
     bind_flag = "--ro-bind" if spec.workspace.read_only else "--bind"
     argv.extend([bind_flag, str(workspace), "/workspace", "--chdir", "/workspace"])
+    if spec.data is not None:
+        data = _existing_dir(spec.data.source, "data")
+        data_bind_flag = "--ro-bind" if spec.data.read_only else "--bind"
+        argv.extend([data_bind_flag, str(data), "/data"])
     if spec.seccomp_fd is not None:
         argv.extend(["--seccomp", str(int(spec.seccomp_fd))])
     env = {

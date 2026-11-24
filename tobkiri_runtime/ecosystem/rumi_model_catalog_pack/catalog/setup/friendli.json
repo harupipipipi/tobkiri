@@ -1,0 +1,217 @@
+{
+ "provider_id": "friendli",
+ "models": [
+  {
+   "model_id": "MiniMaxAI/MiniMax-M2.5",
+   "display_name": "MiniMax-M2.5",
+   "type": "reasoning",
+   "context_window": 196608,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek-ai/DeepSeek-V3.2",
+   "display_name": "DeepSeek V3.2",
+   "type": "reasoning",
+   "context_window": 163840,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.5,
+    "output": 1.5,
+    "cache_read": 0.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "google/gemma-4-31B-it",
+   "display_name": "Gemma 4 31B IT",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.14,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/GLM-5.1",
+   "display_name": "GLM-5.1",
+   "type": "reasoning",
+   "context_window": 202752,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/GLM-5.2",
+   "display_name": "GLM-5.2",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/GLM-5.3",
+   "display_name": "GLM-5.3",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.26,
+    "output": 3.96,
+    "cache_read": 0.234
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/GLM-5.3-Flash",
+   "display_name": "GLM-5.3-Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  }
+ ]
+}

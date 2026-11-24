@@ -1,0 +1,38 @@
+{
+  "format": "tobkiri.finalization-source-rebinding/1",
+  "previous_passing_composed_replay_commit": "92f38e3241b802605a4af59ba35aae72ee73cdbd",
+  "reason": "Reviewed production Gateway helper extraction changes inventory and provenance only for the unchanged original bridge executable. Caller transport separately preserves non-list DATA and corrects terminal resource classification.",
+  "oracle_comparisons": [
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/oracle.json",
+      "previous_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+      "current_sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d",
+      "case_count": 33,
+      "case_observations_identical": true,
+      "changed_top_level_fields": [
+        "source_provenance_sha256"
+      ]
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/integer-v2.observations.json",
+      "previous_sha256": "3387411b6ac46b160e793477d270aa1c110a0d58f033937d58957ffe47a539e4",
+      "current_sha256": "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8",
+      "case_count": 33,
+      "case_observations_identical": true,
+      "changed_top_level_fields": [
+        "oracle_freeze_sha256",
+        "oracle_sha256",
+        "source_bindings",
+        "source_bindings_sha256"
+      ]
+    }
+  ],
+  "unchanged_executable_sources": {
+    "bridge_sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6",
+    "caller_sha256": "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1"
+  },
+  "old_component_receipts_are_current_source_proof": false,
+  "fresh_artifact_build_and_replay_required": true,
+  "native_core_acceptance": false,
+  "production_enabled": false
+}

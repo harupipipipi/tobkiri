@@ -1,0 +1,189 @@
+{
+  "schema": "io.tobkiri.provider-registry-decoded-validation.v1",
+  "native_source_head_before": "2b7ea4487dff1adebe6fceaa4601bb4bd06e3cb1",
+  "native_source_files": [
+    {
+      "path": "packs/local.provider-registry-rust/src/failure.rs",
+      "sha256": "76976b3ae5927e7935bec8daaf87edc7721a963a7f3007f38b2b7478d1c0aa7d"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/host.rs",
+      "sha256": "4fa1b1a341e6be730d93ded55755ea398adeca384f0a83d593ef27512b8eaa74"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/lib.rs",
+      "sha256": "3e0c25e9695065ebc3786cb61ae4e81f35e6bab40b0cdac91410a968de6899ab"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/oracle_tests.rs",
+      "sha256": "ea4c4b1436109354cc8e93808a7d6cd86a6046b95a073f8064e2bea9574f57fe"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/record.rs",
+      "sha256": "87de2b0a105f4da50209cbded405049437150e4bc374aef45f0b81867dd1cc16"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/registry.rs",
+      "sha256": "4c40df4d846a761bb61190ce4c202c5039056b8d3bb3c04e94b1a4e1eb5cdde9"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/state.rs",
+      "sha256": "33216ac766b925be8e19354840c303fc691e363c8291dc59cb3c79368442954d"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/Cargo.toml",
+      "sha256": "41d7d6a46e12d4394b5cc5b587bc556d0c001582affe552c4a6f05e883a24d8b"
+    },
+    {
+      "path": "packs/Cargo.lock",
+      "sha256": "59aee945956fa602aa28d3c479a6dd48c7fc98c0c399f171b409e8414a5fafc8"
+    }
+  ],
+  "source_comparison": {
+    "actions_journal": "actions.jsonl",
+    "all_exercised_decoded_outcomes_matched": true,
+    "complete_provider_registry_parity_passed": false,
+    "counts": {
+      "capture_predicate_helper_only": 1,
+      "explicitly_unverified_actions": 5,
+      "host_invoke_boundary_helper_only": 9,
+      "input_action_definitions": 86,
+      "matched_native_outcomes": 81,
+      "native_invocations": 80,
+      "native_mismatches": 0,
+      "not_run_after_source_setup_error": 1,
+      "raw_store_parser_actions": 1,
+      "recorded_source_actions": 85
+    },
+    "limitations": [
+      "the native store is an in-memory decoded-document adapter; filesystem bytes, locks, permissions, directory effects, atomic replacement and concurrency are not verified",
+      "the malformed raw-store JSON action remains unverified because this candidate has no raw JSON/file adapter",
+      "host.invoke uses a pure helper and does not recreate the opaque CapturedHostProviderV4 object or its runtime dispatch context",
+      "host.capture checks only the supported source predicate helper; non-JSON CapturedHostProviderV4 returns and configuration-factory captures remain unverified",
+      "this consumer does not prove Core, Wasm, production routing, activation, or external credential revocation parity"
+    ],
+    "schema": "io.tobkiri.provider-registry-native-consumer.v1",
+    "source_oracle": {
+      "case_count": 30,
+      "receipt_sha256": "3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684",
+      "recorded_source_action_count": 85,
+      "runtime": "CPython 3.13.9 / Unicode 15.1.0 / int limit 4300 / recursion 1000",
+      "schema": "io.tobkiri.original-python-provider-registry-stateful.v1",
+      "source_manifest_sha256": "e4ad958a9f952ada72ec2455a289ecc9d2b468539e715b7a53435ca05a200d04"
+    }
+  },
+  "ordinary_unit_tests": {
+    "passed": 30,
+    "ignored": 1,
+    "explicit_consumer_separately_passed": 1
+  },
+  "workflow_regressions_passed": 14,
+  "same_length_corrupted_sidecar_rejected_before_native_dispatch": true,
+  "checks": [
+    {
+      "name": "provider-registry-ci-consumer-20261023-01",
+      "command": [
+        "env",
+        "RUSTUP_TOOLCHAIN=1.94.0",
+        "<private evidence path>",
+        "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256=3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684",
+        "<private evidence path>",
+        "/opt/miniconda3/bin/python",
+        "-B",
+        "tools/quality/issue_1520_ci.py",
+        "cargo-test",
+        "--log",
+        "<private evidence path>",
+        "--expected-passed",
+        "1",
+        "--",
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "-p",
+        "tobkiri-pack-provider-registry-rust",
+        "--lib",
+        "oracle_tests::provider_registry_decoded_source_consumer",
+        "--",
+        "--ignored",
+        "--exact"
+      ],
+      "source_unchanged": true,
+      "exit": 0,
+      "log_sha256": "72fe5b1741c016d87ab8ec4e1b3fdfc8e5c1275fa8dc8bd4fb083ee0091f53cf"
+    },
+    {
+      "name": "provider-registry-ci-units-20261023-01",
+      "command": [
+        "env",
+        "RUSTUP_TOOLCHAIN=1.94.0",
+        "/opt/miniconda3/bin/python",
+        "-B",
+        "tools/quality/issue_1520_ci.py",
+        "cargo-test",
+        "--log",
+        "<private evidence path>",
+        "--expected-passed",
+        "30",
+        "--",
+        "cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "-p",
+        "tobkiri-pack-provider-registry-rust",
+        "--lib"
+      ],
+      "source_unchanged": true,
+      "exit": 0,
+      "log_sha256": "36ef9d0059696a3c92e08e39e7a48f763441eecac23629af392ea10fcd00c6df"
+    },
+    {
+      "name": "provider-registry-oracle-clippy-20261023-02",
+      "command": [
+        "cargo",
+        "+1.94.0",
+        "clippy",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "--offline",
+        "--locked",
+        "-j1",
+        "-p",
+        "tobkiri-pack-provider-registry-rust",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "source_unchanged": true,
+      "exit": 0,
+      "log_sha256": "0172b88c1560b8d5ea0aaa7becc2acbca8faa74bee17125d123d71a7683b2454"
+    },
+    {
+      "name": "provider-registry-workflow-20261023-01",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-B",
+        "tools/quality/test_issue_1520_workflow.py"
+      ],
+      "source_unchanged": true,
+      "exit": 0,
+      "log_sha256": "d839abcd3734c79f7676ae315997dc8db6d16bdcb7cc250bb6827f27bddd60dd"
+    },
+    {
+      "name": "provider-registry-corrupt-actual-20261023-01",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-u",
+        "../.work/evidence/handoff-42dfc6e0-20261021/verify-registry-corrupt-input-20261023.py"
+      ],
+      "source_unchanged": true,
+      "exit": 0,
+      "log_sha256": "e1ed61de5b6bdf40c17e6b2f63177c461eb5e0446e8f341fb656ebeb73d56e09"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "max_tokens": 128,
+  "model": "gemma3-1b-local",
+  "system_prompt": "Follow this service style while staying within the active Profile permissions. Behaviors: source_card_grid, structured_report, caveats_visible. Intended workflow: deep_research_report. Delivery defaults: {\"output\": {\"type\": \"report_with_source_cards\"}}. Ask for a declared tool when a task requires a capability absent from this Profile."
+}

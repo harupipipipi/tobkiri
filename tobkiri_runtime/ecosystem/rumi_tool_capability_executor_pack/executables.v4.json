@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:ff09f89c00389d8a3f1b1c36afd3d20a4e591dd9dfcf2e3d476d3a7ee75473a2",
+  "pack_id": "rumi_tool_capability_executor_pack",
+  "source_identity": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_tool_capability_executor_pack.tool-executor.capability",
+      "implementation_digest": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2",
+      "implementation_path": "runtime/executor.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.execute.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_tool_capability_executor_pack.tool-capability-execute",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:96ba9605d95950428119a955d2096ea1bc3cdd61088067a8e1121589d395cc87",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_tool_capability_executor_pack.tool-executor.capability.python"
+    }
+  ]
+}

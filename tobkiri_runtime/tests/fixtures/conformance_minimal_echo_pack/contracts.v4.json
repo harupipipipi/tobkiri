@@ -1,0 +1,77 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "pack_id": "conformance.minimal.echo",
+  "source_identity": "sha256:c4a09bb78ff098244d7aeab1d7a6415f190b5539478733f8d30468eab7fb589c",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "io.tobkiri.conformance.echo.v1",
+      "version": "1.0.0",
+      "revision_digest": "sha256:cf05b46110ba2e9012aa9182230b6ee636d662673532fe95fe9a660dc1f4a7c0",
+      "owner": "conformance.minimal.echo",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "echo",
+          "input_schema_digest": "sha256:d138cd893fc6d48ec29402b38504e4db41abe94e13341a58ac5b255cd2cd84b2",
+          "output_schema_digest": "sha256:d138cd893fc6d48ec29402b38504e4db41abe94e13341a58ac5b255cd2cd84b2",
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "effect_ceiling": ["operation.invoke"],
+          "scope_semantics": "host_broker",
+          "idempotency": {"mode": "none"},
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 60000
+        }
+      ],
+      "schema_catalog": {
+        "sha256:d138cd893fc6d48ec29402b38504e4db41abe94e13341a58ac5b255cd2cd84b2": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "message": {"type": "string", "maxLength": 256}
+          },
+          "required": ["message"]
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {"type": "string"},
+            "message": {"type": "string"}
+          },
+          "required": ["code", "message"]
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "conformance.echo",
+        "cardinality": "one",
+        "security": "public",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "required_capabilities": [],
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        }
+      },
+      "provenance": {
+        "schema": "io.tobkiri.provenance.v1",
+        "source_kind": "generated",
+        "source_path": "tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/contracts.v4.json",
+        "source_digest": "sha256:c4a09bb78ff098244d7aeab1d7a6415f190b5539478733f8d30468eab7fb589c",
+        "repository_commit": "working-tree",
+        "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
+        "generator": "tobkiri.conformance.minimal_profile",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [
+          {
+            "path": "runtime/echo.py",
+            "rule_id": "minimal-contract-runtime",
+            "digest": "sha256:db83893c95d81c118325596551b3c2a60263dcbffa80da4ea7610d95ac518073"
+          }
+        ]
+      }
+    }
+  ]
+}

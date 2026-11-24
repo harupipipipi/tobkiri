@@ -1,0 +1,71 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:25d4f63b947dc76dbcb7c695d9e39bb2d91a112f3da897c1694f978c137c09b2",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:c52cf09712ad37b0e44656898afa03fb9fd08f238eb9e102b5667386031678cd",
+      "kind": "sidecar",
+      "path": "frontend/contributions/data-analysis.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:49b6de8241c6eec1808be5084cb3457389fad037fc2d506e665d834b14aa28c1",
+    "contract_catalog_digest": "sha256:0b830c3b766b2e1da1da756c4208f53da8eb0738f3323045aed80b080a39dc8c",
+    "source_identity": "sha256:bebe538206c785696ab1e6ed07db91765e5f5bd4b27c93bfc4d6e540994a6c27"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_data_analysis_pack",
+      "rumi_data_analysis_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:49b6de8241c6eec1808be5084cb3457389fad037fc2d506e665d834b14aa28c1",
+    "display_name": "Rumi Data Analysis Content",
+    "id": "rumi_data_analysis_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:bebe538206c785696ab1e6ed07db91765e5f5bd4b27c93bfc4d6e540994a6c27",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:bebe538206c785696ab1e6ed07db91765e5f5bd4b27c93bfc4d6e540994a6c27",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_data_analysis_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

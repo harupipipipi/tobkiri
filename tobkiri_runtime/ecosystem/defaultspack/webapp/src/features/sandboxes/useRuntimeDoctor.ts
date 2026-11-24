@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { sandboxesApi } from "./api";
-import { runtimeAvailability } from "./runtimeStatus";
+import { runtimeAvailability, runtimeOperationSupportForMetadata, runSupportedRuntimeOperation, runtimeOperationAllowed } from "./runtimeStatus";
 import type { RuntimeDoctorResult, RuntimeOperation, RuntimeProvidersResponse } from "./types";
 
 type RuntimeDoctorClient = Pick<
@@ -25,11 +25,18 @@ export function useRuntimeDoctor({
   const [operationCancelLoading, setOperationCancelLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const support = runtimeOperationSupportForMetadata(providersResponse, doctor);
+  const doctorRef = useRef(doctor);
+  doctorRef.current = doctor;
+  const supportRef = useRef(support);
+  supportRef.current = support;
+
   const refreshProviders = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const result = await client.listRuntimeProviders();
       if (signal?.aborted) return null;
+      supportRef.current = runtimeOperationSupportForMetadata(result, doctorRef.current);
       setProvidersResponse(result);
       setError(null);
       return result;
@@ -46,7 +53,7 @@ export function useRuntimeDoctor({
   const runDoctor = useCallback(async () => {
     setDoctorLoading(true);
     try {
-      const result = await client.runRuntimeDoctor();
+      const result = await runSupportedRuntimeOperation(supportRef.current, "doctor", () => client.runRuntimeDoctor());
       setDoctor(result);
       setProvidersResponse((current) => result.providers ? { ...(current ?? { providers: [] }), providers: result.providers } : current);
       setError(null);
@@ -63,7 +70,7 @@ export function useRuntimeDoctor({
   const ensureRuntime = useCallback(async (providerId?: string | null) => {
     setSetupLoading(true);
     try {
-      const result = await client.ensureRuntime(providerId);
+      const result = await runSupportedRuntimeOperation(supportRef.current, "setup", () => client.ensureRuntime(providerId));
       setOperation(result);
       setError(null);
       return result;
@@ -79,7 +86,7 @@ export function useRuntimeDoctor({
     if (!operation?.operation_id || ["completed", "failed", "cancelled"].includes(operation.status)) return null;
     setOperationCancelLoading(true);
     try {
-      const result = await client.cancelRuntimeOperation(operation.operation_id);
+      const result = await runSupportedRuntimeOperation(supportRef.current, "setup", () => client.cancelRuntimeOperation(operation.operation_id));
       setOperation(result);
       setError(null);
       return result;
@@ -93,8 +100,8 @@ export function useRuntimeDoctor({
 
   useEffect(() => {
     const controller = new AbortController();
-    void refreshProviders(controller.signal).then(() => {
-      if (autoRunDoctor && !controller.signal.aborted) {
+    void refreshProviders(controller.signal).then((result) => {
+      if (autoRunDoctor && result && runtimeOperationAllowed(result.operation_support, "doctor") && !controller.signal.aborted) {
         void runDoctor();
       }
     });
@@ -129,6 +136,7 @@ export function useRuntimeDoctor({
   );
 
   return {
+    operationSupport: support,
     availability,
     providersResponse,
     doctor,

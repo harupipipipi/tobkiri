@@ -53,14 +53,15 @@ def test_component_route_specs_include_manifest_backed_routes():
     assert ("GET", "/api/ui/catalog", "blocks.ui.catalog") in route_pairs
 
 
-def test_fallback_routes_dedupe_component_routes_without_reordering_core_paths():
-    routes = build_fallback_http_routes(_FakeServer())
-    pairs = [(method, compiled.pattern) for method, compiled, *_rest in routes]
+def test_component_routes_do_not_join_the_host_route_table():
+    from tests.v4_batch_support import assert_route_cutover
 
-    assert len(pairs) == len(set(pairs))
-    assert any(method == "POST" and "api/integrations/line/webhook" in pattern for method, pattern in pairs)
-    assert any(method == "GET" and "api/ui/catalog" in pattern for method, pattern in pairs)
-    assert any(method == "GET" and pattern == "^/prompts$" for method, pattern in pairs)
+    assert_route_cutover(
+        "POST",
+        "/api/integrations/line/webhook",
+        "tobkiri.integration.line.v1",
+        "defaultspack.integration.line.receive",
+    )
 
 
 def test_ui_catalog_exposes_component_route_and_surface_metadata():

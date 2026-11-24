@@ -1,12 +1,13 @@
 import { Monitor } from "lucide-react";
 
 import { cn } from "../../lib/cn";
-import type { DesktopInputAction, DesktopInstance } from "../../features/sandboxes/types";
+import type { DesktopInputAction, DesktopInstance, RuntimeOperationSupport } from "../../features/sandboxes/types";
 import type { DesktopDensity } from "./DesktopToolbar";
 import { DesktopTile } from "./DesktopTile";
 
 type DesktopGridProps = {
   desktops: DesktopInstance[];
+  operationSupport?: RuntimeOperationSupport;
   loading?: boolean;
   selectedSeatId: string | null;
   density: DesktopDensity;
@@ -42,6 +43,7 @@ function DesktopSkeleton() {
 
 export function DesktopGrid({
   desktops,
+  operationSupport,
   loading = false,
   selectedSeatId,
   density,
@@ -96,6 +98,7 @@ export function DesktopGrid({
         <DesktopTile
           key={desktop.seat_id}
           desktop={desktop}
+          operationSupport={operationSupport}
           selected={desktop.seat_id === selectedSeatId}
           dense={density === "dense"}
           prominent={singleDesktop}

@@ -1,0 +1,60 @@
+name: Issue 1520 actual native grouped review
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - 'crates/tobkiri-gate/src/approval_review.rs'
+      - 'crates/tobkiri-core/src/lib.rs'
+      - 'crates/tobkiri-core/src/core.rs'
+      - 'crates/tobkiri-core/src/native_profile_review_tests.rs'
+      - 'tobkiri_launcher/core-host/src/native_contract.rs'
+      - 'tobkiri_launcher/core-host/src/runtime.rs'
+      - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - '.github/workflows/issue-1520-native-group-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue-1520-native-group-review-${{ github.sha }}
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+jobs:
+  portable-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo test --locked -p tobkiri-launcher-core-host --lib
+      - run: cargo test --locked -p tobkiri-gate
+      - run: cargo test --locked -p tobkiri-core --lib native_profile_review_tests
+  actual-macos-host:
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tobkiri_launcher/src-tauri -> target
+          cache-on-failure: true
+      - name: Build the actual Core host frontend used by Tauri context
+        working-directory: tobkiri_launcher/frontend
+        run: |
+          npm ci
+          npm run build:core-host
+      - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host

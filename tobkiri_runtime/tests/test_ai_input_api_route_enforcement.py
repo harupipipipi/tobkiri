@@ -24,7 +24,7 @@ def test_api_route_allowlist_blocks_and_records_event(monkeypatch) -> None:
             },
         ),
     )
-    monkeypatch.setattr("core_runtime.ai_input_trace_store.AiInputTraceStore", _FakeTraceStore)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_trace_store.AiInputTraceStore", _FakeTraceStore)
     _FakeTraceStore.events.clear()
 
     assert server._route_allowed_by_active_profile("GET", "/api/tools") is True

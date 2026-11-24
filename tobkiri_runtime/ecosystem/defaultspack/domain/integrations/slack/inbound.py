@@ -5,6 +5,8 @@ import hashlib
 import time
 from typing import Any, Dict
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import ok, error
 from blocks.integrations.common import allow_unsigned_webhook_dev, headers_from_request, raw_body_bytes
 from domain.external.adapters.slack import SlackResponseAdapter
@@ -16,7 +18,12 @@ from domain.external.token_store import read_external_token
 from domain.integrations.secrets import load_integration_secrets_into_env
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    settings_owner = (
+        settings_owner
+        if settings_owner is not None
+        else (context or {}).get("_settings_owner_port")
+    )
     load_integration_secrets_into_env()
     headers = headers_from_request(input_data)
     raw_body = raw_body_bytes(input_data)
@@ -50,6 +57,7 @@ def run(input_data, context):
         audience_policy={"default": "allow"},
         context=context,
         send_response=True,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     plan = result.get("response_plan") if isinstance(result.get("response_plan"), dict) else ResponsePlanner("slack").plan(RumiResponse.from_result(result))
     send_result = _send_response_plan(plan, external_event)

@@ -1,0 +1,7 @@
+{
+  "source": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/v1.245.1/src/bin/wasm-tools/component.rs",
+  "sha256": "d476444119e6b9e777a0a28b316d13167db1bd7186da0663d4376dfc8c3180f2",
+  "version": "1.245.1",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "adaptation": "Unchanged conversion/re-encoding helpers; bounded in-memory driver; no upstream filesystem writes."
+}

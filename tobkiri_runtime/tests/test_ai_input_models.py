@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from core_runtime.ai_input_models import edge_from_dict, normalize_ai_input_config
+from ecosystem.defaultspack.domain.ai_input.ai_input_models import (
+    edge_from_dict,
+    normalize_ai_input_config,
+)
 
 
 def test_normalize_ai_input_config_accepts_budgets_and_vector_gate_defaults() -> None:

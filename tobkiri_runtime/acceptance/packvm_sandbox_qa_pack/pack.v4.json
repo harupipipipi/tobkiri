@@ -1,0 +1,188 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:72204df552569d28c99079a800a0eaa28c009d51a5d13e5ce1c1fd5c0e895896",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
+      "entrypoint": "tobkiri_packvm_invoke",
+      "kind": "executable",
+      "path": "runtime/probe.py",
+      "platform": "any"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+      "operations": [
+        "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
+        "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
+        "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
+        "tobkiri_packvm_sandbox_qa_pack.abnormal_exit"
+      ],
+      "revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:273bad93e14f237216701e6632f3be544ed9aaef967da4786f6c5e25198dc397",
+      "id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "implementation_digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
+        "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
+        "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
+        "tobkiri_packvm_sandbox_qa_pack.abnormal_exit"
+      ],
+      "role": "pure"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:22e293b7674fc1ab23451da32c4e9aaf9570fc7ea3c983777a8bf150bbc50c63",
+    "contract_catalog_digest": "sha256:3cfb2b4ec49d070367f00d18870a8c67c66a51d7a90d2dd3e317870eebc1f6f8",
+    "source_identity": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2099-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "effect_ceiling": [
+        "operation.invoke"
+      ],
+      "operation_id": "tobkiri_packvm_sandbox_qa_pack.abnormal_exit",
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:22e293b7674fc1ab23451da32c4e9aaf9570fc7ea3c983777a8bf150bbc50c63",
+    "display_name": "Tobkiri PackVM Sandbox QA",
+    "id": "tobkiri_packvm_sandbox_qa_pack",
+    "kind": "normal_sandbox",
+    "publisher_id": "dev.tobkiri.acceptance",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
+        "path": "runtime/probe.py",
+        "rule_id": "packvm-sandbox-qa-runtime"
+      }
+    ],
+    "generator": "tobkiri.scripts.generate_packvm_sandbox_qa_pack",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "repository_commit": "working-tree",
+    "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3",
+    "source_kind": "generated",
+    "source_path": "acceptance/packvm_sandbox_qa_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.acceptance.packvm.sandbox.v1",
+      "operations": [
+        "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
+        "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
+        "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
+        "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
+        "tobkiri_packvm_sandbox_qa_pack.abnormal_exit"
+      ],
+      "owner": "tobkiri_packvm_sandbox_qa_pack",
+      "provider_id": "tobkiri_packvm_sandbox_qa_pack.probe"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

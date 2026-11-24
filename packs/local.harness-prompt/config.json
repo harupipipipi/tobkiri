@@ -1,0 +1,5 @@
+{
+  "max_tokens": 128,
+  "model": "gemma3-1b-local",
+  "system_prompt": "Answer in plain text. Be helpful and concise."
+}

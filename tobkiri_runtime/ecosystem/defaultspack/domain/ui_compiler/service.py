@@ -103,6 +103,8 @@ def commit_ui_plan(
 
     try:
         workspace = Path(workspace_root).expanduser().resolve()
+        if not workspace.is_absolute() or not workspace.is_dir():
+            return _error("trusted workspace is unavailable", "WORKSPACE_REQUIRED")
         artifacts = UICompilerArtifactStore(workspace / ".rumi" / "ui").save_plan(
             plan,
             idempotency_key=idempotency_key,

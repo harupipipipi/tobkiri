@@ -1,0 +1,21 @@
+flow_id: acceptance.temporal.turn
+version: 0.1.0
+description: >-
+  Draft legacy format: alias execution is V4_OPERATION_UNAVAILABLE.
+  Reduce an explicitly supplied temporal event. Trusted lifecycle, durable store,
+  hidden model input, and approved function-alias binding remain separate.
+inputs:
+  namespace: string
+  state: object
+  event: object
+outputs:
+  temporal_result: object
+steps:
+  - id: temporal
+    type: function
+    function: acceptance.temporal.context.reduce
+    input:
+      namespace: "${ctx.namespace}"
+      state: "${ctx.state}"
+      event: "${ctx.event}"
+    output: temporal_result

@@ -1,212 +1,153 @@
-"""
-test_desktop_handlers.py - Tests for POST /api/desktop/token API handler.
-
-Phase V-4: desktop_app:execute capability API tests.
-"""
+"""Retirement tests for the historical desktop-token HTTP route."""
 
 from __future__ import annotations
 
-import sys
-import tempfile
+import http.client
+import json
 import unittest
-from pathlib import Path
-from typing import Any, Dict, Optional
-from unittest.mock import MagicMock
+from typing import Mapping
 
-# Ensure tobkiri_runtime/ is on sys.path so 'core_runtime' is importable
-_THIS_DIR = Path(__file__).resolve().parent          # tests/
-_REPO_DIR = _THIS_DIR.parent                         # tobkiri_runtime/
-if str(_REPO_DIR) not in sys.path:
-    sys.path.insert(0, str(_REPO_DIR))
-
-from core_runtime.api.desktop_handlers import DesktopHandlersMixin
-from core_runtime.pack_api_server import _persist_desktop_api_token
+from core_runtime.pack_api_server import PackAPIHandler, PackAPIServer
+from core_runtime.panel_auth import PanelAuthManager
 
 
-# ======================================================================
-# Stub host class that provides _validate_pack_id
-# ======================================================================
+class _Dispatch:
+    """Minimal captured Host identity required by panel authentication."""
 
-class _StubHost(DesktopHandlersMixin):
-    """Minimal host providing _validate_pack_id for mixin tests."""
+    profile_id = "defaults"
+    profile_revision = "sha256:" + "b" * 64
+    activation_id = "activation:desktop-handlers"
+    plan_digest = "sha256:" + "a" * 64
+    security_epoch = 1
 
-    def __init__(self, valid_pack_ids: Optional[list] = None):
-        self._valid_ids = valid_pack_ids or ["test_pack"]
-
-    def _validate_pack_id(self, pack_id: str) -> bool:
-        return pack_id in self._valid_ids
-
-
-# ======================================================================
-# Mock helpers
-# ======================================================================
-
-class _GrantResult:
-    """Minimal Grant check result."""
-    def __init__(self, allowed: bool, config: Optional[dict] = None):
-        self.allowed = allowed
-        self.config = config
+    def assert_current(self) -> None:
+        """Provide the verified dispatch-session check used by the API server."""
 
 
-class _MockHandler:
-    """Mock desktop capability handler."""
-    def handle_execute(self, principal_id, args, grant_config):
-        return {
-            "token": "test-token-abc123",
-            "port": 8765,
-            "expires_in": 3600,
-        }
+def _request(
+    server: PackAPIServer,
+    method: str,
+    path: str,
+    body: object | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> tuple[int, dict[str, object], list[tuple[str, str]]]:
+    connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    encoded = None if body is None else json.dumps(body).encode("utf-8")
+    request_headers = dict(headers or {})
+    if encoded is not None:
+        request_headers.setdefault("Content-Type", "application/json")
+    connection.request(method, path, body=encoded, headers=request_headers)
+    response = connection.getresponse()
+    payload = json.loads(response.read().decode("utf-8"))
+    response_headers = response.getheaders()
+    connection.close()
+    return response.status, payload, response_headers
 
-
-class _MockHandlerError:
-    """Mock desktop capability handler that returns error."""
-    def handle_execute(self, principal_id, args, grant_config):
-        return {"error": "Desktop app not configured"}
-
-
-# ======================================================================
-# Tests
-# ======================================================================
 
 class TestDesktopHandlers(unittest.TestCase):
-    """Tests for DesktopHandlersMixin._desktop_issue_token."""
+    """The removed desktop capability route cannot reach a handler or store."""
+
+    def setUp(self) -> None:
+        self.server = PackAPIServer(
+            port=0,
+            panel_auth_manager=PanelAuthManager(
+                bootstrap_secret="verified-desktop"
+            ),
+            dispatch_session=_Dispatch(),
+        )
+        self.server.start()
+
+    def tearDown(self) -> None:
+        self.server.stop()
+
+    def _assert_retired(
+        self,
+        method: str = "POST",
+        body: object | None = None,
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        status, payload, _ = _request(
+            self.server,
+            method,
+            "/api/desktop/token",
+            body,
+            headers,
+        )
+        assert status == 410
+        assert payload["success"] is False
+        assert payload["data"] == {
+            "api_version": "io.tobkiri.pack-api.v4",
+            "state": "legacy_api_retired",
+            "retired_route": "/api/desktop/token",
+            "write_set": [],
+        }
+        assert payload["error"] == (
+            "Legacy API route is retired; use an exact Pack v4 operation"
+        )
+
+    def _panel_session(self) -> tuple[str, str]:
+        origin = f"http://127.0.0.1:{self.server.port}"
+        status, bootstrap, _ = _request(
+            self.server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            {},
+            {"X-Rumi-Desktop-Bootstrap": "verified-desktop"},
+        )
+        assert status == 200
+        code = bootstrap["data"]["code"]
+        status, exchange, response_headers = _request(
+            self.server,
+            "POST",
+            "/api/panel/auth/exchange",
+            {"code": code},
+            {"Origin": origin},
+        )
+        assert status == 200
+        cookie = next(
+            value
+            for key, value in response_headers
+            if key.lower() == "set-cookie"
+        )
+        return cookie.split(";", 1)[0], str(exchange["data"]["csrf_token"])
 
     def test_missing_pack_id(self):
-        """pack_id が未指定の場合 → 400。"""
-        host = _StubHost()
-        result = host._desktop_issue_token({})
-        self.assertEqual(result["status_code"], 400)
-        self.assertIn("Missing", result["error"])
+        """A missing legacy payload is retired before any handler dispatch."""
+        self._assert_retired(body={})
 
     def test_empty_pack_id(self):
-        """pack_id が空文字の場合 → 400。"""
-        host = _StubHost()
-        result = host._desktop_issue_token({"pack_id": "  "})
-        self.assertEqual(result["status_code"], 400)
+        """An empty legacy payload is retired before validation."""
+        self._assert_retired(body={"pack_id": "  "})
 
     def test_invalid_pack_id(self):
-        """不正な pack_id → 400。"""
-        host = _StubHost(valid_pack_ids=["good_pack"])
-        result = host._desktop_issue_token({"pack_id": "bad_pack"})
-        self.assertEqual(result["status_code"], 400)
-        self.assertIn("Invalid", result["error"])
+        """A legacy Pack ID cannot enter the removed capability route."""
+        self._assert_retired(body={"pack_id": "bad_pack"})
 
     def test_no_grant_returns_403(self):
-        """Grant がない場合 → 403。"""
-        host = _StubHost(valid_pack_ids=["test_pack"])
-
-        mock_grant_manager = MagicMock()
-        mock_grant_manager.check.return_value = _GrantResult(allowed=False)
-
-        import core_runtime.capability_grant_manager as cgm_mod
-        orig_grant = getattr(cgm_mod, "get_capability_grant_manager", None)
-        cgm_mod.get_capability_grant_manager = lambda: mock_grant_manager
-        try:
-            result = host._desktop_issue_token({"pack_id": "test_pack"})
-            self.assertEqual(result["status_code"], 403)
-            self.assertIn("not granted", result["error"])
-        finally:
-            if orig_grant:
-                cgm_mod.get_capability_grant_manager = orig_grant
+        """No legacy grant manager is consulted at the v4 boundary."""
+        self._assert_retired(body={"pack_id": "test_pack"})
 
     def test_handler_not_available(self):
-        """handler が DI に登録されていない場合 → 503。"""
-        host = _StubHost(valid_pack_ids=["test_pack"])
-
-        mock_grant_manager = MagicMock()
-        mock_grant_manager.check.return_value = _GrantResult(allowed=True, config={})
-
-        mock_container = MagicMock()
-        mock_container.get_or_none.return_value = None
-
-        import core_runtime.capability_grant_manager as cgm_mod
-        import core_runtime.di_container as di_mod
-
-        orig_grant = getattr(cgm_mod, "get_capability_grant_manager", None)
-        orig_container = getattr(di_mod, "get_container", None)
-        cgm_mod.get_capability_grant_manager = lambda: mock_grant_manager
-        di_mod.get_container = lambda: mock_container
-        try:
-            result = host._desktop_issue_token({"pack_id": "test_pack"})
-            self.assertEqual(result["status_code"], 503)
-            self.assertIn("not available", result["error"])
-        finally:
-            if orig_grant:
-                cgm_mod.get_capability_grant_manager = orig_grant
-            if orig_container:
-                di_mod.get_container = orig_container
+        """The retired route has no dependency-injection handler fallback."""
+        self._assert_retired(body={"pack_id": "test_pack"})
 
     def test_success(self):
-        """正常リクエスト → token, port, expires_in が返る。"""
-        host = _StubHost(valid_pack_ids=["test_pack"])
-
-        mock_grant_manager = MagicMock()
-        mock_grant_manager.check.return_value = _GrantResult(allowed=True, config={})
-
-        mock_container = MagicMock()
-        mock_container.get_or_none.return_value = _MockHandler()
-
-        import core_runtime.capability_grant_manager as cgm_mod
-        import core_runtime.di_container as di_mod
-
-        orig_grant = getattr(cgm_mod, "get_capability_grant_manager", None)
-        orig_container = getattr(di_mod, "get_container", None)
-        cgm_mod.get_capability_grant_manager = lambda: mock_grant_manager
-        di_mod.get_container = lambda: mock_container
-        try:
-            result = host._desktop_issue_token({"pack_id": "test_pack"})
-            self.assertNotIn("status_code", result)
-            self.assertEqual(result["token"], "test-token-abc123")
-            self.assertEqual(result["port"], 8765)
-            self.assertEqual(result["expires_in"], 3600)
-        finally:
-            if orig_grant:
-                cgm_mod.get_capability_grant_manager = orig_grant
-            if orig_container:
-                di_mod.get_container = orig_container
+        """A verified panel session still cannot authorize a retired route."""
+        cookie, csrf_token = self._panel_session()
+        self._assert_retired(
+            body={"pack_id": "test_pack"},
+            headers={"Cookie": cookie, "X-Rumi-CSRF": csrf_token},
+        )
 
     def test_handler_error(self):
-        """handler がエラーを返す場合 → 403。"""
-        host = _StubHost(valid_pack_ids=["test_pack"])
-
-        mock_grant_manager = MagicMock()
-        mock_grant_manager.check.return_value = _GrantResult(allowed=True, config={})
-
-        mock_container = MagicMock()
-        mock_container.get_or_none.return_value = _MockHandlerError()
-
-        import core_runtime.capability_grant_manager as cgm_mod
-        import core_runtime.di_container as di_mod
-
-        orig_grant = getattr(cgm_mod, "get_capability_grant_manager", None)
-        orig_container = getattr(di_mod, "get_container", None)
-        cgm_mod.get_capability_grant_manager = lambda: mock_grant_manager
-        di_mod.get_container = lambda: mock_container
-        try:
-            result = host._desktop_issue_token({"pack_id": "test_pack"})
-            self.assertEqual(result["status_code"], 403)
-            self.assertIn("not configured", result["error"])
-        finally:
-            if orig_grant:
-                cgm_mod.get_capability_grant_manager = orig_grant
-            if orig_container:
-                di_mod.get_container = orig_container
+        """Removed handler errors are replaced by one typed retirement envelope."""
+        self._assert_retired(body={"pack_id": "test_pack"})
 
     def test_persist_desktop_api_token_writes_next_to_user_data(self):
-        """Viewer が暗号化 HMAC を読めなくても pack app を起動できるよう token を同期する。"""
-        import core_runtime.paths as paths_mod
-
-        original_user_data = paths_mod.USER_DATA_DIR
-        with tempfile.TemporaryDirectory() as tmp:
-            user_data = Path(tmp) / "user_data"
-            user_data.mkdir()
-            paths_mod.USER_DATA_DIR = user_data
-            try:
-                _persist_desktop_api_token("desktop-token")
-                token_path = Path(tmp) / ".desktop_api_token"
-                self.assertEqual(token_path.read_text(encoding="utf-8"), "desktop-token")
-            finally:
-                paths_mod.USER_DATA_DIR = original_user_data
+        """The removed filesystem token projection is absent and write-free."""
+        assert not hasattr(PackAPIHandler, "_persist_desktop_api_token")
+        self._assert_retired(body={"token": "desktop-token"})
 
 
 if __name__ == "__main__":

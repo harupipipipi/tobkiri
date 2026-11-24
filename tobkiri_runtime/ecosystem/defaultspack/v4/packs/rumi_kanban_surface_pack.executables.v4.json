@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_kanban_surface_pack",
+  "source_identity": "sha256:0bb5a4cd36bb4131de4a9c0f2a9bcfc356e5a96d400cee1d7e585e3ac22d8c37",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:e14df56f64def93037deab4e3d1c9ebc76e8aff9af5117e8958d660e7ea3df0c",
+  "catalog_digest": "sha256:750228fdaf33edaefd6b26f8e2aee7942d6f59b5929abcd389633129dc5f426f"
+}

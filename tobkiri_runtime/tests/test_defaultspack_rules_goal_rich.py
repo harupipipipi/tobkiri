@@ -74,19 +74,38 @@ def test_rule_command_pins_lists_and_disables_rule(tmp_path, monkeypatch):
     assert ConversationRuleStore().list_rules("conv_rules") == []
 
 
-def test_rule_records_are_injected_by_context_enrichment(tmp_path, monkeypatch):
+def test_rule_records_are_injected_by_context_enrichment(
+    tmp_path,
+    monkeypatch,
+    defaultspack_conversation_owner,
+):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_RULE_STORE_PATH", str(tmp_path / "conversation_rules.json"))
 
+    from blocks.chat import _context_helpers
     from blocks.chat._context_helpers import enrich_messages
+    from domain.chat.store import ChatStore
     from domain.chat.rules import ConversationRuleStore
 
+    conversation = ChatStore().create_conversation(model="stub/default")
+    conversation_id = conversation["id"]
+    monkeypatch.setattr(
+        _context_helpers,
+        "_materialize_context",
+        lambda *args, **kwargs: {"sections": [], "digest": "test-empty-context"},
+    )
     ConversationRuleStore().create_rule(
-        conversation_id="conv_rules",
+        conversation_id=conversation_id,
         text="Always finish the current pull request before opening a follow-up.",
         priority="high",
     )
     messages = [{"role": "user", "content": "continue"}]
-    info = enrich_messages(messages, "Base prompt", "conv_rules", "continue", _DummyManager())
+    info = enrich_messages(
+        messages,
+        "Base prompt",
+        conversation_id,
+        "continue",
+        _DummyManager(),
+    )
 
     assert "Always finish" in info["rule_text"]
     assert messages[0]["role"] == "system"

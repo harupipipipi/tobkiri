@@ -39,6 +39,6 @@ python -m pytest tobkiri_runtime/tests/test_rumi_computer_control_pack_contract.
 - Required docs exist.
 - Required catalog/spec/policy/profile/prompt/preset/example assets exist.
 - `ecosystem.json` and setup `pack.json` agree on ID, target, version, and dependencies.
-- `defaultspack_promotion.eligible` remains false.
+- `base_pack_promotion.eligible` remains false.
 - Overlap notes mention `defaultspack`, `rumi_browser_automation_pack`, `rumi_security_review_pack`, and `rumi_agent_services_pack`.
 - Focused contract test passes.

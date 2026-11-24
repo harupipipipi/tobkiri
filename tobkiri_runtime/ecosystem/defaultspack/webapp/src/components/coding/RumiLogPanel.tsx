@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RumiLogEvent, RumiLogSummary } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 
 type LogFilter = "all" | "conversation" | "task" | "git";
 type SummaryKey = "commit_count" | "push_count" | "task_count" | "conversation_count" | "mention_count";
@@ -195,10 +196,12 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<LogFilter>("all");
   const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadLogs = useCallback(async () => {
     setStatus(null);
+    setError(null);
     try {
       const result = await codingResources.listRumiLogs({
         workspace_id: workspaceId,
@@ -208,7 +211,7 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
       setEvents(normalizedLogEvents(result.events));
       setSummary(normalizedLogSummary(result.summary));
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     }
   }, [filter, workspaceId]);
 
@@ -220,6 +223,7 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
     if (busy) return;
     setBusy(true);
     setStatus(null);
+    setError(null);
     try {
       const result = await codingResources.seedRumiLogPlan({ workspace_id: workspaceId });
       setEvents(normalizedLogEvents(result.events));
@@ -227,7 +231,7 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
       setFilter("all");
       setStatus(result.created ? "agent room created" : "agent room already exists");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -240,6 +244,7 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
     const taskId = extractTaskId(message);
     setBusy(true);
     setStatus(null);
+    setError(null);
     try {
       const result = await codingResources.appendRumiLog({
         workspace_id: workspaceId,
@@ -258,7 +263,7 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
       setFilter("all");
       setNote("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -408,7 +413,15 @@ export function RumiLogPanel({ workspaceId }: { workspaceId?: string | null }) {
         </button>
       </div>
 
-      {status && <p className="mb-2 rounded border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-[11px] text-zinc-300">{status}</p>}
+      {error ? (
+        <ErrorNotice
+          className="mb-2 px-2 py-1 text-[11px]"
+          copyLabel="Rumi ログエラーをコピー"
+          message={error}
+        />
+      ) : status ? (
+        <p role="status" className="mb-2 rounded border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-[11px] text-zinc-300">{status}</p>
+      ) : null}
 
       <div className="mb-2 flex items-center gap-2">
         <h3 className="text-xs font-semibold uppercase text-zinc-500">History</h3>

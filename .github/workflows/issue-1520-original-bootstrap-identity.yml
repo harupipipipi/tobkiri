@@ -1,0 +1,87 @@
+name: Issue 1520 original bootstrap identity reference
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_bootstrap_identity_reference.py
+      - .github/workflows/issue-1520-original-bootstrap-identity.yml
+      - tobkiri_launcher/harness-native/src/app_bootstrap_identity*.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-bootstrap-identity-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  original-identity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-bootstrap-identity-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-bootstrap-identity-source" \
+            --output "$RUNNER_TEMP/original-bootstrap-identity-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-bootstrap-identity-requirements.txt"
+      - name: Observe unchanged original getter validator and Host raise
+        id: original_reference
+        run: >-
+          python3 -B tools/original_bootstrap_identity_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-bootstrap-identity-source"
+          --output "$RUNNER_TEMP/original-bootstrap-identity-reference"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: original-bootstrap-identity-adapter-${{ runner.os }}
+      - name: Execute the App canonical adapter regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/bootstrap-identity-adapter-unit.log" --expected-passed 8 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          app_bootstrap_identity::tests:: -- --test-threads=1
+      - name: Compare the same App adapter with original returned-getter cases
+        if: ${{ !cancelled() && steps.original_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_BOOTSTRAP_IDENTITY_REFERENCE: ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/bootstrap-identity-adapter-reference.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          app_bootstrap_identity::tests::original_reference_ci::original_reference_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Preserve strict library validation
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
+      - name: Retain bounded reference observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-bootstrap-identity-reference-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+            ${{ runner.temp }}/original-bootstrap-identity-reference/canonical-adapter-comparison.json
+            ${{ runner.temp }}/bootstrap-identity-adapter-unit.log*
+            ${{ runner.temp }}/bootstrap-identity-adapter-reference.log*
+          if-no-files-found: warn

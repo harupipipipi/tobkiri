@@ -1,0 +1,49 @@
+{
+  "id": "memo_search",
+  "category": "tool",
+  "description": "Search durable local memo notes.",
+  "source_pack_id": "defaultspack",
+  "config": {
+    "tool_id": "memo_search",
+    "name": "memo_search",
+    "summary": "Search Memory2 memo notes.",
+    "tool_category": "memory",
+    "action_type": "read",
+    "tags": [
+      "memory",
+      "memo",
+      "search"
+    ],
+    "execution": {
+      "type": "handler",
+      "handler": "blocks.memory.memo_notes:tool_search_notes"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "folder_id": {
+            "type": "string",
+            "description": "Memo folder id or slug. Defaults to personalization."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-sensitive memo metadata."
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  }
+}

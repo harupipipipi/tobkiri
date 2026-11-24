@@ -37,14 +37,30 @@ function numericValue(value: unknown): number | null {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function canonicalSequenceValue(message: ChatMessage): number | null {
+  const sequence = message.sequence;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence) && sequence >= 0
+    ? sequence
+    : null;
+}
+
+function legacySequenceValue(message: ChatMessage): number | null {
+  const sequence = numericValue(message.sequence_number);
+  return sequence && sequence > 0 ? sequence : null;
+}
+
+function messageSequenceValue(message: ChatMessage): number | null {
+  return canonicalSequenceValue(message) ?? legacySequenceValue(message);
+}
+
 function messageSortKey(message: ChatMessage, originalIndex: number): {
   sequence: number | null;
   createdAt: number;
   originalIndex: number;
 } {
-  const sequence = numericValue(message.sequence_number);
+  const sequence = messageSequenceValue(message);
   return {
-    sequence: sequence && sequence > 0 ? sequence : null,
+    sequence,
     createdAt: numericValue(message.created_at) ?? 0,
     originalIndex,
   };
@@ -63,11 +79,16 @@ function dedupeKeysForMessage(message: ChatMessage, index: number): string[] {
   const keys: string[] = [];
   const id = String(message.id || "").trim();
   if (id) keys.push(`id:${id}`);
-  const sequence = numericValue(message.sequence_number);
+  const canonicalSequence = canonicalSequenceValue(message);
+  const legacySequence = legacySequenceValue(message);
   const role = String(message.role || "").trim();
   const conversationId = String(message.conversation_id || "").trim();
-  if (sequence && sequence > 0 && role && conversationId) {
-    keys.push(`seq:${conversationId}:${role}:${sequence}`);
+  if (role && conversationId) {
+    if (canonicalSequence !== null) {
+      keys.push(`seq:${conversationId}:${role}:canonical:${canonicalSequence}`);
+    } else if (legacySequence !== null) {
+      keys.push(`seq:${conversationId}:${role}:legacy:${legacySequence}`);
+    }
   }
   if (keys.length === 0) keys.push(`__message_${index}`);
   return keys;

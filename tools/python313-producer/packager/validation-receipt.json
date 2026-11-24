@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "rust_toolchain": "1.94.0",
+  "registry_packages": 32,
+  "git_packages": 0,
+  "cargo_fetch": "--locked",
+  "cargo_test": "--frozen -j1",
+  "debug": 0,
+  "incremental": 0,
+  "rust_unit_tests": 4,
+  "actual_worker_roundtrip_tests": 1,
+  "python_tests": 31,
+  "source_files": {
+    "Cargo.toml": "62c2c38b7775708cf86def24e0a1c4e7eb83d4502a7f14c6a938e52d348c90f3",
+    "Cargo.lock": "39e93291e8fec95c1f4e9a405a3244d274bcb6621222588783d1f80fc4fd6d3d",
+    "src/main.rs": "1aa94e321b465c77711525519cece440690031b977a1f4dce4a42a9b3d8e8c5c",
+    "src/upstream_strip.rs": "fe1474afe67a424d973a404b3da3a1bfe5fc340aa7cb2ff4e10113f2447c2d20",
+    "tests/worker_roundtrip.rs": "b15e306031531b1ef6355f2e89109b3848660e0d380ad12529196512ca62a677"
+  },
+  "source_set_sha256": "8a6bd7b8a0d6b1e0b53f2c6ca701088cb168238e4bfc85bbc5f48bec5a9139ef",
+  "binary_sha256": "97d1fc4054095dd599a9fdedb1757e3f0eae743150e21289867bb666d0589b45",
+  "free_bytes_after": 24905863168,
+  "full_assets_packaged": false,
+  "actual_cpython_library": {
+    "input_sha256": "9398c97225387e8a7dae9049e490948cef960948c18082576b89caa4a2d716c3",
+    "input_bytes": 30165147,
+    "compressed_sha256": "377c3e5d415c1461f49f97951ebcf1c3b8d3c994b89f0d13259813eece1a1c64",
+    "compressed_bytes": 2300473,
+    "stripped_sha256": "372540f7a87b19cea5413745154fc2d0e08e1ab09aed51cf031b8f7a4b1a093b",
+    "stripped_bytes": 9093689,
+    "validation": "Wasmtime 48.0.0 Module.validate passed on input and decompressed output",
+    "dylink_0_exact": true,
+    "imports_section_exact": true,
+    "exports_section_exact": true,
+    "all_noncustom_sections_exact": true,
+    "custom_section_whitelist_exact": true,
+    "instantiation": false,
+    "guest_execution": false
+  }
+}

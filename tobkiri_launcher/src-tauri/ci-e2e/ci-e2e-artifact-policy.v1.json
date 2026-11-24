@@ -1,0 +1,7 @@
+{
+  "schema": "io.tobkiri.macos-artifact-policy.v1",
+  "policy": "ci-e2e-v1",
+  "publishable": false,
+  "bundle_identifier": "dev.tobkiri.launcher.ci-e2e",
+  "display_name": "Tobkiri Launcher CI E2E"
+}

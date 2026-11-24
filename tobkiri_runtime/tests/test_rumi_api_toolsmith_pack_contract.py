@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_api_toolsmith_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -52,7 +53,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert "vocabulary" in ecosystem
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["metadata"]["required_secrets"] == []
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
     assert ecosystem["metadata"]["executable_code"] is False
@@ -96,10 +98,10 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["mcp_server_registration"] == "handoff_to_rumi_mcp_gateway_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "API Toolsmith" in candidate.defaultspack_promotion["reason"]
-    assert "no_executable_runtime_tools" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "webhook_signature_policy_secret_free_review" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "API Toolsmith" in candidate.base_pack_promotion["reason"]
+    assert "no_executable_runtime_tools" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "webhook_signature_policy_secret_free_review" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

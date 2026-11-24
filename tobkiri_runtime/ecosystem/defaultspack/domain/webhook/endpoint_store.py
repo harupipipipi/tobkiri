@@ -28,14 +28,31 @@ def _safe_endpoint_payload(payload: dict[str, Any], *, apply_defaults: bool = Tr
     if apply_defaults and (not isinstance(security, dict) or not security):
         safe["security"] = default_security_for_kind(kind)
     if "target" in safe or apply_defaults:
-        safe["target"] = dict(safe.get("target") if isinstance(safe.get("target"), dict) else {})
+        target_value = safe.get("target")
+        safe["target"] = (
+            {str(key): value for key, value in target_value.items()}
+            if isinstance(target_value, dict)
+            else {}
+        )
     if "default_delivery" in safe or apply_defaults:
-        default_delivery = dict(safe.get("default_delivery") if isinstance(safe.get("default_delivery"), dict) else {})
+        default_delivery_value = safe.get("default_delivery")
+        default_delivery: dict[str, object] = (
+            {str(key): value for key, value in default_delivery_value.items()}
+            if isinstance(default_delivery_value, dict)
+            else {}
+        )
         default_delivery.setdefault("action_id", str(default_delivery.get("action_id") or "chat.message"))
         safe["default_delivery"] = default_delivery
     if "allowed_delivery_actions" in safe or apply_defaults:
-        default_delivery = safe.get("default_delivery") if isinstance(safe.get("default_delivery"), dict) else {}
-        default_action = str(default_delivery.get("action_id") or "chat.message").strip() or "chat.message"
+        default_delivery_value = safe.get("default_delivery")
+        default_delivery_for_actions: dict[str, object] = (
+            {str(key): value for key, value in default_delivery_value.items()}
+            if isinstance(default_delivery_value, dict)
+            else {}
+        )
+        default_action = str(
+            default_delivery_for_actions.get("action_id") or "chat.message"
+        ).strip() or "chat.message"
         raw_allowed = safe.get("allowed_delivery_actions")
         if isinstance(raw_allowed, str):
             allowed = [part.strip() for part in raw_allowed.split(",") if part.strip()]
@@ -52,6 +69,10 @@ def _safe_endpoint_payload(payload: dict[str, Any], *, apply_defaults: bool = Tr
             safe["ttl_seconds"] = None
         else:
             try:
+                if isinstance(ttl_raw, bool):
+                    raise TypeError
+                if not isinstance(ttl_raw, (int, float, str)):
+                    raise TypeError
                 safe["ttl_seconds"] = max(0, int(ttl_raw))
             except (TypeError, ValueError):
                 safe["ttl_seconds"] = None

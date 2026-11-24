@@ -1,0 +1,1257 @@
+{
+  "acceptance_scope": "actual separately pinned Python Wasm Packs through Core/Gate using the test Host and test data root; no Launcher GUI approval flow or production Gate wiring",
+  "all_typed_error_arms_executed": false,
+  "core_runtime_path_passed": true,
+  "denial": {
+    "actual_error": {
+      "code": "denied",
+      "message": "component phase=export abi_stage=guest failure=execution-error context=active wall_remaining_ms=299923 loop_remaining_ms=Some(299923) declared_wall_ms=300000 owner_failure=none"
+    },
+    "blocked_bridge_dispatches": 0,
+    "caller_initialized": true,
+    "denial_row_scope": "effect kind/code/epoch; path established by single-edge policy delta and absence of target dispatch",
+    "exact_caller_denials": 1,
+    "exact_user_denied_terminal": true,
+    "guest_lifecycle_shutdown_claimed": false,
+    "matched": true,
+    "only_exact_caller_permission_removed": true,
+    "provider_dispatches_entire_session": 0,
+    "public_denied_code": true,
+    "public_message_scope": "Gate trap diagnostic, not a fabricated nominal guest error message",
+    "returned_error": true,
+    "session_close_awaited": true,
+    "session_closed": true
+  },
+  "expected_guest_runtime": {
+    "implementation": "CPython",
+    "python": "3.13.16",
+    "unicode": "15.1.0"
+  },
+  "five_pack_finalizer_acceptance": false,
+  "format": "tobkiri.gateway-tool-caller-native-core-replay/1",
+  "full_gateway_migration_claimed": false,
+  "gate_runtime_acceptance": true,
+  "gate_runtime_acceptance_scope": "Core/Gate runtime under the test Host::default() fixture; not production Gate or Launcher acceptance",
+  "guest_lifecycle_shutdown_claimed": false,
+  "host_arch": "aarch64",
+  "host_os": "macos",
+  "identity": {
+    "index_sha256": "0441bde565b5e1765a8fdc262e61db00a5fff0c160624d99d5d841f65c737d96",
+    "inputs": {
+      "build_performed": false,
+      "caller_wit_closure": {
+        "bridge_package_semicolon_offset": 49,
+        "bridge_source_bytes": 364,
+        "bridge_source_destination": "wit/deps/bridge-v2.wit",
+        "bridge_source_sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78",
+        "caller_source_bytes": 731,
+        "caller_source_destination": "wit/pack.wit",
+        "caller_source_sha256": "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41",
+        "member": "wit/pack.wit",
+        "member_bytes": 1099,
+        "member_sha256": "687f47f6c592ee1bc195d481d02efd0c051f664729e965cc0271850735ffaa04"
+      },
+      "component_source_bytes": 35798851,
+      "components": {
+        "bridge": {
+          "artifact_bytes": 17910172,
+          "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+          "build_plan_sha256": "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e",
+          "directory": "bridge",
+          "pack_id": "local.ai-tool-bridge-ordered-python",
+          "pack_sha256": "7ff540650f7677c8530ef6f5cdba8d1e2fe436a57f99133118e9d377c467cb31",
+          "pack_version": "2.0.0",
+          "receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d",
+          "shape": "local.ai-tool-bridge-ordered-python.bridge@2.0",
+          "source_manifest_sha256": "243e0040c4731b3c4cd898fca4112b3e6f861a7815656d793f354bde8772fc72"
+        },
+        "caller": {
+          "artifact_bytes": 17888679,
+          "artifact_sha256": "cb561cb9b9b85aaf1de9cb74a57ffece061bd4b8100d6030b5aabc79b2cb7fc1",
+          "build_plan_sha256": "bc03deb9d3b214f083258785f2cac52a399aaf3381b1913dea221a21fd4e69ec",
+          "directory": "caller",
+          "pack_id": "local.ai-gateway-tool-caller-python",
+          "pack_sha256": "a8c507beb99d21e6f776121c899c9407b3aa0f7673c16376c4d1e1867ba69114",
+          "pack_version": "1.0.0",
+          "receipt_sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477",
+          "shape": "local.ai-gateway-tool-caller-python.caller@1.0",
+          "source_manifest_sha256": "47e0ab2a526e81f192e6fdcde6ac083d28a8f561fd54585091d06ededb657761"
+        }
+      },
+      "core_component_catalog_limit_bytes": 67108864,
+      "format": "tobkiri.gateway-tool-caller-native-inputs/1",
+      "native_core_acceptance": false,
+      "outer_budget": {
+        "core_strict_v1_max_bytes": 4194304,
+        "max_request_bytes": 4405,
+        "max_success_response_bytes": 4505
+      },
+      "production_enabled": false,
+      "protocol": "ordered-finite-json-v2",
+      "scope": "two-separate-python-packs-not-finalizer",
+      "source_observations": {
+        "bytes": 94513,
+        "path": "source-observations.json",
+        "sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced"
+      },
+      "wasm_execution_performed": false
+    },
+    "static_type_inspection_only": true
+  },
+  "in_flight_guest_cancellation_verified": false,
+  "legacy_http_error_parity_claimed": false,
+  "native_core_acceptance": true,
+  "original_reference_runtime": {
+    "implementation": "CPython",
+    "int_max_str_digits": 4300,
+    "python": "3.13.5",
+    "unicode": "15.1.0"
+  },
+  "partial_stream_mutations_observed": false,
+  "production_enabled": false,
+  "protocol": "ordered-finite-json-v2",
+  "replay": {
+    "cases": [
+      {
+        "actual": {
+          "output_bytes": 353,
+          "output_sha256": "aeb5f13cc10ae30eb79002a6bbf0f5743b8318cd4d78a9d62fe68f797b206c62",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:9085ef4dbbedf8d4edcb64c99fa597c8cab8a28a984509a2b26e884b61ec358f",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:6833718ef61b9a59bb143b8e7f881ea9ef39ae45293ff36fe5d150eeab71fce7",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-native-bigints",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 4477,
+          "output_sha256": "46f02d58885846d94fc33ae7b5850bfc1e98ce91134152de76721723c96a4955",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:bacd16690707b5ff26dc493b2125805d621ffcbfd7a33c430f0ac97a37758b94",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:1fdfb4d81cdc290e0fe143522528504396359a46e92b8a588d1055756931d3e6",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-inner-4300-digit-bigint",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 1247,
+          "output_sha256": "e1a311a245853f83c9c83019e79fdc3bf21c706f86b0766e863b5bb1bfc89911",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:78231f46d5d8139d71dc18c3eca44e4b21aea4e7f9b8d61024d57374cce26d4e",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:99db28b4984c844227ae54faa99bded859d2db4d0c879b38d5b73c92d284c03d",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-deep-values",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 253,
+          "output_sha256": "4278be05af335032fec0d93014d7bfeea48daf069462903683813ab50fa2e4c3",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:48d0c4fbd2e17381afd315cf9e1df524c6ec5f437ce5b9fa3ab7453011e5c2b6",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:9ff5a13958f3ba26a8a4c137b09b1e45b1a2c46beaa3260fe10d0f4ad70401dd",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-floats-order-negative-zero",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 335,
+          "output_sha256": "7719afba740050bd82ea949f0d140e386ca405e56c67f9258751f1be0caefa50",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:7c0490e39c2cd9f5f9bdd00728ac1240ecbdfd7a7a1f8c9f92a8dda22b8333d5",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:0ad0c02e08edaf474748b4c6f1b37aed97a2225d39fb8282ea77cc451b795c1d",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-multiple-intents",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 2,
+          "output_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:6a3ba2f68ef1bb8b10c6f787a017007735c0051f26ec53233f800d65740720de",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:88f50c81b34f56993a4bf7a21690ea13f259c9466116b4681336e3fa1bdb760e",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-empty-intents",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:3392b757cfd279148f1884facd2889c4e19197bec9a28de152c426628c2d6492",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:f7e4e52dfb7d5a333919218ea418486ceb47c184e4e65d3c952cf1d96a37d849",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-invalid-name",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:8d7ac137fcebc3a8953e177c8517f3bbfc1997fd05f1f24c3b6b8c88854cf375",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:ed63c191345b02cb9399c8e916c3a9450da8fb2623ad361f7c47309fee662537",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-invalid-arguments",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:6a023474f64824f48d54711beab05b1fea8f90a9755ebdd092975502e87c610d",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:540c1641db749dc1c04480b7cc09c41b2932255a6832079a48f1640c946cfdee",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-invalid-item",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:184b3cc1ff0062b41b587c9474a564d7d8d499aacc81a2f22888615546dd1e42",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:41ca282271632692b5546772fa67094be327d0de492fa0cd72c20bc09bb066dd",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-nonfinite-nan",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:fd85a8860fced13e0bac4ee86e24f146c9e8f1bd78737934b0050dd1aa8d617d",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:5e8e73f646a4990c551f011f660e9d10249696021ce2e81f065898c5db8ae4aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-nonfinite-infinity",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:200a236d5dec61c6b638c8e56331edffef3d7d3d7eb88d99ebf470064a275e85",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:0cbb306b07070f44b97d9877b71c766226aa43a2e6850e71e3acd0dbf0e5fd69",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "generate-nonfinite-overflow",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 353,
+          "output_sha256": "aeb5f13cc10ae30eb79002a6bbf0f5743b8318cd4d78a9d62fe68f797b206c62",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:9085ef4dbbedf8d4edcb64c99fa597c8cab8a28a984509a2b26e884b61ec358f",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:fba145a8674c9c346dcec18995efca8ea313ffcaf4566ad75ae08ac445d91904",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-native-bigints",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 4477,
+          "output_sha256": "46f02d58885846d94fc33ae7b5850bfc1e98ce91134152de76721723c96a4955",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:bacd16690707b5ff26dc493b2125805d621ffcbfd7a33c430f0ac97a37758b94",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:12ed529c332e796571590a37190d3a0370dfa66ccb23b85575a6ad473d03f412",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-inner-4300-digit-bigint",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 1247,
+          "output_sha256": "e1a311a245853f83c9c83019e79fdc3bf21c706f86b0766e863b5bb1bfc89911",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:78231f46d5d8139d71dc18c3eca44e4b21aea4e7f9b8d61024d57374cce26d4e",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:c4b5a8c53b6a3a41d6b26c66a0fbb690c3826aa075624181d38be21bedaeedfd",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-deep-values",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 253,
+          "output_sha256": "4278be05af335032fec0d93014d7bfeea48daf069462903683813ab50fa2e4c3",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:48d0c4fbd2e17381afd315cf9e1df524c6ec5f437ce5b9fa3ab7453011e5c2b6",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:cac204e066ada296e2d3f77568445e9ac0df6a4e0b8c4029f65eef243be774a3",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-floats-order-negative-zero",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 335,
+          "output_sha256": "7719afba740050bd82ea949f0d140e386ca405e56c67f9258751f1be0caefa50",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:7c0490e39c2cd9f5f9bdd00728ac1240ecbdfd7a7a1f8c9f92a8dda22b8333d5",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:063094edef7493ab85ecd054ca0a5836075ac3af92c974beea71a8ca2207ea38",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-multiple-intents",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 2,
+          "output_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:6a3ba2f68ef1bb8b10c6f787a017007735c0051f26ec53233f800d65740720de",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:5be30ec3181145033b784135502aa8795198a2cb3980063f3682566d14fb389c",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-empty-intents",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:3392b757cfd279148f1884facd2889c4e19197bec9a28de152c426628c2d6492",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:9cbd47ebf565bd868bc2a2b298d360605cd04c1feb0653ff9b5a7298ae73dab0",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-invalid-name",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:8d7ac137fcebc3a8953e177c8517f3bbfc1997fd05f1f24c3b6b8c88854cf375",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:b46cccaa6d6c0b6a4401be759bb1af0542a330f0efa3150ff5cdf2c45321c6a9",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-invalid-arguments",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:6a023474f64824f48d54711beab05b1fea8f90a9755ebdd092975502e87c610d",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:a09a97cf3713ab1f7e57c655b44b89bdc7a2a21e62f6eef032d864dcd0560df5",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-invalid-item",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:184b3cc1ff0062b41b587c9474a564d7d8d499aacc81a2f22888615546dd1e42",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8fdf00ae09058c4a8d5385f8bdb40afc7ec8382c4af9576bc283071a2a0179da",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-nonfinite-nan",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:fd85a8860fced13e0bac4ee86e24f146c9e8f1bd78737934b0050dd1aa8d617d",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8bdd145ee79c6d4476e700c896081c5cf1ad6e6c37f6b231c3571e9eaafa5f16",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-nonfinite-infinity",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:200a236d5dec61c6b638c8e56331edffef3d7d3d7eb88d99ebf470064a275e85",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:c495d5ef1c25c5c4539fe005ea1501176af8c7e781ae02d7ddf95263d5caba8e",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "stream-nonfinite-overflow",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 215,
+          "output_sha256": "0f340554aa3b664ab27fc382a436c7d55f15139b8ba923f933306dd68531e067",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:f4b9d28d74a7f3f00803efb3cc5456a6534172c1f3787e4c3c44b977bc0c982a",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8a401f11c71d90cbc232d2a418a87fd5c7e32aa5f7dabf02f9bbf0f8091c76aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 1,
+          "matched": true,
+          "observed_bridge_dispatch_count": 1,
+          "original_source_reference_call_count": 1,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-singleton-index-zero",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 574,
+          "output_sha256": "8ba8ab9301cf47a2648cb09ee1471a15ecfb81cfb5626e6ca93a55a0f8f242bf",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:58260909232f9abc33bc5cf2f4f148f689a82d25e4fd1304c840107c296af18d",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8a401f11c71d90cbc232d2a418a87fd5c7e32aa5f7dabf02f9bbf0f8091c76aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            },
+            {
+              "args_digest": "sha256:358673a2882ed91dd946c215888f035a92bd7b4502702c0b2d6cd428b7916a84",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 2,
+          "matched": true,
+          "observed_bridge_dispatch_count": 2,
+          "original_source_reference_call_count": 2,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-mixed-skipped",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 645,
+          "output_sha256": "8a3e86b4c559eab9e4df354e618d252042bda847850737e38069b7b63287824b",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:b4d40aa6696e6c841f4d6dbe92b4a6d69995bdc292aa9169a65d8d189a378713",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8a401f11c71d90cbc232d2a418a87fd5c7e32aa5f7dabf02f9bbf0f8091c76aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            },
+            {
+              "args_digest": "sha256:358673a2882ed91dd946c215888f035a92bd7b4502702c0b2d6cd428b7916a84",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            },
+            {
+              "args_digest": "sha256:4791c139f39cf79bd9962248753eeb94710174a31915e5b732344f94232bef42",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 3,
+          "matched": true,
+          "observed_bridge_dispatch_count": 3,
+          "original_source_reference_call_count": 3,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-multiple-events",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "output_bytes": 85,
+          "output_sha256": "2434fa354328e726995d2e5f2b47ff03c3574b14feaef4a294871d775a058d7f",
+          "status": "ok"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:83dba1b87a5ebb48bc7d93b62aeedd2405df1bb37f7ca69123cb117f658d157b",
+        "classification": "success",
+        "dependency_audit": {
+          "edges": [],
+          "expected_terminal_prefix_count": 0,
+          "matched": true,
+          "observed_bridge_dispatch_count": 0,
+          "original_source_reference_call_count": 0,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-all-skipped",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "invalid",
+          "exact_public_error": true,
+          "message": "provider reported invalid input",
+          "status": "step-error"
+        },
+        "admitted_parity": true,
+        "args_digest": "sha256:f4d5b274c3ca77d02c2f8da87ecfe19c1c444ac430b04e012fbb134736ff360f",
+        "classification": "provider-invalid",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8a401f11c71d90cbc232d2a418a87fd5c7e32aa5f7dabf02f9bbf0f8091c76aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            },
+            {
+              "args_digest": "sha256:743182de43434739b9cfc550ef23028f580b08e0447e441502e6dad549de1e9b",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 2,
+          "matched": true,
+          "observed_bridge_dispatch_count": 2,
+          "original_source_reference_call_count": 2,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-later-invalid",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": false,
+        "observed": true
+      },
+      {
+        "actual": {
+          "code": "internal",
+          "exact_public_error": true,
+          "message": "provider reported an internal error",
+          "status": "step-error"
+        },
+        "admitted_parity": false,
+        "args_digest": "sha256:c5d586090c2946a87c3c98ca872be81cd0759df4c6dbc28591a2342eea886719",
+        "classification": "provider-nonfinite",
+        "dependency_audit": {
+          "edges": [
+            {
+              "args_digest": "sha256:8a401f11c71d90cbc232d2a418a87fd5c7e32aa5f7dabf02f9bbf0f8091c76aa",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "status": "succeeded"
+              },
+              "ordered_dispatch_and_terminal": true
+            },
+            {
+              "args_digest": "sha256:59254a9d9d5f416de964d2d5562024ed02b0f71d31f0647ff47755df631c99f7",
+              "effect_digest": "sha256:5144c09662ff7f10adf0562989065cfa5a84d84b8ba328feae6d7b79f3853c76",
+              "exact_terminal": true,
+              "expected_outcome": {
+                "code": "provider-error",
+                "status": "failed"
+              },
+              "ordered_dispatch_and_terminal": true
+            }
+          ],
+          "expected_terminal_prefix_count": 2,
+          "matched": true,
+          "observed_bridge_dispatch_count": 2,
+          "original_source_reference_call_count": 3,
+          "source_count_is_not_runtime_evidence": true
+        },
+        "exact_result": true,
+        "exact_user_terminal": true,
+        "id": "events-later-nonfinite",
+        "matched": true,
+        "nonfinite_boundary_not_original_error_parity": true,
+        "observed": true
+      }
+    ],
+    "guest_lifecycle_shutdown_claimed": false,
+    "session_close_awaited": true,
+    "session_closed": true
+  },
+  "required_owner_platform": {
+    "arch": "aarch64",
+    "darwin": "24.6.0",
+    "filesystem": "local APFS",
+    "os": "macos"
+  },
+  "retry_parity_claimed": false,
+  "runtime": {
+    "bridge": {
+      "exact_terminal": true,
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "provider_initialized": true,
+      "runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      }
+    },
+    "caller": {
+      "exact_terminal": true,
+      "guest_runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      },
+      "provider_initialized": true,
+      "runtime": {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      }
+    },
+    "guest_lifecycle_shutdown_claimed": false,
+    "session_close_awaited": true,
+    "session_closed": true
+  },
+  "scope": "two-separate-python-packs-not-finalizer",
+  "shutdown_admission": {
+    "exact_pre_entry_unavailable": true,
+    "guest_dispatches": 0,
+    "guest_lifecycle_shutdown_claimed": false,
+    "in_flight_guest_cancellation_verified": false,
+    "matched": true,
+    "scope": "request_shutdown closes admission before this call; not in-flight guest cancellation",
+    "session_close_awaited": true,
+    "session_closed": true,
+    "user_dispatches": 0
+  },
+  "source_counts": {
+    "provider-invalid": 7,
+    "provider-nonfinite": 7,
+    "success": 16
+  },
+  "source_oracle_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced"
+}

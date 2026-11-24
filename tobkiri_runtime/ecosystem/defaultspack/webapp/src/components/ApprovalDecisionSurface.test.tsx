@@ -15,7 +15,7 @@ test("all approval sources render the same user-first contract", () => {
   ];
   for (const model of models) {
     const html = renderToStaticMarkup(createElement(ApprovalDecisionSurface, { approval: model }));
-    for (const label of ["Rumi が許可を求めています", "対象", "必要な理由", "影響とリスク", "許可範囲", "有効期間", "記録", "技術的な詳細"]) assert.match(html, new RegExp(label));
+    for (const label of ["Tobkiri が許可を求めています", "対象", "必要な理由", "影響とリスク", "許可範囲", "有効期間", "記録", "技術的な詳細"]) assert.match(html, new RegExp(label));
     assert.match(html, new RegExp(`data-approval-source="${model.source}"`));
   }
 });
@@ -38,6 +38,20 @@ test("settled and expired approvals expose status without decision actions", () 
     assert.doesNotMatch(html, />拒否</);
     assert.match(html, /role="status"/);
   }
+});
+
+test("approval errors expose a dedicated severity icon and stable copy action", () => {
+  const model = {
+    ...codingApprovalViewModel({ request_id: "failed", operation: "file.write", risk_level: "medium", status: "pending", details: { path: "/tmp/note" } }),
+    status: "error" as const,
+  };
+  const html = renderToStaticMarkup(createElement(ApprovalDecisionSurface, { approval: model }));
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /data-error-icon="approval-decision"/);
+  assert.match(html, /aria-label="承認エラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /再試行が必要です/);
 });
 
 test("numeric shortcuts are explained when explicitly configured", () => {

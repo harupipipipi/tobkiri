@@ -1,0 +1,11 @@
+package tobkiri-ui:capability-projection@1.0.0;
+
+interface projection {
+  enum error-code { invalid-request, projection-failed }
+  record error { code: error-code, message: string }
+  project: func(payload: string) -> result<string, error>;
+}
+
+world capability-projection {
+  export projection;
+}

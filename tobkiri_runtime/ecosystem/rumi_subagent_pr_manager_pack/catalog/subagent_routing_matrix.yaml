@@ -29,7 +29,7 @@ routing_matrix:
       owned_surfaces:
         - setup_pack_metadata
         - overlap_policy
-        - defaultspack_promotion
+        - base_pack_promotion
       required_evidence:
         - selector_discoverability_result
         - overlap_policy_summary

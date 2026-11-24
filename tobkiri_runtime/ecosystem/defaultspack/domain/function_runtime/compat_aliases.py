@@ -135,7 +135,8 @@ def render_compat_alias_reference() -> str:
     lines = [
         "# Defaultspack Compatibility Alias Reference",
         "",
-        "Generated from `ecosystem/defaultspack/compat_aliases.yaml`. Do not edit by hand.",
+        "Historical offline projection only; Protocol v4 catalogs are the runtime authority.",
+        "Do not use this table to select a Function, artifact, provider, or authority record.",
         "",
         "| Compatibility alias | Canonical replacement | Owner | Stage | Remove after | Migration note |",
         "| --- | --- | --- | --- | --- | --- |",

@@ -1,0 +1,66 @@
+{
+  "format": "tobkiri.gateway-caller-development-build-trial/1",
+  "component": {
+    "bytes": 17878415,
+    "sha256": "1a438458ba804cf9b62c7125602b1499f159263387f56f2470c51ce4191e521c"
+  },
+  "build_receipt": {
+    "bytes": 8451,
+    "sha256": "ace0bb3411cce88aab0d8b2907905e63964f2c94d9b0ae3b1a07c7b6b984e652"
+  },
+  "build_driver": {
+    "bytes": 5176,
+    "sha256": "e63ef9c2f07f86d5f861ae9e8f75a01b2071a8a96115b9ac1735a22517375868"
+  },
+  "stage_plan": {
+    "bytes": 2278,
+    "sha256": "76674e159a793a5b8aebeacfc340e77e13e6428e5e809340d3eaad594f053faa"
+  },
+  "source_closure_sha256": "b7eec4ef738cdbfcc992eecb4a6f0b8482f6f1a16bb59f1e251d296267cd2889",
+  "producer_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+  "isolation_probe": {
+    "outcome": "success",
+    "error": null,
+    "exit_code": 0,
+    "seconds": 0.40589279499909026,
+    "observed_peak_sampled_rss": 26234880,
+    "observed_max_processes": 3,
+    "remaining_known_processes": [],
+    "address_space_limit_per_process": 8589934592,
+    "sampled_rss_limit": 3221225472,
+    "sampled_process_limit": 64,
+    "timeout_seconds": 1200,
+    "sample_interval_seconds": 0.1,
+    "rss_and_process_sampling_are_not_hard_caps": true,
+    "disk_free_floor": 8589934592,
+    "initial_available_memory_floor": 4294967296,
+    "running_available_memory_floor": 1073741824
+  },
+  "build_supervision": {
+    "outcome": "success",
+    "error": null,
+    "exit_code": 0,
+    "seconds": 30.434353738000937,
+    "observed_peak_sampled_rss": 418603008,
+    "observed_max_processes": 4,
+    "remaining_known_processes": [],
+    "address_space_limit_per_process": 8589934592,
+    "sampled_rss_limit": 3221225472,
+    "sampled_process_limit": 64,
+    "timeout_seconds": 1200,
+    "sample_interval_seconds": 0.1,
+    "rss_and_process_sampling_are_not_hard_caps": true,
+    "disk_free_floor": 8589934592,
+    "initial_available_memory_floor": 4294967296,
+    "running_available_memory_floor": 1073741824
+  },
+  "mounted_inputs": {
+    "all_unchanged": true,
+    "records": 1537
+  },
+  "component_export_replay_performed": false,
+  "native_core_acceptance": false,
+  "original_gateway_replaced": false,
+  "production_enabled": false,
+  "isolation_scope": "Same previously reviewed networkless user/net/PID/mount namespace; read-only sources/tools, one private host work bind; sampled RSS/PID guards are not hard caps."
+}

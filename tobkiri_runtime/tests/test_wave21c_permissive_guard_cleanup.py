@@ -1,15 +1,8 @@
-"""
-tests/test_wave21c_permissive_guard_cleanup.py
-
-W21-C: permissive guard 整理のテスト
-- 重複チェック削除の確認
-- 大文字小文字統一の確認
-"""
+"""Pack v4 production-root retirement tests for the old permissive surface."""
 from __future__ import annotations
 
 import importlib.util
 import inspect
-import os
 import sys
 import types
 from pathlib import Path
@@ -32,73 +25,69 @@ def _load_app():
 _app = _load_app()
 
 
+def _assert_retired_production_root() -> None:
+    """The canonical root has no legacy guard, env switch, or flag."""
+    source = _APP_PATH.read_text(encoding="utf-8")
+    assert not hasattr(_app, "_check_permissive_production_guard")
+    assert "RUMI_ALLOW_PERMISSIVE" not in source
+    assert "permissive.lock" not in source
+    with pytest.raises(SystemExit):
+        _app._parser().parse_args(["--permissive"])
+
+
 # =========================================================================
 # Group A: _check_permissive_production_guard() 直接テスト
 # =========================================================================
 class TestCheckPermissiveProductionGuard:
-    """_check_permissive_production_guard() の単体テスト"""
+    """Every historical guard input is rejected at the v4 root boundary."""
 
     def test_production_exact_exits(self, monkeypatch):
-        """テスト1: RUMI_ENVIRONMENT=production → sys.exit(1)"""
+        """The production label cannot resurrect the removed guard."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
     def test_production_mixed_case_exits(self, monkeypatch):
-        """テスト2: RUMI_ENVIRONMENT=Production (大文字混在) → sys.exit(1)"""
+        """Mixed-case production labels have no special API surface."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "Production")
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
     def test_production_upper_exits(self, monkeypatch):
-        """テスト3: RUMI_ENVIRONMENT=PRODUCTION (全大文字) → sys.exit(1)"""
+        """Upper-case production labels have no special API surface."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "PRODUCTION")
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
     def test_production_rejects_even_an_explicit_allow_flag(self, monkeypatch, tmp_path):
-        """production では allow flag と lockfile があっても permissive にできない。"""
+        """Production cannot add a flag even with stale opt-in artifacts."""
         (tmp_path / "permissive.lock").touch()
         monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
         monkeypatch.setenv("RUMI_ALLOW_PERMISSIVE", "true")
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
     def test_development_does_not_exit(self, monkeypatch, tmp_path):
-        """テスト4: RUMI_ENVIRONMENT=development → exit しない"""
+        """Development labels cannot bypass the production-root retirement."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
         (tmp_path / "permissive.lock").touch()
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
-        _app._check_permissive_production_guard()
+        _assert_retired_production_root()
 
     def test_unset_does_not_exit(self, monkeypatch):
-        """テスト5: RUMI_ENVIRONMENT 未設定 → opt-in 不足で exit する"""
+        """Unset environment state still exposes no permissive switch."""
         monkeypatch.delenv("RUMI_ENVIRONMENT", raising=False)
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
     def test_guard_calls_sys_exit_1(self, monkeypatch):
-        """テスト7: sys.exit(1) が呼ばれることの直接テスト"""
+        """The old callable is physically absent rather than shimmed."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
-        with pytest.raises(SystemExit) as exc_info:
-            _app._check_permissive_production_guard()
-        assert exc_info.value.code == 1
-        assert exc_info.value.code != 0
+        _assert_retired_production_root()
 
     def test_guard_prints_fatal_to_stderr(self, monkeypatch, capsys):
-        """テスト8: stderr に FATAL メッセージが出力される"""
+        """The parser reports the retired flag, not a permissive guard error."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
-        with pytest.raises(SystemExit):
-            _app._check_permissive_production_guard()
+        _assert_retired_production_root()
         captured = capsys.readouterr()
-        assert "FATAL" in captured.err
-        assert "permissive" in captured.err
+        assert "unrecognized arguments" in captured.err
+        assert "--permissive" in captured.err
 
 
 # =========================================================================
@@ -116,76 +105,36 @@ class TestMainPermissiveFlow:
         yield
 
     def test_no_permissive_production_sets_strict(self, monkeypatch):
-        """テスト6: --permissive なし + production → strict モード"""
+        """The production root has no mode-setting compatibility path."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
-        monkeypatch.delenv("RUMI_SECURITY_MODE", raising=False)
-        monkeypatch.setattr(sys, "argv", ["app.py"])
-        try:
-            _app.main()
-        except SystemExit:
-            pass
-        except Exception:
-            pass
-        assert os.environ.get("RUMI_SECURITY_MODE") == "strict"
+        _assert_retired_production_root()
+        assert _app._parser().parse_args(["--headless"]).headless is True
 
     def test_no_duplicate_env_check_in_main(self):
-        """テスト9: main() 内に RUMI_ENVIRONMENT の重複チェックがないこと"""
+        """main() contains no legacy environment authority."""
         source = inspect.getsource(_app.main)
-        lines = source.split("\n")
-        env_check_lines = [
-            line.strip()
-            for line in lines
-            if "RUMI_ENVIRONMENT" in line
-            and "_check_permissive_production_guard" not in line
-            and not line.strip().startswith("#")
-        ]
-        assert len(env_check_lines) == 0, (
-            f"main() 内に重複した RUMI_ENVIRONMENT チェックがあります: "
-            f"{env_check_lines}"
-        )
+        assert "RUMI_ENVIRONMENT" not in source
+        assert "RUMI_ALLOW_PERMISSIVE" not in source
 
     def test_permissive_sets_security_mode(self, monkeypatch, tmp_path):
-        """テスト10: permissive + 非 production → RUMI_SECURITY_MODE=permissive"""
+        """The retired flag cannot set a security mode."""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
         (tmp_path / "permissive.lock").touch()
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
-        monkeypatch.delenv("RUMI_SECURITY_MODE", raising=False)
-        monkeypatch.setattr(sys, "argv", ["app.py", "--permissive"])
-        try:
-            _app.main()
-        except SystemExit:
-            pass
-        except Exception:
-            pass
-        assert os.environ.get("RUMI_SECURITY_MODE") == "permissive"
+        _assert_retired_production_root()
 
     def test_environment_permissive_requires_the_same_guard(self, monkeypatch):
-        """環境変数だけでは lockfile / explicit opt-in を迂回できない。"""
+        """A stale environment value cannot create a hidden execution mode."""
         monkeypatch.setenv("RUMI_SECURITY_MODE", "permissive")
         monkeypatch.delenv("RUMI_ALLOW_PERMISSIVE", raising=False)
         monkeypatch.delenv("RUMI_ENVIRONMENT", raising=False)
-        monkeypatch.setattr(sys, "argv", ["app.py", "--headless"])
-        with pytest.raises(SystemExit) as exc_info:
-            _app.main()
-        assert exc_info.value.code == 1
+        _assert_retired_production_root()
 
-    def test_environment_permissive_reaches_startup_boundary(self, monkeypatch, tmp_path):
-        """環境変数経由もガード通過後、既知の startup 境界まで到達する。"""
-        class ExpectedStartupBoundary(BaseException):
-            pass
-
-        pack_validator = types.ModuleType("core_runtime.pack_validator")
-
-        def stop_at_startup_boundary():
-            raise ExpectedStartupBoundary("startup preflight reached")
-
-        pack_validator.validate_host_execution = stop_at_startup_boundary
-        monkeypatch.setitem(sys.modules, "core_runtime.pack_validator", pack_validator)
+    def test_environment_permissive_opt_in_reaches_guard_boundary(self, monkeypatch, tmp_path):
+        """A development opt-in remains data, not a production-root command."""
         (tmp_path / "permissive.lock").touch()
-        monkeypatch.setenv("RUMI_SECURITY_MODE", "permissive")
         monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+        monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
-        monkeypatch.setattr(sys, "argv", ["app.py", "--headless"])
-        with pytest.raises(ExpectedStartupBoundary, match="startup preflight reached"):
-            _app.main()
-        assert os.environ.get("RUMI_SECURITY_MODE") == "permissive"
+        monkeypatch.setenv("RUMI_SECURITY_MODE", "permissive")
+        _assert_retired_production_root()

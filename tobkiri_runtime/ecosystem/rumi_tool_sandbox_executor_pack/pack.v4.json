@@ -1,0 +1,114 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:066891649ef1e6b8879d41fe0a692f807805c89d17f2694310cd2438558a2149",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:5f36220d03bdd6a8ef2381cc21e450309315e912f6e57fddf6f592bea3ae0350",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_sandbox_executor_pack.tool-sandbox-execute"
+      ],
+      "revision_digest": "sha256:5c06fa9ae4c7a5ea1861e2287817810a7b958dc54660513f17879a6330a457e4"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:5c06fa9ae4c7a5ea1861e2287817810a7b958dc54660513f17879a6330a457e4",
+      "id": "rumi_tool_sandbox_executor_pack.tool-executor.sandbox",
+      "implementation_digest": "sha256:5f36220d03bdd6a8ef2381cc21e450309315e912f6e57fddf6f592bea3ae0350",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_sandbox_executor_pack.tool-sandbox-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:401dbc8f2cd19d20e3ced38e468139430755a3ae8e935d17237f7957e3c9784d",
+    "contract_catalog_digest": "sha256:5c764223c618e35bf72627ec8545c8142cd4e016d2c6032a87c18fc1b8cdff6c",
+    "source_identity": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_sandbox_executor_pack",
+      "rumi_tool_sandbox_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "effect_ceiling": [
+        "capability:tool.execute",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_sandbox_executor_pack.tool-sandbox-execute",
+      "owner": "rumi_tool_sandbox_executor_pack",
+      "provider_id": "rumi_tool_sandbox_executor_pack.tool-executor.sandbox",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:401dbc8f2cd19d20e3ced38e468139430755a3ae8e935d17237f7957e3c9784d",
+    "display_name": "Rumi Tool Sandbox Executor",
+    "id": "rumi_tool_sandbox_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_sandbox_executor_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_sandbox_executor_pack.tool-sandbox-execute"
+      ],
+      "owner": "rumi_tool_sandbox_executor_pack",
+      "provider_id": "rumi_tool_sandbox_executor_pack.tool-executor.sandbox"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

@@ -1,0 +1,14 @@
+package local:provider-model-access-rust@1.0.0;
+
+/// Additive pure helper observation surface, never a Registry or authority API.
+/// DATA is ordered-finite-json-v2. The success string records either the exact
+/// original return value or a source exception; callers must inspect status.
+interface compiler {
+  use tobkiri:core/types@1.0.0.{error};
+  runtime-info: func() -> string;
+  invoke: func(operation: string, payload: string) -> result<string, error>;
+}
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export compiler;
+}

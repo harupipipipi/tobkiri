@@ -1,0 +1,35 @@
+{
+  "format": "tobkiri.ordered-python-pack-materialization/2",
+  "validation_scope": "byte-identity-only-not-execution",
+  "pack_manifest_sha256": "659328e7bf0af0bf34bdb14935e61eb6b49aac1632b1403e2e7fe94efbbe75dd",
+  "artifact_sha256": "0f28f4a87158b18a24fe045a9be1c24e8d9405549a0af1b56546b2017ac92a46",
+  "receipt_sha256": "17da81e4225c83aab657697457dbfa86b49f81b7d0ef60c3bf6e5fcdb9757cff",
+  "source_observations_sha256": "3387411b6ac46b160e793477d270aa1c110a0d58f033937d58957ffe47a539e4",
+  "source_observations_bindings_sha256": "d4f298b941ce1f8a57e5bae3025ea7ec98ae257b5a413c492a8c5de461a8bae1",
+  "source_stage_bindings_sha256": "c5b5bb041d4379730f1e0a594e2e8198ab2597fc55b259853b7a721e671cddbc",
+  "original_oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+  "original_frozen_inputs_sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da",
+  "protocol": "ordered-finite-json-v2",
+  "interface": "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+  "pack_id": "local.ai-tool-bridge-ordered-python",
+  "pack_version": "2.0.0",
+  "shape": "local.ai-tool-bridge-ordered-python.bridge",
+  "shape_version": "2.0",
+  "case_count": 33,
+  "frozen_case_counts": {
+    "success": 18,
+    "original-invalid": 12,
+    "excluded-not-parity": 3
+  },
+  "outer_budget": {
+    "core_strict_v1_max_bytes": 4194304,
+    "max_request_bytes": 284,
+    "max_success_response_bytes": 344
+  },
+  "build_performed": false,
+  "wasm_execution_performed": false,
+  "native_core_acceptance": false,
+  "core_runtime_acceptance": false,
+  "full_host_replay_performed": false,
+  "production_enabled": false
+}

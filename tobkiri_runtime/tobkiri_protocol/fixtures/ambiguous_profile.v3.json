@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "profile_id": "ambiguous-profile",
+  "base_pack": "defaultspack",
+  "base": {"pack_id": "other-base"},
+  "packs": ["defaultspack"]
+}

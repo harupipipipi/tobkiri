@@ -1,8 +1,5 @@
 """SessionStore and AgentSession — in-memory session management for agents."""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from blocks._common import timestamp, gen_id
 

@@ -1,0 +1,9 @@
+{
+  "baseline_api_version": "io.tobkiri.pack-boundary-baseline.v1",
+  "policy": "exact-current-shrink-only-from-reference",
+  "summary": {
+    "by_rule": {},
+    "total": 0
+  },
+  "violations": []
+}

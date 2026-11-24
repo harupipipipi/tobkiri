@@ -1,0 +1,70 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.git.write.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.git.read.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_git_read_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated local Git mutation without publication.",
+  "display_name": "Rumi Git Write",
+  "host_execution": true,
+  "metadata": {
+    "authority": "write",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:fdb22d1e9c5e03abb98c773d93b7c58c8156258c750ae9d1faee7563c068b57e",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:97a07a6af47f59aded999a29f3dbb7c2139b3c363ce221e00cf813c7b119a29b"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:97a07a6af47f59aded999a29f3dbb7c2139b3c363ce221e00cf813c7b119a29b"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network": false,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "publication": false,
+    "read_only_projection": true,
+    "receipt_required": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_git_write_pack",
+  "pack_identity": "rumi:ecosystem/rumi_git_write_pack",
+  "provenance": {
+    "build_identity": "rumi_git_write_pack:1.0.0",
+    "content_hash": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "git.read",
+    "git.write",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

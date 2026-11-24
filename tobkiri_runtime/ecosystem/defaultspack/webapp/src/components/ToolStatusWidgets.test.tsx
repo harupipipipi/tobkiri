@@ -60,3 +60,21 @@ test("ToolFilterLogWidget shows hidden tools as hidden", () => {
   assert.match(html, /現在は非表示です/);
   assert.match(html, /現在の表示設定では非表示です/);
 });
+
+test("status summary keeps overlapping counts and three-digit values readable", () => {
+  const html = renderToStaticMarkup(createElement(ToolManagerWidget, {
+    tools: Array.from({ length: 149 }, (_, index) => ({
+      id: `tool_${index}`, label: `Tool ${index}`, category: "tool" as const,
+      tool_info: { setup_state: { status: index === 0 ? "ok" as const : "missing" as const } },
+    })),
+    disabledToolIds: [], hiddenToolIds: [], filterEntries: [],
+  }));
+  assert.match(html, /許可中<\/p><p[^>]*>149<\/p>/);
+  assert.match(html, /設定が必要<\/p><p[^>]*>148<\/p>/);
+  for (const label of ["権限で無効", "実行不可", "承認が必要"]) {
+    assert.match(html, new RegExp(`${label}</p><p[^>]*>0</p>`));
+  }
+  assert.match(html, /style="grid-template-columns:minmax\(0,1fr\) auto"/);
+  assert.match(html, /whitespace-nowrap text-right[^\"]*tabular-nums/);
+  assert.doesNotMatch(html, /xl:grid-cols-5/);
+});

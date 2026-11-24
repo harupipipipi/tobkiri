@@ -125,14 +125,17 @@ export function ArtifactPreviewDialog({
         </div>
 
         {item.details && item.details.length > 0 && (
-          <dl className="grid max-h-36 shrink-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 overflow-auto border-t border-zinc-800 bg-zinc-950/95 px-3 py-2 font-mono text-[10px] leading-5">
-            {item.details.map((detail) => (
-              <div key={`${detail.label}-${detail.value}`} className="contents">
-                <dt className="text-zinc-600">{detail.label}</dt>
-                <dd className="min-w-0 break-words text-zinc-400">{detail.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <details key={`${item.kind}-${item.title}-${item.subtitle ?? ""}`} className="shrink-0 border-t border-zinc-800 bg-zinc-950/95">
+            <summary tabIndex={0} className="cursor-pointer px-3 py-2 text-[11px] text-zinc-500 focus-visible:outline focus-visible:outline-1 focus-visible:outline-zinc-500">詳細…</summary>
+            <dl className="grid max-h-36 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 overflow-auto px-3 pb-2 font-mono text-[10px] leading-5">
+              {item.details.map((detail) => (
+                <div key={`${detail.label}-${detail.value}`} className="contents">
+                  <dt className="text-zinc-600">{detail.label}</dt>
+                  <dd className="min-w-0 break-all text-zinc-400">{detail.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
         )}
     </ModalFoundation>
   );

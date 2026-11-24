@@ -1,0 +1,295 @@
+{
+  "_ActiveProfileConnections-D7P5dfLi.js": {
+    "file": "assets/ActiveProfileConnections-D7P5dfLi.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_cable-DR7za2SU.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_InspectedProfileNotice-C_HZsw1C.js"
+    ],
+    "name": "ActiveProfileConnections"
+  },
+  "_AdvancedSurfaceFrame-Bygtu2gV.js": {
+    "file": "assets/AdvancedSurfaceFrame-Bygtu2gV.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html",
+      "_InspectedProfileNotice-C_HZsw1C.js"
+    ],
+    "name": "AdvancedSurfaceFrame"
+  },
+  "_CopyErrorButton-UDIErxL3.js": {
+    "dynamicImports": [
+      "node_modules/@tauri-apps/api/core.js"
+    ],
+    "file": "assets/CopyErrorButton-UDIErxL3.js",
+    "name": "CopyErrorButton"
+  },
+  "_InlineLoadError-CJXZ1UTb.js": {
+    "file": "assets/InlineLoadError-CJXZ1UTb.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html"
+    ],
+    "name": "InlineLoadError"
+  },
+  "_Input-CoyAf-1w.js": {
+    "file": "assets/Input-CoyAf-1w.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js"
+    ],
+    "name": "Input"
+  },
+  "_InspectedProfileNotice-C_HZsw1C.js": {
+    "file": "assets/InspectedProfileNotice-C_HZsw1C.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html"
+    ],
+    "name": "InspectedProfileNotice"
+  },
+  "_PackScopeSummary-WkTLeXMm.js": {
+    "file": "assets/PackScopeSummary-WkTLeXMm.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html"
+    ],
+    "name": "PackScopeSummary"
+  },
+  "_RuntimeEvidenceCard-DM4eMaCS.js": {
+    "file": "assets/RuntimeEvidenceCard-DM4eMaCS.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html"
+    ],
+    "name": "RuntimeEvidenceCard"
+  },
+  "_cable-DR7za2SU.js": {
+    "file": "assets/cable-DR7za2SU.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js"
+    ],
+    "name": "cable"
+  },
+  "_check-TUCfIy1z.js": {
+    "file": "assets/check-TUCfIy1z.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js"
+    ],
+    "name": "check"
+  },
+  "_circle-question-mark-BAvdiVwE.js": {
+    "file": "assets/circle-question-mark-BAvdiVwE.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js"
+    ],
+    "name": "circle-question-mark"
+  },
+  "_useRuntimeOperationInvocation-BQybLCcZ.js": {
+    "file": "assets/useRuntimeOperationInvocation-BQybLCcZ.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html",
+      "_Input-CoyAf-1w.js"
+    ],
+    "name": "useRuntimeOperationInvocation"
+  },
+  "index.html": {
+    "css": [
+      "assets/index-CGGK2lHB.css"
+    ],
+    "dynamicImports": [
+      "src/pages/Packs.tsx",
+      "src/pages/PackDetail.tsx",
+      "src/pages/Profile.tsx",
+      "src/pages/Account.tsx",
+      "src/pages/Settings.tsx",
+      "src/pages/ProfileWiring.tsx",
+      "src/pages/ProfileFiles.tsx",
+      "src/pages/Flow.tsx",
+      "src/pages/Graph.tsx",
+      "src/pages/AiInput.tsx",
+      "src/pages/ApiMap.tsx",
+      "src/pages/NodeManager.tsx"
+    ],
+    "file": "assets/index-COUdeGue.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js"
+    ],
+    "isEntry": true,
+    "name": "index",
+    "src": "index.html"
+  },
+  "node_modules/@tauri-apps/api/core.js": {
+    "file": "assets/core-SwWLTXZB.js",
+    "isDynamicEntry": true,
+    "name": "core",
+    "src": "node_modules/@tauri-apps/api/core.js"
+  },
+  "src/pages/Account.tsx": {
+    "file": "assets/Account-CW0Zluyw.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_check-TUCfIy1z.js",
+      "index.html",
+      "_Input-CoyAf-1w.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Account",
+    "src": "src/pages/Account.tsx"
+  },
+  "src/pages/AiInput.tsx": {
+    "file": "assets/AiInput-BrJ3zv0B.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_circle-question-mark-BAvdiVwE.js",
+      "index.html",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_useRuntimeOperationInvocation-BQybLCcZ.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "AiInput",
+    "src": "src/pages/AiInput.tsx"
+  },
+  "src/pages/ApiMap.tsx": {
+    "file": "assets/ApiMap-CqQgS8hT.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ApiMap",
+    "src": "src/pages/ApiMap.tsx"
+  },
+  "src/pages/Flow.tsx": {
+    "file": "assets/Flow-9c4gagt9.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_cable-DR7za2SU.js",
+      "_ActiveProfileConnections-D7P5dfLi.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_useRuntimeOperationInvocation-BQybLCcZ.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Flow",
+    "src": "src/pages/Flow.tsx"
+  },
+  "src/pages/Graph.tsx": {
+    "file": "assets/Graph-BJuEMeV5.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Graph",
+    "src": "src/pages/Graph.tsx"
+  },
+  "src/pages/NodeManager.tsx": {
+    "file": "assets/NodeManager-B0TQUDFZ.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_circle-question-mark-BAvdiVwE.js",
+      "index.html",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "NodeManager",
+    "src": "src/pages/NodeManager.tsx"
+  },
+  "src/pages/PackDetail.tsx": {
+    "file": "assets/PackDetail-DXOp_NPB.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_circle-question-mark-BAvdiVwE.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_InspectedProfileNotice-C_HZsw1C.js",
+      "_InlineLoadError-CJXZ1UTb.js",
+      "_PackScopeSummary-WkTLeXMm.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "PackDetail",
+    "src": "src/pages/PackDetail.tsx"
+  },
+  "src/pages/Packs.tsx": {
+    "file": "assets/Packs-D9eXQWJL.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_circle-question-mark-BAvdiVwE.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_InspectedProfileNotice-C_HZsw1C.js",
+      "_InlineLoadError-CJXZ1UTb.js",
+      "_PackScopeSummary-WkTLeXMm.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Packs",
+    "src": "src/pages/Packs.tsx"
+  },
+  "src/pages/Profile.tsx": {
+    "file": "assets/Profile-aIRhqlDh.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_circle-question-mark-BAvdiVwE.js",
+      "index.html",
+      "_Input-CoyAf-1w.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Profile",
+    "src": "src/pages/Profile.tsx"
+  },
+  "src/pages/ProfileFiles.tsx": {
+    "file": "assets/ProfileFiles-DrrRnBSJ.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ProfileFiles",
+    "src": "src/pages/ProfileFiles.tsx"
+  },
+  "src/pages/ProfileWiring.tsx": {
+    "file": "assets/ProfileWiring-DnxbRTg6.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_cable-DR7za2SU.js",
+      "index.html",
+      "_Input-CoyAf-1w.js",
+      "_AdvancedSurfaceFrame-Bygtu2gV.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ProfileWiring",
+    "src": "src/pages/ProfileWiring.tsx"
+  },
+  "src/pages/Settings.tsx": {
+    "file": "assets/Settings-BBFiZx09.js",
+    "imports": [
+      "_CopyErrorButton-UDIErxL3.js",
+      "_check-TUCfIy1z.js",
+      "_ActiveProfileConnections-D7P5dfLi.js",
+      "index.html",
+      "_InspectedProfileNotice-C_HZsw1C.js",
+      "_RuntimeEvidenceCard-DM4eMaCS.js",
+      "_InlineLoadError-CJXZ1UTb.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Settings",
+    "src": "src/pages/Settings.tsx"
+  }
+}

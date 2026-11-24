@@ -1,10 +1,7 @@
 import json
-import os
-import sys
 from pathlib import Path
 import re
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 

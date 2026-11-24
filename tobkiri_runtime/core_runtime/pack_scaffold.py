@@ -1,237 +1,27 @@
-"""
-pack_scaffold.py - Pack 雛形生成ユーティリティ (Wave 14 T-055)
+"""Compatibility CLI that emits only canonical Pack v4 scaffolds.
 
-Pack 開発者が新しい Pack を作る際に、テンプレートに基づいた
-ディレクトリ構造とファイルを自動生成する。
-
-テンプレート:
-  minimal    : contract 必須 docs + ecosystem.json + __init__.py
-  capability : minimal + capability_handler.py
-  flow       : minimal + flows/ + sample_flow.yaml + docs/flows.md
-  full       : 上記全部 + tests/
-
-依存: stdlib + core_runtime.validation のみ
-
-CLI:
-  python -m core_runtime.pack_scaffold <pack_id> [--template TYPE] [--output DIR] [--force]
+The former Wave 14 generator emitted ``ecosystem.json`` directly.  That file
+is never created here: all entry points delegate to the Pack v4 SDK.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
-from .validation import validate_pack_id
-
-# ======================================================================
-# 定数
-# ======================================================================
+from .pack_sdk import PackSdkError, scaffold_pack
 
 VALID_TEMPLATES = ("minimal", "capability", "flow", "full")
+_PROFILE_BY_TEMPLATE = {
+    "minimal": "minimal",
+    "capability": "codex",
+    "flow": "hermes",
+    "full": "complete",
+}
 
-
-# ======================================================================
-# テンプレート内容生成
-# ======================================================================
-
-def _ecosystem_json_content(pack_id: str) -> str:
-    """ecosystem.json のテンプレート内容を生成する。"""
-    data = {
-        "pack_id": pack_id,
-        "version": "0.1.0",
-        "description": f"{pack_id} - A Rumi AI OS Pack",
-        "capabilities": [],
-        "flows": [],
-        "connectivity": [],
-        "trust": {
-            "level": "sandboxed",
-            "permissions": [],
-        },
-    }
-    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-
-
-def _init_py_content(pack_id: str) -> str:
-    """__init__.py のテンプレート内容を生成する。"""
-    return f'"""\n{pack_id} - Pack entry point\n"""\n'
-
-
-def _capability_handler_content(pack_id: str) -> str:
-    """capability_handler.py のテンプレート内容を生成する。"""
-    return (
-        f'"""\n'
-        f'{pack_id} - Capability handler\n'
-        f'"""\n'
-        f'\n'
-        f'from __future__ import annotations\n'
-        f'\n'
-        f'\n'
-        f'def handle(request: dict) -> dict:\n'
-        f'    """Handle a capability request.\n'
-        f'\n'
-        f'    Args:\n'
-        f'        request: The incoming capability request.\n'
-        f'\n'
-        f'    Returns:\n'
-        f'        Response dictionary.\n'
-        f'    """\n'
-        f'    return {{"status": "ok", "pack_id": "{pack_id}"}}\n'
-    )
-
-
-def _sample_flow_yaml_content(pack_id: str) -> str:
-    """sample_flow.yaml のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} - Sample flow\n"
-        f"name: sample_flow\n"
-        f"description: A sample flow for {pack_id}\n"
-        f"steps:\n"
-        f"  - id: step_1\n"
-        f"    action: noop\n"
-        f"    description: Replace with your flow logic\n"
-    )
-
-
-def _readme_content(pack_id: str) -> str:
-    """README.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id}\n"
-        f"\n"
-        f"3分で分かる {pack_id} Pack の概要です。\n"
-        f"\n"
-        f"## Overview\n"
-        f"\n"
-        f"- What it provides: TODO\n"
-        f"- What it does not provide: TODO\n"
-        f"\n"
-        f"## Docs\n"
-        f"\n"
-        f"- [docs/README.md](./docs/README.md)\n"
-    )
-
-
-def _docs_readme_content(pack_id: str) -> str:
-    """docs/README.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} Docs\n"
-        f"\n"
-        f"`{pack_id}` Pack の公式ドキュメント入口です。\n"
-        f"\n"
-        f"## First Read\n"
-        f"\n"
-        f"1. [architecture.md](./architecture.md)\n"
-        f"2. [interfaces.md](./interfaces.md)\n"
-        f"3. [operations.md](./operations.md)\n"
-        f"\n"
-        f"## Reading Guide\n"
-        f"\n"
-        f"- 初見のとき: architecture -> interfaces -> operations の順で読む\n"
-        f"- Flow を持つ Pack のとき: [flows.md](./flows.md) を追加で読む\n"
-    )
-
-
-def _docs_architecture_content(pack_id: str) -> str:
-    """docs/architecture.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} Architecture\n"
-        f"\n"
-        f"## Responsibility\n"
-        f"\n"
-        f"- Primary responsibility: TODO\n"
-        f"- Out of scope: TODO\n"
-        f"\n"
-        f"## Directory Map\n"
-        f"\n"
-        f"- `blocks/` or `backend/`: TODO\n"
-        f"- `flows/`: TODO\n"
-        f"- `components/`: TODO\n"
-        f"\n"
-        f"## Runtime Touchpoints\n"
-        f"\n"
-        f"- Kernel entrypoints: TODO\n"
-        f"- Grants / secrets / network: TODO\n"
-    )
-
-
-def _docs_interfaces_content(pack_id: str) -> str:
-    """docs/interfaces.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} Interfaces\n"
-        f"\n"
-        f"## Public Surface\n"
-        f"\n"
-        f"- flows: TODO\n"
-        f"- functions: TODO\n"
-        f"- handlers: TODO\n"
-        f"- routes / events / stores: TODO\n"
-        f"\n"
-        f"## Required Runtime Contracts\n"
-        f"\n"
-        f"- required secrets: TODO\n"
-        f"- required network: TODO\n"
-        f"- required grants: TODO\n"
-    )
-
-
-def _docs_operations_content(pack_id: str) -> str:
-    """docs/operations.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} Operations\n"
-        f"\n"
-        f"## Run\n"
-        f"\n"
-        f"- Start: TODO\n"
-        f"- Local development: TODO\n"
-        f"- Tests: TODO\n"
-        f"\n"
-        f"## Change Checklist\n"
-        f"\n"
-        f"- Common failure modes: TODO\n"
-        f"- Verification points after changes: TODO\n"
-    )
-
-
-def _docs_flows_content(pack_id: str) -> str:
-    """docs/flows.md のテンプレート内容を生成する。"""
-    return (
-        f"# {pack_id} Flows\n"
-        f"\n"
-        f"この Pack が持つ Flow / modifier の入口です。\n"
-        f"\n"
-        f"## Flow Inventory\n"
-        f"\n"
-        f"- `sample_flow`: TODO\n"
-        f"\n"
-        f"## Notes\n"
-        f"\n"
-        f"- Trigger / inputs / outputs / side effects を記録する\n"
-    )
-
-
-def _test_init_content(pack_id: str) -> str:
-    """tests/__init__.py のテンプレート内容を生成する。"""
-    return (
-        f'"""\n'
-        f'Tests for {pack_id}\n'
-        f'"""\n'
-    )
-
-
-# ======================================================================
-# PackScaffold クラス
-# ======================================================================
 
 class PackScaffold:
-    """Pack のディレクトリ構造を生成するユーティリティ。
-
-    Usage::
-
-        scaffold = PackScaffold()
-        pack_dir = scaffold.generate("my_pack", Path("./output"), template="full")
-    """
+    """Generate one deterministic, authority-free Pack v4 directory."""
 
     def generate(
         self,
@@ -240,152 +30,68 @@ class PackScaffold:
         template: str = "minimal",
         force: bool = False,
     ) -> Path:
-        """指定ディレクトリに Pack 雛形を生成する。
-
-        Args:
-            pack_id:    Pack の識別子（validate_pack_id で検証）。
-            target_dir: Pack ディレクトリを作成する親ディレクトリ。
-            template:   テンプレート名 (minimal / capability / flow / full)。
-            force:      True の場合、既存ディレクトリの上書きを許可する。
-
-        Returns:
-            生成された Pack ディレクトリの Path。
-
-        Raises:
-            ValueError:      pack_id が不正、または template が未知の場合。
-            FileExistsError: target_dir/pack_id が既に存在し中身がある場合（force=False）。
-        """
-        # --- バリデーション ---
-        if not validate_pack_id(pack_id):
-            raise ValueError(
-                f"Invalid pack_id: {pack_id!r}. "
-                f"Must match [a-zA-Z0-9_-]{{1,64}}."
-            )
+        """Create a Pack v4 scaffold without legacy manifests or dual writes."""
 
         if template not in VALID_TEMPLATES:
             raise ValueError(
-                f"Unknown template: {template!r}. "
-                f"Valid templates: {', '.join(VALID_TEMPLATES)}"
+                f"Unknown template: {template!r}. Valid templates: "
+                + ", ".join(VALID_TEMPLATES)
             )
-
-        target_dir = Path(target_dir)
-        pack_dir = target_dir / pack_id
-
-        # --- 上書き防止 ---
-        if pack_dir.exists() and any(pack_dir.iterdir()) and not force:
+        target = Path(target_dir) / pack_id
+        if force and target.exists():
             raise FileExistsError(
-                f"Directory already exists and is not empty: {pack_dir}. "
-                f"Use force=True to overwrite."
+                "force overwrite was retired; choose an empty target to preserve provenance"
             )
+        try:
+            scaffold_pack(
+                target,
+                pack_id=pack_id,
+                display_name=pack_id,
+                profile=_PROFILE_BY_TEMPLATE[template],
+            )
+        except PackSdkError as exc:
+            if "target directory must be empty" in str(exc):
+                raise FileExistsError(str(exc)) from exc
+            raise ValueError(str(exc)) from exc
+        return target
 
-        # --- ファイル生成計画 ---
-        files = self._plan_files(pack_id, template)
-
-        # --- ディレクトリ作成 & ファイル書き込み ---
-        pack_dir.mkdir(parents=True, exist_ok=True)
-
-        for rel_path, content in files.items():
-            file_path = pack_dir / rel_path
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
-
-        return pack_dir
-
-    def _plan_files(self, pack_id: str, template: str) -> Dict[str, str]:
-        """テンプレートに応じた生成ファイル一覧を返す。
-
-        Returns:
-            {相対パス: ファイル内容} の辞書。
-        """
-        files: Dict[str, str] = {}
-
-        # --- minimal (全テンプレート共通) ---
-        files["ecosystem.json"] = _ecosystem_json_content(pack_id)
-        files["__init__.py"] = _init_py_content(pack_id)
-        files["README.md"] = _readme_content(pack_id)
-        files["docs/README.md"] = _docs_readme_content(pack_id)
-        files["docs/architecture.md"] = _docs_architecture_content(pack_id)
-        files["docs/interfaces.md"] = _docs_interfaces_content(pack_id)
-        files["docs/operations.md"] = _docs_operations_content(pack_id)
-
-        # --- capability ---
-        if template in ("capability", "full"):
-            files["capability_handler.py"] = _capability_handler_content(pack_id)
-
-        # --- flow ---
-        if template in ("flow", "full"):
-            files["flows/sample_flow.yaml"] = _sample_flow_yaml_content(pack_id)
-            files["docs/flows.md"] = _docs_flows_content(pack_id)
-
-        # --- full ---
-        if template == "full":
-            files["tests/__init__.py"] = _test_init_content(pack_id)
-
-        return files
-
-
-# ======================================================================
-# CLI エントリポイント
-# ======================================================================
 
 def _build_parser() -> argparse.ArgumentParser:
-    """CLI 引数パーサーを構築する。"""
     parser = argparse.ArgumentParser(
         prog="python -m core_runtime.pack_scaffold",
-        description="Generate a new Pack scaffold for Rumi AI OS.",
+        description="Generate a canonical Tobkiri Pack v4 scaffold.",
     )
+    parser.add_argument("pack_id")
     parser.add_argument(
-        "pack_id",
-        help="Pack identifier (must match [a-zA-Z0-9_-]{1,64})",
+        "--template", "-t", choices=VALID_TEMPLATES, default="minimal"
     )
+    parser.add_argument("--output", "-o", default=".")
     parser.add_argument(
-        "--template", "-t",
-        choices=VALID_TEMPLATES,
-        default="minimal",
-        help="Scaffold template (default: minimal)",
-    )
-    parser.add_argument(
-        "--output", "-o",
-        default=".",
-        help="Parent directory for the generated Pack (default: current directory)",
-    )
-    parser.add_argument(
-        "--force", "-f",
+        "--force",
+        "-f",
         action="store_true",
-        default=False,
-        help="Overwrite existing Pack directory",
+        help="Retired: v4 scaffolds never overwrite an existing Pack.",
     )
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
-    """CLI メインエントリポイント。
+def main(argv: list[str] | None = None) -> int:
+    """Run the legacy module name with Pack v4-only behavior."""
 
-    Args:
-        argv: コマンドライン引数（None の場合は sys.argv を使用）。
-
-    Returns:
-        終了コード（0: 成功、1: エラー）。
-    """
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    scaffold = PackScaffold()
-
+    args = _build_parser().parse_args(argv)
     try:
-        pack_dir = scaffold.generate(
-            pack_id=args.pack_id,
-            target_dir=Path(args.output),
+        created = PackScaffold().generate(
+            args.pack_id,
+            Path(args.output),
             template=args.template,
             force=args.force,
         )
     except (ValueError, FileExistsError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {exc}")
         return 1
-
-    print(f"Pack scaffold created: {pack_dir}")
+    print(f"Pack v4 scaffold created: {created}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

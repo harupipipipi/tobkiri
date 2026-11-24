@@ -1,0 +1,49 @@
+package local:harness-chat@1.0.0;
+
+interface messages {
+  record message { role: string, content: string }
+  record input { conversation: string, text: string }
+  record context { conversation: string, messages: list<message> }
+  record prompt { messages: list<message>, model: string, max-tokens: u32 }
+  record chat-event { kind: string, text: option<string>, prompt-tokens: option<u32>, completion-tokens: option<u32> }
+}
+interface user-input {
+  use tobkiri:core/types@1.0.0.{json};
+  type flow-frame = json;
+  use messages.{input, chat-event};
+  use tobkiri:core/types@1.0.0.{error, stream-handle};
+  read: func() -> result<input, error>;
+  submit: func(input: input) -> result<stream-handle, error>;
+  pull: func(%stream: stream-handle, max: u32) -> result<list<chat-event>, error>;
+  cancel: func(%stream: stream-handle);
+}
+interface conversation-store {
+  use messages.{context, input, chat-event};
+  use tobkiri:core/types@1.0.0.{error};
+  load: func(conversation: string) -> result<context, error>;
+  append: func(conversation: string, input: input, events: list<chat-event>) -> result<_, error>;
+}
+interface prompt-builder {
+  use messages.{context, input, prompt};
+  use tobkiri:core/types@1.0.0.{error};
+  build: func(ctx: context, input: input) -> result<prompt, error>;
+}
+interface llm-provider {
+  use messages.{prompt};
+  use tobkiri:core/types@1.0.0.{error, stream-handle};
+  chat: func(prompt: prompt) -> result<stream-handle, error>;
+}
+interface assistant-output {
+  use messages.{chat-event};
+  use tobkiri:core/types@1.0.0.{error};
+  emit: func(event: chat-event) -> result<_, error>;
+}
+interface turn-flow { run: func(); }
+interface load-context { run: func(); }
+interface assemble-prompt { run: func(); }
+interface generate { run: func(); }
+
+interface command-provider {
+ use tobkiri:core/types@1.0.0.{error,json};
+ invoke:func(name:string,args:string)->result<json,error>;
+}

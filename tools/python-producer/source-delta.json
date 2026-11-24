@@ -1,0 +1,140 @@
+{
+  "componentize-py/Cargo.toml": {
+    "after": "7f33bbd34e5eeae848c56e797890834abd3f86720eebb17b9806a99209ebb770",
+    "after_bytes": 2420,
+    "before": "52e951de8e10ff3d59283986763fbcde9e5992fd6bdc3e56adf48950afd53079",
+    "before_bytes": 2216
+  },
+  "componentize-py/build.rs": {
+    "after": "e7b5d0d57ae5b6d5e333d158207025a072854afac0039a6a973b446ceacc2116",
+    "after_bytes": 28058,
+    "before": "095f36269e52f90b720c8920b3991b472ea8826333957e390638ab31428cf96c",
+    "before_bytes": 27668
+  },
+  "componentize-py/producer-recipe-v2.json": {
+    "after": "80a3cfc61a9f14d760f7624613481a0d4d23040d04d1d82d009141b522e0e2d3",
+    "after_bytes": 530,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/runtime/src/lib.rs": {
+    "after": "3250d701ebe4fce5b7e275fa93203df275cac1184917bdd305d75ec904404171",
+    "after_bytes": 71849,
+    "before": "5cf3f0561aa1063ac8475fec88dc2233df9953ea9f0bc73f178c5c669b2ad86b",
+    "before_bytes": 70993
+  },
+  "componentize-py/runtime/src/tobkiri_preinit.rs": {
+    "after": "18de9d159667fcd8920ba772c5de12d4973624221b98ed6152b8deea3fc17bcb",
+    "after_bytes": 3097,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/src/captured_inputs.rs": {
+    "after": "9a7edcff8a3cb9c6bd86177112e45521413f0c3fdeabef41dca91b06ad7f7b42",
+    "after_bytes": 14818,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/src/captured_wasi.rs": {
+    "after": "6033ecf8ecaa63e1d50b3ff7a299c91c24905dbd625ffa13b8a61696d82bf5f7",
+    "after_bytes": 19832,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/src/command.rs": {
+    "after": "3ba9b2ad2a75137d7db64bdfd96fa109de5d00fe4c95b6d9878290e6c05bf73b",
+    "after_bytes": 23380,
+    "before": "888452c41a1582551766c5bc1ce094226d2e0d8b06e64b8b99dd0727e62cbc62",
+    "before_bytes": 22765
+  },
+  "componentize-py/src/lib.rs": {
+    "after": "7d7c63df32c527b8f8138cf988e55f983a7109eb664fae4a60187edbd51c113d",
+    "after_bytes": 44594,
+    "before": "8c22edf4ed2a7eb0b1e7497c96c433aa9eb7fff1ac7d105b7b1fd240e0f0cfcc",
+    "before_bytes": 43334
+  },
+  "componentize-py/src/prelink.rs": {
+    "after": "67f0ae62965641993e393e8402cddf94472ebb5349c6786f62f99ac9dec615a6",
+    "after_bytes": 11443,
+    "before": "e02e424d67ef38600a514ea476ab07689aa12c2c8f3dfd1afc42edef35cc46c7",
+    "before_bytes": 11254
+  },
+  "componentize-py/src/python.rs": {
+    "after": "33b1c894f8a07680a728603df88ebab790e2faabb074b1f9abcb9095a1fd4bac",
+    "after_bytes": 5168,
+    "before": "f4bc765df8f853a84e37cde7f04c8e75b37617a52a8235ae626477feabca987c",
+    "before_bytes": 4706
+  },
+  "componentize-py/src/summary.rs": {
+    "after": "6d653a481a65dc06961faaac57beb85807265d1c9b789a0b592e682afab0a2f8",
+    "after_bytes": 101040,
+    "before": "1a5ad23f5ab74818e4a05cc9dd35d8a4616be441cd73bcc0b846fae1832a5260",
+    "before_bytes": 100834
+  },
+  "componentize-py/src/tobkiri_preinit.rs": {
+    "after": "37ef6e54e5efe69bfcf9982878102d11d3bf115da4d11c1cb7b6c56c0923dc40",
+    "after_bytes": 12202,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/staged_packaging.rs": {
+    "after": "62fb24d54f7eb359f62b971da2dcfa4f1568c3a946658d5eb69f0da0ec9928b7",
+    "after_bytes": 4514,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/tools/capture_snapshot.py": {
+    "after": "2a248c1be202c2dd4ffbc23bfe05f2257f3ca41c13a3ea884350b6274df5d4c8",
+    "after_bytes": 9315,
+    "before": null,
+    "before_bytes": 0
+  },
+  "componentize-py/tools/stage_verify.py": {
+    "after": "689a249375c4617dadef3b22613897d6bd252385b00369e2f42d320347f5b6d1",
+    "after_bytes": 9675,
+    "before": null,
+    "before_bytes": 0
+  },
+  "cpython/Include/internal/pycore_tobkiri_entropy.h": {
+    "after": "522d418e765bdabff1eb6f3c1752e914c5a6e12432ae3660e6e330cfa4bc98cf",
+    "after_bytes": 1300,
+    "before": null,
+    "before_bytes": 0
+  },
+  "cpython/Lib/random.py": {
+    "after": "63507462dc4df5683b22316734f478a439c54b0d5815a318ea352dfa65d6f2a8",
+    "after_bytes": 37387,
+    "before": "62dca8cdae7482513b99bb093ff038afd5131954e7eb78166d673a772cee871c",
+    "before_bytes": 37259
+  },
+  "cpython/Makefile.pre.in": {
+    "after": "6019c982bc5e8a0ba179a5ffa26941cb7b914926fc011394a72afe07388f2c74",
+    "after_bytes": 131380,
+    "before": "f3a1350ddbf951719fa779fa8c506dba6521fbb0b6d3b1d46f1bf5dd3418f269",
+    "before_bytes": 131351
+  },
+  "cpython/Modules/_randommodule.c": {
+    "after": "e5552da6c7a0df074ce296ce66cbe1027ed3916e104f8b2ec7a4fd8322a577ab",
+    "after_bytes": 24508,
+    "before": "1e4e48b0831d77fe1f8cfe20ff9c4236f417e158f6e686d3bb685f78d62f0f6d",
+    "before_bytes": 19061
+  },
+  "cpython/Python/bootstrap_hash.c": {
+    "after": "0d73348b4b912d05e9a7e7da2665cbccf9c93f70bc72a0522b9194cf44a064a5",
+    "after_bytes": 18522,
+    "before": "9edb0fc9f584f3f4534c58fca3d9a113a1ea00e7801de71c2cc5dad1c8f8cd05",
+    "before_bytes": 18372
+  },
+  "cpython/Python/tobkiri_entropy.c": {
+    "after": "828167330518ba3a980105bbedb5bb370ac96f258352fd92ceee448dc2fbcd43",
+    "after_bytes": 6582,
+    "before": null,
+    "before_bytes": 0
+  },
+  "wasmtime-wasi/src/p2/filesystem.rs": {
+    "after": "a7e35c6cf80cb55314fadcfc58cf12ec5204732952ca35929bb24f7d51560843",
+    "after_bytes": 15349,
+    "before": "f499e18b15a0c9930a5c19cf394bc59976b9c40782251505d6cf1d2bf4b07328",
+    "before_bytes": 15272
+  }
+}

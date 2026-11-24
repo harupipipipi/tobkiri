@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+UNATTRIBUTED_PRINCIPAL_ID = "host:unattributed"
+
 
 def build_principal_id(
     *,
@@ -27,7 +29,7 @@ def build_principal_id(
         return "__".join(parts)
     if conversation_id:
         return f"conversation:{conversation_id}"
-    return "defaultspack"
+    return UNATTRIBUTED_PRINCIPAL_ID
 
 
 def principal_scope_candidates(
@@ -43,7 +45,7 @@ def principal_scope_candidates(
         if cleaned and cleaned not in candidates:
             candidates.append(cleaned)
 
-    principal_id = str(principal_id or "").strip() or "defaultspack"
+    principal_id = str(principal_id or "").strip() or UNATTRIBUTED_PRINCIPAL_ID
     add(principal_id)
 
     if "__" in principal_id:

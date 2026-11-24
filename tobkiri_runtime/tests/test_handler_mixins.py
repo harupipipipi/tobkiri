@@ -639,16 +639,10 @@ class TestPackLifecycleHandlers:
 
     # --- _pack_apply ---
 
-    def test_pack_apply_success(self):
+    def test_pack_apply_is_retired_and_denies_unsigned_apply(self):
         handler = _LifecycleStub()
         mock_importer = MagicMock()
-        mock_importer.get_staging_meta.return_value = {"id": "s1"}
-        mock_apply_result = MagicMock()
-        mock_apply_result.to_dict.return_value = {
-            "success": True, "applied": True,
-        }
         mock_applier = MagicMock()
-        mock_applier.apply.return_value = mock_apply_result
         with patch(
             "tobkiri_runtime.core_runtime.pack_importer.get_pack_importer",
             return_value=mock_importer,
@@ -657,53 +651,28 @@ class TestPackLifecycleHandlers:
             return_value=mock_applier,
         ):
             result = handler._pack_apply("s1", mode="replace")
-        assert result["success"] is True
-        mock_applier.apply.assert_called_once_with(
-            "s1", mode="replace", actor="api_user",
-        )
+        assert result["success"] is False
+        assert result["denied"] is True
+        assert "signed" in result["error"].lower()
+        mock_importer.get_staging_meta.assert_not_called()
+        mock_applier.apply.assert_not_called()
 
-    def test_pack_apply_propagates_authenticated_actor(self):
+    def test_pack_apply_denies_regardless_of_authenticated_actor(self):
         handler = _LifecycleStub()
         handler._authenticated_principal = types.SimpleNamespace(
             principal_id="profile:work__surface:mobile",
         )
-        mock_importer = MagicMock()
-        mock_importer.get_staging_meta.return_value = {"id": "s1"}
-        mock_apply_result = MagicMock()
-        mock_apply_result.to_dict.return_value = {
-            "success": True,
-            "applied": True,
-        }
-        mock_applier = MagicMock()
-        mock_applier.apply.return_value = mock_apply_result
-        with patch(
-            "tobkiri_runtime.core_runtime.pack_importer.get_pack_importer",
-            return_value=mock_importer,
-        ), patch(
-            "tobkiri_runtime.core_runtime.pack_applier.get_pack_applier",
-            return_value=mock_applier,
-        ):
-            result = handler._pack_apply("s1", mode="replace")
-        assert result["success"] is True
-        mock_applier.apply.assert_called_once_with(
-            "s1",
-            mode="replace",
-            actor="profile:work__surface:mobile",
-        )
-
-    def test_pack_apply_staging_not_found(self):
-        handler = _LifecycleStub()
-        mock_importer = MagicMock()
-        mock_importer.get_staging_meta.return_value = None
-        with patch(
-            "tobkiri_runtime.core_runtime.pack_importer.get_pack_importer",
-            return_value=mock_importer,
-        ):
-            result = handler._pack_apply("nonexistent")
+        result = handler._pack_apply("s1", mode="replace")
         assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result["denied"] is True
 
-    def test_pack_apply_exception(self):
+    def test_pack_apply_denies_unknown_staging(self):
+        handler = _LifecycleStub()
+        result = handler._pack_apply("nonexistent")
+        assert result["success"] is False
+        assert result["denied"] is True
+
+    def test_pack_apply_denies_instead_of_touching_importer(self):
         handler = _LifecycleStub()
         with patch(
             "tobkiri_runtime.core_runtime.pack_importer.get_pack_importer",
@@ -711,7 +680,7 @@ class TestPackLifecycleHandlers:
         ):
             result = handler._pack_apply("s1")
         assert result["success"] is False
-        assert result["error"] == _SAFE_ERROR_MSG
+        assert result["denied"] is True
 
 
 # ======================================================================

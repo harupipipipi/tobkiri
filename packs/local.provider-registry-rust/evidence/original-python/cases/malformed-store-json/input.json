@@ -1,0 +1,1 @@
+{"case_id":"malformed-store-json","purpose":"Observe the source parser exception and unchanged malformed store bytes.","profile_id":"defaults","initial_store_text":"{\"version\":","actions":[{"action_id":"snapshot-malformed-json","operation":"registry.snapshot","payload":{}}]}

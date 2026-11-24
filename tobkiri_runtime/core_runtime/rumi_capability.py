@@ -24,21 +24,13 @@ PR-B: このファイルが唯一の実体。
 from __future__ import annotations
 
 import json
-import os
 import socket
 import struct
 from typing import Any, Dict, Optional
 
-
 # デフォルトのUDSソケットパス（コンテナ内）
 DEFAULT_SOCKET_PATH = "/run/rumi/capability.sock"
-
-# 環境変数でオーバーライド可能
-SOCKET_PATH = os.environ.get("RUMI_CAPABILITY_SOCKET", DEFAULT_SOCKET_PATH)
-CAPABILITY_HOST = os.environ.get("RUMI_CAPABILITY_HOST", "127.0.0.1")
-CAPABILITY_PORT = int(os.environ.get("RUMI_CAPABILITY_PORT", "0") or "0")
-CAPABILITY_TOKEN = os.environ.get("RUMI_CAPABILITY_TOKEN", "")
-_TCP_MODE = CAPABILITY_PORT > 0 and bool(CAPABILITY_TOKEN)
+SOCKET_PATH = DEFAULT_SOCKET_PATH
 
 # プロトコル定数
 MAX_RESPONSE_SIZE = 4 * 1024 * 1024  # 4MB
@@ -123,62 +115,35 @@ def call(
 
     sock = None
     try:
-        if _TCP_MODE:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout + 5)
-            try:
-                sock.connect((CAPABILITY_HOST, CAPABILITY_PORT))
-            except ConnectionRefusedError:
-                return {
-                    "success": False,
-                    "error": (
-                        "Connection refused to capability proxy: "
-                        f"{CAPABILITY_HOST}:{CAPABILITY_PORT}"
-                    ),
-                    "error_type": "connection_refused",
-                    "output": None,
-                    "latency_ms": 0,
-                }
-            _write_length_prefixed_json(sock, {"auth_token": CAPABILITY_TOKEN})
-            auth_resp = _read_length_prefixed_json(sock, 65536)
-            if not auth_resp or auth_resp.get("auth_ok") is not True:
-                return {
-                    "success": False,
-                    "error": "Capability proxy auth failed",
-                    "error_type": "auth_failed",
-                    "output": None,
-                    "latency_ms": 0,
-                }
-        else:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(timeout + 5)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout + 5)
 
-            try:
-                sock.connect(sock_path)
-            except FileNotFoundError:
-                return {
-                    "success": False,
-                    "error": f"Capability proxy socket not found: {sock_path}",
-                    "error_type": "socket_not_found",
-                    "output": None,
-                    "latency_ms": 0,
-                }
-            except PermissionError:
-                return {
-                    "success": False,
-                    "error": f"Permission denied to capability proxy socket: {sock_path}",
-                    "error_type": "permission_denied",
-                    "output": None,
-                    "latency_ms": 0,
-                }
-            except ConnectionRefusedError:
-                return {
-                    "success": False,
-                    "error": f"Connection refused to capability proxy: {sock_path}",
-                    "error_type": "connection_refused",
-                    "output": None,
-                    "latency_ms": 0,
-                }
+        try:
+            sock.connect(sock_path)
+        except FileNotFoundError:
+            return {
+                "success": False,
+                "error": f"Capability proxy socket not found: {sock_path}",
+                "error_type": "socket_not_found",
+                "output": None,
+                "latency_ms": 0,
+            }
+        except PermissionError:
+            return {
+                "success": False,
+                "error": f"Permission denied to capability proxy socket: {sock_path}",
+                "error_type": "permission_denied",
+                "output": None,
+                "latency_ms": 0,
+            }
+        except ConnectionRefusedError:
+            return {
+                "success": False,
+                "error": f"Connection refused to capability proxy: {sock_path}",
+                "error_type": "connection_refused",
+                "output": None,
+                "latency_ms": 0,
+            }
 
         _write_length_prefixed_json(sock, request)
         return _read_length_prefixed_json(sock, MAX_RESPONSE_SIZE)

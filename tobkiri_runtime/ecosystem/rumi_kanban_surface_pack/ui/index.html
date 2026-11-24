@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kanban</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main aria-label="Kanban">
+      <header>
+        <div><p id="profile"></p><h1>Kanban</h1></div>
+        <button id="reload" type="button">Reload</button>
+      </header>
+      <p class="notice">Changes require an approved action flow.</p>
+      <section class="summary" aria-label="Kanban summary">
+        <article><span>Boards</span><strong id="board-count">—</strong></article>
+        <article><span>Cards</span><strong id="card-count">—</strong></article>
+        <article><span>Revision</span><strong id="revision">—</strong></article>
+      </section>
+      <p id="error" role="alert"></p>
+      <section aria-labelledby="boards-title">
+        <h2 id="boards-title">Boards</h2>
+        <div id="boards" class="boards"></div>
+        <p id="empty" hidden>No Kanban boards in this profile.</p>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
+

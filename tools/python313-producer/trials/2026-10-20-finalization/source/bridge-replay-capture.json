@@ -1,0 +1,172 @@
+[
+  {
+    "path": "crates/tobkiri-canon/src/codec.rs",
+    "bytes": 16519,
+    "sha256": "d1c2491b98e35433792205bf255d0f1ca5bab36600736bc3e03d9052df9f7379"
+  },
+  {
+    "path": "crates/tobkiri-wit/wit/core/core.wit",
+    "bytes": 5732,
+    "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/integer-v2.observations.json",
+    "bytes": 60331,
+    "sha256": "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json",
+    "bytes": 580,
+    "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/oracle.json",
+    "bytes": 20051,
+    "sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+    "bytes": 8961,
+    "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+    "bytes": 8184,
+    "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/app.py",
+    "bytes": 1410,
+    "sha256": "13aeb755387089e0151f38d25a3f917b5b417cba7210d91334a5f1e3a1eeb07f"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/app_v2.py",
+    "bytes": 1978,
+    "sha256": "0e0ba561b6ea7ce749024b2656384d14e040bca5f1505949ad51322882e29f75"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter.py",
+    "bytes": 1477,
+    "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter_v2.py",
+    "bytes": 1972,
+    "sha256": "ec5b33231f7226b6040486eb6cd43ff5e39409dd14562927a748915e7511041b"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/inventory.json",
+    "bytes": 16854,
+    "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/original_bridge.py",
+    "bytes": 2867,
+    "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/provenance.json",
+    "bytes": 5246,
+    "sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit",
+    "bytes": 364,
+    "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack.wit",
+    "bytes": 364,
+    "sha256": "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75"
+  },
+  {
+    "path": "scripts/wasm/freeze_ordered_tool_bridge.py",
+    "bytes": 5016,
+    "sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04"
+  },
+  {
+    "path": "scripts/wasm/observe_ordered_integer_v2.py",
+    "bytes": 12396,
+    "sha256": "6949560ac5e901fe0e780fab22ddd20f441295b7fbc0d0f0b91e36941d93f9cb"
+  },
+  {
+    "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
+    "bytes": 18009,
+    "sha256": "f3034aa6c4296751ba69d820ba8ba688e4c0783f39b48d43e55a2eb38ed3b075"
+  },
+  {
+    "path": "scripts/wasm/replay_ordered_tool_bridge.py",
+    "bytes": 10226,
+    "sha256": "f82c67afb9c9ce38068f5187d5ebf1697cfd0ee3b1bdf5d0830f9e3fd2e8b525"
+  },
+  {
+    "path": "scripts/wasm/replay_ordered_tool_bridge_v2.py",
+    "bytes": 23211,
+    "sha256": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe"
+  },
+  {
+    "path": "scripts/wasm/stage_ordered_tool_bridge.py",
+    "bytes": 5813,
+    "sha256": "ecc9427fbe1bc2d351e3e50900a716455d47b2cdbc261275e7bc1a9a9cc07554"
+  },
+  {
+    "path": "scripts/wasm/stage_ordered_tool_bridge_v2.py",
+    "bytes": 9320,
+    "sha256": "5fb02eb2aa2b28aec9163e7b00f2da51472feb0293543ce010a3ad77a5766b2d"
+  },
+  {
+    "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+    "bytes": 17989,
+    "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+    "bytes": 220761,
+    "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+    "bytes": 255256,
+    "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+    "bytes": 66097,
+    "sha256": "9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+    "bytes": 4210,
+    "sha256": "594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+    "bytes": 5223,
+    "sha256": "7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json",
+    "bytes": 4108,
+    "sha256": "9a4e26280f902adc8f9b89566715b08f83de247d59bd37b335ed9ad376363cdd"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json",
+    "bytes": 2998,
+    "sha256": "00617d083d1924da5e121106842cd9a32d19f47dafffb4016d8b569885c7439e"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json",
+    "bytes": 5453,
+    "sha256": "025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+    "bytes": 5407,
+    "sha256": "27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0"
+  },
+  {
+    "path": "tobkiri_runtime/tobkiri_host/broker.py",
+    "bytes": 78663,
+    "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
+  }
+]

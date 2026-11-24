@@ -306,7 +306,7 @@
     }
   ],
   "adapter": {
-    "python": "ecosystem.defaultspack.domain.connections.cloudflare:CloudflareConnectionAdapter",
+    "python": "ecosystem.rumi_provider_registry_pack.runtime.connection_adapters:CloudflareConnectionAdapter",
     "sdk_optional": true
   },
   "settings": {

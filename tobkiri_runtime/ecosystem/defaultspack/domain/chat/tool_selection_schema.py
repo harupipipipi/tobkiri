@@ -7,6 +7,7 @@ from typing import Any
 COMPUTER_TOOL_IDS = {"computer_use", "browser_computer", "browser_use", "browser_companion"}
 TOOL_SELECTION_MODES = {"auto", "review", "manual", "none"}
 TOOL_SELECTION_SCOPES = {"turn", "conversation"}
+CAPABILITY_TARGET_KINDS = {"activity", "service", "tool", "skill"}
 TOOL_SELECTION_STRATEGIES = {
     "hybrid",
     "semantic",
@@ -18,12 +19,17 @@ TOOL_SELECTION_STRATEGIES = {
 
 
 @dataclass(frozen=True)
-class ToolTarget:
+class CapabilityTarget:
+    """A structured Activity, Service, Tool, or Skill target."""
+
     kind: str
     id: str
 
     def to_dict(self) -> dict[str, str]:
         return {"kind": self.kind, "id": self.id}
+
+
+ToolTarget = CapabilityTarget
 
 
 @dataclass
@@ -124,32 +130,39 @@ class ToolSelectionDecision:
         }
 
 
-def normalize_tool_target(value: Any) -> ToolTarget | None:
-    if isinstance(value, ToolTarget):
+def normalize_tool_target(value: Any) -> CapabilityTarget | None:
+    if isinstance(value, CapabilityTarget):
         return value
     if isinstance(value, str):
         target_id = value.strip()
-        return ToolTarget("tool", target_id) if target_id else None
+        return CapabilityTarget("tool", target_id) if target_id else None
     if not isinstance(value, dict):
         return None
     kind = str(value.get("kind") or value.get("type") or "").strip().lower()
-    if kind not in {"tool", "service"}:
+    if kind not in CAPABILITY_TARGET_KINDS:
         if value.get("tool_id") and not value.get("service_id"):
             kind = "tool"
         elif value.get("service_id") and not value.get("tool_id"):
             kind = "service"
-    target_id = str(value.get("id") or value.get("tool_id") or value.get("service_id") or "").strip()
+    target_id = str(
+        value.get("id")
+        or value.get("tool_id")
+        or value.get("service_id")
+        or value.get("activity_id")
+        or value.get("skill_id")
+        or ""
+    ).strip()
     if not target_id:
         return None
-    if kind not in {"tool", "service"}:
+    if kind not in CAPABILITY_TARGET_KINDS:
         return None
-    return ToolTarget(kind, target_id)
+    return CapabilityTarget(kind, target_id)
 
 
-def normalize_tool_targets(value: Any) -> list[ToolTarget]:
+def normalize_tool_targets(value: Any) -> list[CapabilityTarget]:
     if not isinstance(value, list):
         return []
-    targets: list[ToolTarget] = []
+    targets: list[CapabilityTarget] = []
     seen: set[tuple[str, str]] = set()
     for item in value:
         target = normalize_tool_target(item)

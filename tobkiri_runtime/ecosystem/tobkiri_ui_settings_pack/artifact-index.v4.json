@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:e70ad7d570cdaf8a2b6c57caf5815d8850a53e660af1254b4df307f64562c62f",
+  "artifacts": [
+    {
+      "digest": "sha256:08b89f5767c9a6e9b865264964168eb3b763aef17fc8bd7d71e736524c455d59",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:7b7f626eac6a2778d782c70f14c7f6ae1e5d63762c07c53914abca03a19a4da4",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:1fd78ced1e8cca43b8f3b04bfa3ad90ee2ef04dc354a9bd9049ae7814c16da2f",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
+      "path": "runtime/model_search.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e925ea8223b17d11947b13e1f16da380c9df29adfb861099a90ddaf4eabe40f7",
+      "path": "runtime/projects.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
+      "path": "runtime/public-settings-fields.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
+      "path": "runtime/settings.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
+      "path": "runtime/state_changes.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:a0dd7d79df591fd6bd54f0d24eb1ff93f7ec0603ceedeb335e9a26613c98664d"
+  },
+  "pack_id": "tobkiri_ui_settings_pack",
+  "source_identity": "sha256:8777362a35abb0dd1c7a4f7456bc1a5c2fc7980b5178744d6ec392d93ee58f63"
+}

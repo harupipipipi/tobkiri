@@ -1,0 +1,87 @@
+name: Issue 1520 actual native shared-state capacity
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state, codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-native-shared-state.yml'
+      - 'crates/tobkiri-gate/**'
+      - 'crates/tobkiri-store/**'
+      - 'crates/tobkiri-core/**'
+      - 'tools/quality/issue_1520_ci.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-shared-state-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-native-capacity:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-state
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the actual supported native ownership platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> .cargo-shared-state
+          shared-key: native-shared-state-rust194
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Check existing native capacity accounting regression tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/existing-native-capacity.log" --expected-passed 8 --
+          cargo test --locked -p tobkiri-gate --lib native_setup::tests:: -- --nocapture
+      - name: Exercise shared state with real roots and two actual operations
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/shared-state-capacity.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-store --lib native_shared_state_capacity_tests::
+          -- --nocapture
+      - name: Exercise the opt-in coordinator with actual native work and operations
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-flight.log" --expected-passed 8 --
+          cargo test --locked -p tobkiri-core --features native-shared-state
+          --lib native_flight::tests:: -- --nocapture
+      - name: Exercise native job owner fence, work custody and retained results
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-job.log" --expected-passed 7 --
+          cargo test --locked -p tobkiri-core --features native-shared-state
+          --lib native_job::tests:: -- --nocapture
+      - name: Check strict Rust lint for all three changed crates
+        run: >-
+          cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
+          --features tobkiri-core/native-shared-state --all-targets -- -D warnings
+      - name: Retain actual accounting evidence without product-parity claims
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-shared-state-capacity
+          path: |
+            ${{ runner.temp }}/existing-native-capacity.log*
+            ${{ runner.temp }}/shared-state-capacity.log*
+            ${{ runner.temp }}/native-flight.log*
+            ${{ runner.temp }}/native-job.log*
+          if-no-files-found: warn

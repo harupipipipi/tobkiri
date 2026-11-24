@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/shell_release_v4.schema.json",
+  "title": "Tobkiri Shell v4 build and release records",
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "enum": ["macos", "linux", "windows"]
+        },
+        "architecture": {
+          "enum": ["arm64", "x86_64"]
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_revision": {
+          "$ref": "#/$defs/nonEmpty"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "artifact_id",
+        "artifact_path",
+        "platform",
+        "architecture",
+        "build_profile",
+        "source_identity",
+        "source_revision"
+      ],
+      "properties": {
+        "schema": {
+          "const": "io.tobkiri.shell.build-output.v4"
+        },
+        "artifact_path": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "build_profile": {
+          "const": "release"
+        }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        { "$ref": "#/$defs/identity" }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "catalog_revision",
+        "artifact_index_sha256",
+        "artifact_id",
+        "artifact_sha256",
+        "platform",
+        "architecture",
+        "source_identity",
+        "source_revision",
+        "lock_revision"
+      ],
+      "properties": {
+        "schema": {
+          "const": "io.tobkiri.shell.profile-lock.v4"
+        },
+        "catalog_revision": { "$ref": "#/$defs/sha256" },
+        "artifact_index_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "lock_revision": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        { "$ref": "#/$defs/identity" }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "artifact_id",
+        "path",
+        "sha256",
+        "size",
+        "platform",
+        "architecture",
+        "source_identity",
+        "source_revision"
+      ],
+      "properties": {
+        "schema": {
+          "const": "io.tobkiri.shell.artifact-index.v4"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^bundled/presentation-artifacts/[^/]+/.+"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        { "$ref": "#/$defs/identity" }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "schema",
+        "catalog_sha256",
+        "artifact_index_sha256",
+        "profile_lock_sha256",
+        "artifact_id",
+        "platform",
+        "architecture",
+        "source_identity",
+        "source_revision",
+        "key_id",
+        "public_key",
+        "signature"
+      ],
+      "properties": {
+        "schema": {
+          "const": "io.tobkiri.shell.release.v4"
+        },
+        "catalog_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_index_sha256": { "$ref": "#/$defs/sha256" },
+        "profile_lock_sha256": { "$ref": "#/$defs/sha256" },
+        "key_id": { "$ref": "#/$defs/nonEmpty" },
+        "public_key": { "$ref": "#/$defs/nonEmpty" },
+        "signature": { "$ref": "#/$defs/nonEmpty" }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        { "$ref": "#/$defs/identity" }
+      ]
+    }
+  ]
+}

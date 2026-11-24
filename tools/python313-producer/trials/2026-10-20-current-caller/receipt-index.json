@@ -1,0 +1,104 @@
+{
+  "format": "tobkiri.gateway-tool-caller-current-trial-archive/1",
+  "kind": "index of existing trial evidence; not a new execution receipt",
+  "date": "2026-10-20",
+  "replay_receipt_sha256": "be47ef5b7553b21d773120823870c7dc4a1663cd7f01b7ad1b7eca8f72eee828",
+  "source_observations_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
+  "pins_document_sha256": "d8ed300d82dd36e2bf09cd2988850fb0a2291d604b37da0fc72a48345f91c916",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 5402,
+      "sha256": "8a40ae3ef9bca9397f2bcca2ce72c8f46b226fefa94baf87030776327951a5e0"
+    },
+    {
+      "path": "caller.component.build.json",
+      "bytes": 8451,
+      "sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477"
+    },
+    {
+      "path": "capture.json",
+      "bytes": 946,
+      "sha256": "18fe7784a04b25c5eecb4f8990004dd582281715da81e0792c642bacf0b399d4"
+    },
+    {
+      "path": "composition.wac",
+      "bytes": 532,
+      "sha256": "107675f2bfcdbe32bd7eab4c77a9aa9bde2e6dc2e6d1aa9378989a006f2ba4b4"
+    },
+    {
+      "path": "pins.json",
+      "bytes": 786,
+      "sha256": "d8ed300d82dd36e2bf09cd2988850fb0a2291d604b37da0fc72a48345f91c916"
+    },
+    {
+      "path": "provider.component.build.json",
+      "bytes": 8535,
+      "sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d"
+    },
+    {
+      "path": "replay-trial.py",
+      "bytes": 609,
+      "sha256": "d3605d6e0467aab7f324056d91c1c66a2146f9a4b3ccf625529e7634e3c5bd2d"
+    },
+    {
+      "path": "replay.input-inventory.json",
+      "bytes": 338409,
+      "sha256": "96ac88c1ea7afaa72b48d5173b718e0d0f0498fbefc45d90c3a2944e98b5f24a"
+    },
+    {
+      "path": "replay.inputs-unchanged.json",
+      "bytes": 49,
+      "sha256": "14cedfb0452ecdc7316812074c9ca0dcf60a96d45cedb975e7239338a84e1c69"
+    },
+    {
+      "path": "replay.json",
+      "bytes": 93617,
+      "sha256": "be47ef5b7553b21d773120823870c7dc4a1663cd7f01b7ad1b7eca8f72eee828"
+    },
+    {
+      "path": "replay.supervision.json",
+      "bytes": 560,
+      "sha256": "5cbef9f388eb6b656400047c1767e65322846707205308ef5aec8645f039f0af"
+    },
+    {
+      "path": "source-capture.json",
+      "bytes": 15103,
+      "sha256": "e73cca041d383434302d89fdc53f0dbf69c095631c6f3a1dc4d2839d237bc3a4"
+    },
+    {
+      "path": "source-observations.json",
+      "bytes": 94513,
+      "sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced"
+    },
+    {
+      "path": "supervise.py",
+      "bytes": 5845,
+      "sha256": "dab8468b5b6d8cd473b5ea5b634b78d75a44ed1e11aa37928866fe4979872df9"
+    }
+  ],
+  "evidence_counts": {
+    "cases": 30,
+    "classifications": {
+      "success": 16,
+      "provider-invalid": 7,
+      "provider-nonfinite": 7
+    },
+    "runtime_records": 60,
+    "explicit_returned_calls": 210,
+    "separate_post_return_event_list_present": false,
+    "post_return_basis": "unchanged cleanup path, no retained failures, and all cases completed",
+    "captured_source_files": 83,
+    "mounted_input_records": 1651
+  },
+  "scope": {
+    "new_build_or_replay_performed_while_archiving": false,
+    "native_core_acceptance": false,
+    "gate_runtime_acceptance": false,
+    "production_enabled": false,
+    "authority_granted": false,
+    "billing_authority_claimed": false,
+    "historical_trial_rewritten": false,
+    "binaries_included": false
+  }
+}

@@ -1,0 +1,3429 @@
+{
+  "all_cases_completed": true,
+  "all_expected_results_matched": true,
+  "all_five_guest_runtimes_verified": true,
+  "all_guest_calls_returned": true,
+  "all_lifecycles_completed": true,
+  "all_post_returns_completed": true,
+  "all_typed_error_arms_executed": false,
+  "authority_granted": false,
+  "billing_authority_claimed": false,
+  "build_performed": false,
+  "caller_activated": false,
+  "compilation_bounded_by_guest_fuel_or_epoch": false,
+  "compilation_wall_time_bounded": false,
+  "complete_case_set": true,
+  "component_pins": {
+    "bridge": {
+      "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+      "receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d"
+    },
+    "caller": {
+      "artifact_sha256": "cb561cb9b9b85aaf1de9cb74a57ffece061bd4b8100d6030b5aabc79b2cb7fc1",
+      "receipt_sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477"
+    },
+    "composition_wac_sha256": "b75d7b088261fa7aeff21451854e9c4a4d83db4ce28f6f31a2dad32612b7cdef",
+    "finalizer": {
+      "artifact_sha256": "9f1dac995a4254f6e3c160d61ccdced2e86a0e80b7e92f2564597f3549628f5b",
+      "receipt_sha256": "3e029ab3960d24589896ad2d1f69f8058cef3deabad7cd86961bb09ce2e4153b"
+    },
+    "runner_source_bindings_sha256": "d797f692cc9e7d908290021b3c82a817f14aef34bd0a0fd5403e5b0fd323f7e9",
+    "source_observations_sha256": "5fbeda134b803617425be0befefee9be2ad6b4422dd339464353b5102f58d16f",
+    "stream-normalizer": {
+      "artifact_sha256": "6cd50d3e2569c627b47a4cfa6087a4616c65d69b49b15066ea200dbafe2b7bcb",
+      "receipt_sha256": "fc228bb094e899aa98f397012098d7064968de1a3adb9f5ee85e2fccca5ea96d"
+    },
+    "usage-cost": {
+      "artifact_sha256": "fbbd85ab37975c33bcee87eb8d3f874e693838ec39189e7a6dbc05e1b9977f90",
+      "receipt_sha256": "f3add80b1f71e3c3d5c336d6f8c89d63a914c6b726eb5186dba763df8c76bdc7"
+    },
+    "wac_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda"
+  },
+  "component_source_evidence": {
+    "bridge": {
+      "plan_sha256": "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "243e0040c4731b3c4cd898fca4112b3e6f861a7815656d793f354bde8772fc72",
+      "stage_sha256": "58b7c42f5479f40ee672a8f76effd31e60db9d7bd40288b0d7ad0da9ff764a2e"
+    },
+    "caller": {
+      "plan_sha256": "bc03deb9d3b214f083258785f2cac52a399aaf3381b1913dea221a21fd4e69ec",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "47e0ab2a526e81f192e6fdcde6ac083d28a8f561fd54585091d06ededb657761",
+      "stage_sha256": "34661a8f3b142120e55f9925b6496cc297f1ea7361dd512ac962dad7adf8d0f0"
+    },
+    "finalizer": {
+      "plan_sha256": "4dc41979980fa297a73983c2947defda66cf32674434b9b3e452ca8f797992d5",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "2ce3a912ceb0674fc3e54446781671784e56ad5de888d05585348620b2ff9080",
+      "stage_sha256": "7540250249f36b0a8cb63eee56da57c090980751c7cbc2bf9c95412b828644d3"
+    },
+    "stream-normalizer": {
+      "plan_sha256": "99d9c6b864bb5ca66f3ac93b2f32408c2d8f1c9946fe19c1b7098001053813a6",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "6d1930da85b850de2c4fa93f1400c2f991e32c268e235015f46493ef1ea1a8f4",
+      "stage_sha256": "f5850253df8c0d8a27e9977d13ff74ca224a2bd5e588bc627912d347eeccacad"
+    },
+    "usage-cost": {
+      "plan_sha256": "ec95b29b55324381aadcd5906832072b5f1da112ad604db6b39da6b6064cbf63",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "ac7de109a66c1cc42777a7e1031641f9f1dc8d47519c7923736a75c0d0291f4a",
+      "stage_sha256": "fdde65e6b4d7d9e7ee3a991f50c090811792158d33062fb5f243cdffd083c12a"
+    }
+  },
+  "composition_bytes": 89516870,
+  "composition_command": [
+    "wac",
+    "compose",
+    "replay.wac",
+    "--dep",
+    "local:bridge=bridge.wasm",
+    "--dep",
+    "local:caller=caller.wasm",
+    "--dep",
+    "local:usage-cost=usage-cost.wasm",
+    "--dep",
+    "local:stream-normalizer=stream-normalizer.wasm",
+    "--dep",
+    "local:finalizer=finalizer.wasm",
+    "--deps-dir",
+    "no-ambient-dependencies",
+    "-o",
+    "composed.wasm"
+  ],
+  "composition_sha256": "e79b9419a9ac665f53399f4946d17b2e4330d43b5f7e5df4feb9739174d5f58e",
+  "composition_tool_stderr": "",
+  "composition_wac_sha256": "b75d7b088261fa7aeff21451854e9c4a4d83db4ce28f6f31a2dad32612b7cdef",
+  "core_runtime_acceptance": false,
+  "dependencies": "actual composed Python bridge/caller/usage/stream components",
+  "engine_memory_reservation_bytes": 134217728,
+  "engine_memory_reservation_scope": "128 MiB fixture virtual reservation, retaining default guards, bounds checks, growth, trap and compiler safety settings and unchanged external OS limits",
+  "execution_observation_scope": "Execution flags report explicit export calls attempted/returned; instantiation flags are separate, not instruction-level observations.",
+  "expected_guest_runtime": {
+    "python": "3.13.16",
+    "unicode": "15.1.0"
+  },
+  "exports": [
+    "bridge-lifecycle",
+    "caller-lifecycle",
+    "finalizer-lifecycle",
+    "local:ai-gateway-finalizer-python/finalizer@1.0.0",
+    "local:ai-gateway-tool-caller-python/caller@1.0.0",
+    "local:ai-stream-normalizer-python/stream-normalizer@1.0.0",
+    "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+    "local:ai-usage-cost-python/usage-cost@1.0.0",
+    "stream-normalizer-lifecycle",
+    "usage-cost-lifecycle"
+  ],
+  "external_process_supervisor_required": true,
+  "finalizer_activated": false,
+  "format": "tobkiri.gateway-finalizer-development-replay/1",
+  "fuel_per_case": 2000000000,
+  "full_gateway_migration_claimed": false,
+  "full_host_replay_performed": false,
+  "gate_runtime_acceptance": false,
+  "guest_import_call_counts_observed": false,
+  "guest_timeout_scope": "entire case including instantiation and all ten lifecycle calls",
+  "guest_timeout_seconds": 30.0,
+  "host_import_policy": "all five residual canonical Core imports trap",
+  "imports": [
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "legacy_http_error_parity_claimed": false,
+  "native_core_acceptance": false,
+  "observations": [
+    {
+      "actual": {
+        "output_json": "{\"status\":\"ok\",\"request_id\":\" request-id \",\"model_id\":\"model-recorded\",\"provider_instance_id\":\"provider-recorded\",\"catalog_provider_instance_id\":\"catalog-recorded\",\"catalog_revision\":\"r7\",\"pricing_revision\":\"r7\",\"output\":\"answer\",\"tool_intents\":[{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"echo\",\"arguments\":{\"z\":1,\"a\":2},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}],\"finish_reason\":\"stop\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3},\"usage_provenance\":\"provider_reported\",\"usage_cost\":{\"input_tokens\":2.0,\"output_tokens\":3.0,\"total_tokens\":5.0,\"cost\":0.8,\"currency\":\"EUR\",\"known\":true,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"},\"attempts\":[{\"attempt\":1,\"error_code\":\"provider_unavailable\"}]}",
+        "status": "finalized"
+      },
+      "case_completed": true,
+      "classification": "finalized",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 32107712,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-tools-usage",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "{\"status\":\"ok\",\"output\":\"answer\",\"tool_intents\":[{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"echo\",\"arguments\":{\"z\":1,\"a\":2},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}],\"finish_reason\":\"stop\",\"delivery_mode\":\"buffered\",\"request_id\":\" request-id \",\"model_id\":\"model-recorded\",\"provider_instance_id\":\"provider-recorded\",\"events\":[{\"request_id\":\"request-id\",\"sequence\":0,\"type\":\"tool_intent_delta\",\"delta\":null,\"tool_intent\":{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"first\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":1,\"type\":\"usage\",\"delta\":null,\"tool_intent\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":3},\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2,\"usage_cost\":{\"input_tokens\":2.0,\"output_tokens\":3.0,\"total_tokens\":5.0,\"cost\":0.8,\"currency\":\"EUR\",\"known\":true,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"}},{\"request_id\":\"request-id\",\"sequence\":2,\"type\":\"text_delta\",\"delta\":\"delta\",\"tool_intent\":null,\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":3,\"type\":\"tool_intent_delta\",\"delta\":null,\"tool_intent\":{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"second\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":4,\"type\":\"usage\",\"delta\":null,\"tool_intent\":null,\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":5},\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2,\"usage_cost\":{\"input_tokens\":4.0,\"output_tokens\":5.0,\"total_tokens\":9.0,\"cost\":1.4,\"currency\":\"EUR\",\"known\":true,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"}},{\"request_id\":\"request-id\",\"sequence\":5,\"type\":\"finish\",\"delta\":null,\"tool_intent\":null,\"usage\":null,\"finish_reason\":\"stop\",\"error_code\":null,\"provider_attempt\":2}],\"attempts\":[{\"attempt\":1,\"error_code\":\"provider_unavailable\"}]}",
+        "status": "finalized"
+      },
+      "case_completed": true,
+      "classification": "finalized",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 66855964,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-ordered-tools-usage",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "original domain invalid",
+        "status": "domain-rejected"
+      },
+      "case_completed": true,
+      "classification": "domain-rejected",
+      "domain_rejection_parity": true,
+      "expected_result_matched": true,
+      "fuel_consumed": 19798635,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-domain-invalid",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": false,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "unavailable",
+        "message": "original domain unavailable",
+        "status": "domain-rejected"
+      },
+      "case_completed": true,
+      "classification": "domain-rejected",
+      "domain_rejection_parity": true,
+      "expected_result_matched": true,
+      "fuel_consumed": 19807362,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-domain-unavailable",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": false,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "usage cost provider arithmetic failed",
+        "status": "core-error"
+      },
+      "case_completed": true,
+      "classification": "core-error",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 43130026,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-later-usage-overflow",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "core-error"
+      },
+      "case_completed": true,
+      "classification": "core-error",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 50454144,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-later-tool-invalid",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "usage cost provider arithmetic failed",
+        "status": "core-error"
+      },
+      "case_completed": true,
+      "classification": "core-error",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 28710488,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-nonfinite-cost",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "output_json": "{\"status\":\"ok\",\"request_id\":\" request-id \",\"model_id\":\"model-recorded\",\"provider_instance_id\":\"provider-recorded\",\"catalog_provider_instance_id\":\"catalog-recorded\",\"catalog_revision\":\"r7\",\"pricing_revision\":\"r7\",\"output\":\"answer\",\"tool_intents\":[{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"echo\",\"arguments\":{\"z\":1,\"a\":2},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}],\"finish_reason\":\"stop\",\"usage\":{},\"usage_provenance\":\"provider_reported\",\"usage_cost\":{\"input_tokens\":null,\"output_tokens\":null,\"total_tokens\":null,\"cost\":null,\"currency\":null,\"known\":false,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"},\"attempts\":[{\"attempt\":1,\"error_code\":\"provider_unavailable\"}]}",
+        "status": "finalized"
+      },
+      "case_completed": true,
+      "classification": "finalized",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 31440989,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-absent-usage",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "{\"status\":\"ok\",\"request_id\":\" request-id \",\"model_id\":\"model-recorded\",\"provider_instance_id\":\"provider-recorded\",\"catalog_provider_instance_id\":\"catalog-recorded\",\"catalog_revision\":\"r7\",\"pricing_revision\":\"r7\",\"output\":\"answer\",\"tool_intents\":[{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"echo\",\"arguments\":{\"z\":1,\"a\":2},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}],\"finish_reason\":\"stop\",\"usage\":{\"input_tokens\":\"Infinity\",\"output_tokens\":2},\"usage_provenance\":\"provider_reported\",\"usage_cost\":{\"input_tokens\":null,\"output_tokens\":2.0,\"total_tokens\":null,\"cost\":null,\"currency\":null,\"known\":false,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"},\"attempts\":[{\"attempt\":1,\"error_code\":\"provider_unavailable\"}]}",
+        "status": "finalized"
+      },
+      "case_completed": true,
+      "classification": "finalized",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 32115467,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-string-nonfinite-usage",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "{\"status\":\"ok\",\"output\":\"answer\",\"tool_intents\":[],\"finish_reason\":\"stop\",\"delivery_mode\":\"buffered\",\"request_id\":\" request-id \",\"model_id\":\"model-recorded\",\"provider_instance_id\":\"provider-recorded\",\"events\":[{\"request_id\":\"request-id\",\"sequence\":0,\"type\":\"tool_intent_delta\",\"delta\":null,\"tool_intent\":{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"first\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":1,\"type\":\"usage\",\"delta\":null,\"tool_intent\":null,\"usage\":{\"input_tokens\":2,\"output_tokens\":3},\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2,\"usage_cost\":{\"input_tokens\":2.0,\"output_tokens\":3.0,\"total_tokens\":5.0,\"cost\":0.8,\"currency\":\"EUR\",\"known\":true,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"}},{\"request_id\":\"request-id\",\"sequence\":2,\"type\":\"text_delta\",\"delta\":\"delta\",\"tool_intent\":null,\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":3,\"type\":\"tool_intent_delta\",\"delta\":null,\"tool_intent\":{\"intent_id\":\"request-id:tool:0\",\"request_id\":\"request-id\",\"operation\":\"second\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},\"usage\":null,\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2},{\"request_id\":\"request-id\",\"sequence\":4,\"type\":\"usage\",\"delta\":null,\"tool_intent\":null,\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":5},\"finish_reason\":null,\"error_code\":null,\"provider_attempt\":2,\"usage_cost\":{\"input_tokens\":4.0,\"output_tokens\":5.0,\"total_tokens\":9.0,\"cost\":1.4,\"currency\":\"EUR\",\"known\":true,\"usage_provenance\":\"provider_reported\",\"pricing_revision\":\"r7\"}},{\"request_id\":\"request-id\",\"sequence\":5,\"type\":\"finish\",\"delta\":null,\"tool_intent\":null,\"usage\":null,\"finish_reason\":\"stop\",\"error_code\":null,\"provider_attempt\":2}],\"attempts\":[{\"attempt\":1,\"error_code\":\"provider_unavailable\"}]}",
+        "status": "finalized"
+      },
+      "case_completed": true,
+      "classification": "finalized",
+      "domain_rejection_parity": false,
+      "expected_result_matched": true,
+      "fuel_consumed": 60685368,
+      "guest_calls_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_calls_returned": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "guest_runtime": {
+        "bridge": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "finalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "stream-normalizer": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "usage-cost": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-null-top-level-tools",
+      "instantiation_attempted": true,
+      "instantiation_returned": true,
+      "lifecycle": {
+        "bridge": {
+          "init": true,
+          "shutdown": true
+        },
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "finalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "stream-normalizer": {
+          "init": true,
+          "shutdown": true
+        },
+        "usage-cost": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "bridge.init": {
+          "status": "ok"
+        },
+        "bridge.shutdown": {
+          "status": "ok"
+        },
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "finalizer.init": {
+          "status": "ok"
+        },
+        "finalizer.shutdown": {
+          "status": "ok"
+        },
+        "stream-normalizer.init": {
+          "status": "ok"
+        },
+        "stream-normalizer.shutdown": {
+          "status": "ok"
+        },
+        "usage-cost.init": {
+          "status": "ok"
+        },
+        "usage-cost.shutdown": {
+          "status": "ok"
+        }
+      },
+      "post_return_attempted": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "post_return_completed": [
+        "bridge.init",
+        "caller.init",
+        "usage-cost.init",
+        "stream-normalizer.init",
+        "finalizer.init",
+        "bridge.runtime-info",
+        "caller.runtime-info",
+        "usage-cost.runtime-info",
+        "stream-normalizer.runtime-info",
+        "finalizer.runtime-info",
+        "finalizer.operation",
+        "finalizer.shutdown",
+        "stream-normalizer.shutdown",
+        "usage-cost.shutdown",
+        "caller.shutdown",
+        "bridge.shutdown"
+      ],
+      "source_success_parity": true,
+      "typed_error_custody": false
+    }
+  ],
+  "original_reference_runtime": {
+    "implementation": "CPython",
+    "int_max_str_digits": 4300,
+    "python": "3.13.5",
+    "unicode": "15.1.0"
+  },
+  "partial_stream_mutations_observed": false,
+  "pins_document_sha256": "c6d2b98def2bb07c95b29ec0e0f845a47c73c747884e297b60f26bc61d0d727b",
+  "production_enabled": false,
+  "protocol": "ordered-finite-json-v2",
+  "replay_sha256": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063",
+  "replay_succeeded": true,
+  "retry_parity_claimed": false,
+  "runner_source_bindings": {
+    "freeze_ordered_tool_bridge.py": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04",
+    "observe_gateway_finalizer.py": "4e2c8aa20a567a8d49463c9b99803a2f585ee56f9f25cea1c0c6fb3c82d1ac43",
+    "observe_gateway_tool_caller.py": "73393f7f1ff214dec98ead55b7f7b64790c9a6e6125b70d4f825586245f3cef7",
+    "prepare_gateway_finalization_providers.py": "d212e0e3fa782a03dcd4d4a772f8ddf7158dad5eb437b7d7373e24939074fa80",
+    "prepare_gateway_finalizer.py": "46c49cd9a1d33bbbde8d11c94dc3bf8a240ba15780f47c99e56eb2167698e20e",
+    "prepare_gateway_tool_caller.py": "9412b61e277e8247b62965bbe8a40ed2027d3cea4ec2259067422f26f8c7069b",
+    "prepare_ordered_tool_bridge.py": "f3034aa6c4296751ba69d820ba8ba688e4c0783f39b48d43e55a2eb38ed3b075",
+    "replay_gateway_finalizer.py": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063",
+    "replay_gateway_tool_caller.py": "839ef1f516856237934c8818d774716d9883c4974d639eb80554575638cb6696",
+    "replay_ordered_tool_bridge_v2.py": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe",
+    "stage_gateway_finalization_providers.py": "6599e093b4e6ad7da134d0f6b344f4a24118338a669d89a025e6b7c606d36eeb",
+    "stage_gateway_finalizer.py": "a21694608ff7af5e1f91fca8abfd0a869eaa97bb6e9d95bdd914478cffb3499b",
+    "stage_gateway_tool_caller.py": "ce1e3849868e24b10db1d2f52b07216fee8a8e625d3ee2ace3d1afe7c7e3b0c9",
+    "stage_ordered_tool_bridge.py": "ecc9427fbe1bc2d351e3e50900a716455d47b2cdbc261275e7bc1a9a9cc07554",
+    "stage_ordered_tool_bridge_v2.py": "5fb02eb2aa2b28aec9163e7b00f2da51472feb0293543ce010a3ad77a5766b2d"
+  },
+  "scope": "development-five-component-not-native-core-acceptance",
+  "source_observations_sha256": "5fbeda134b803617425be0befefee9be2ad6b4422dd339464353b5102f58d16f",
+  "source_reference_scope": "original source and declared finite boundaries, not Host parity",
+  "store_limit_difference_from_two_component_fixture": {
+    "instances": {
+      "five_producer_fixture": 320,
+      "two_producer_fixture": 128
+    },
+    "memories": {
+      "five_producer_fixture": 8,
+      "two_producer_fixture": 4
+    }
+  },
+  "store_limit_scope": "320 instances is 5x the single-provider allowance of 64; 8 memories is a bounded five-producer fixture allowance, not a measured minimum. 128 MiB memory_size is per linear memory, not an aggregate process cap. Tables, table elements, fuel, epoch, guards and external OS limits are unchanged.",
+  "store_limits": {
+    "instances": 320,
+    "memories": 8,
+    "memory_size": 134217728,
+    "table_elements": 65536,
+    "tables": 64
+  },
+  "typed_surface": {
+    "exports": {
+      "bridge-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      },
+      "caller-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      },
+      "finalizer-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      },
+      "local:ai-gateway-finalizer-python/finalizer@1.0.0": {
+        "domain-error": [
+          "record",
+          [
+            [
+              "code",
+              "string"
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "finalization-outcome": [
+          "variant",
+          [
+            [
+              "finalized",
+              "string"
+            ],
+            [
+              "domain-rejected",
+              [
+                "record",
+                [
+                  [
+                    "code",
+                    "string"
+                  ],
+                  [
+                    "message",
+                    "string"
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        "generate": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "variant",
+              [
+                [
+                  "finalized",
+                  "string"
+                ],
+                [
+                  "domain-rejected",
+                  [
+                    "record",
+                    [
+                      [
+                        "code",
+                        "string"
+                      ],
+                      [
+                        "message",
+                        "string"
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ],
+        "stream": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "variant",
+              [
+                [
+                  "finalized",
+                  "string"
+                ],
+                [
+                  "domain-rejected",
+                  [
+                    "record",
+                    [
+                      [
+                        "code",
+                        "string"
+                      ],
+                      [
+                        "message",
+                        "string"
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "local:ai-gateway-tool-caller-python/caller@1.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "generate-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ],
+        "stream-event-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "stream-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "local:ai-stream-normalizer-python/stream-normalizer@1.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "normalize": [
+          "func",
+          [
+            [
+              "operation",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ]
+      },
+      "local:ai-tool-bridge-ordered-python/bridge@2.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "normalize": [
+          "func",
+          [
+            [
+              "operation",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ]
+      },
+      "local:ai-usage-cost-python/usage-cost@1.0.0": {
+        "calculate": [
+          "func",
+          [
+            [
+              "operation",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ]
+      },
+      "stream-normalizer-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      },
+      "usage-cost-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      }
+    },
+    "imports": {
+      "tobkiri:core/audit@1.0.0": {
+        "append": [
+          "func",
+          [
+            [
+              "kind",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "json": "string",
+        "read": [
+          "func",
+          [
+            [
+              "after",
+              "u64"
+            ],
+            [
+              "max",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            [
+              "list",
+              "string"
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/clock@1.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "monotonic-ns": [
+          "func",
+          [],
+          "u64"
+        ],
+        "now-ms": [
+          "func",
+          [],
+          "u64"
+        ],
+        "sleep-ms": [
+          "func",
+          [
+            [
+              "ms",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/flow@1.0.0": {
+        "call-port": [
+          "func",
+          [
+            [
+              "shape",
+              "string"
+            ],
+            [
+              "op",
+              "string"
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "call-port-stream": [
+          "func",
+          [
+            [
+              "shape",
+              "string"
+            ],
+            [
+              "op",
+              "string"
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "record",
+              [
+                [
+                  "id",
+                  "u64"
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "callback-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ],
+        "cancel-stream": [
+          "func",
+          [
+            [
+              "s",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          null
+        ],
+        "emit": [
+          "func",
+          [
+            [
+              "output-shape",
+              "string"
+            ],
+            [
+              "event",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "invoke-callback": [
+          "func",
+          [
+            [
+              "c",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "is-cancelled": [
+          "func",
+          [],
+          "bool"
+        ],
+        "json": "string",
+        "pull": [
+          "func",
+          [
+            [
+              "s",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "max",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            [
+              "list",
+              "string"
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "run-flow": [
+          "func",
+          [
+            [
+              "implements",
+              "string"
+            ],
+            [
+              "input",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "record",
+              [
+                [
+                  "id",
+                  "u64"
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "stream-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/random@1.0.0": {
+        "bytes": [
+          "func",
+          [
+            [
+              "n",
+              "u32"
+            ]
+          ],
+          [
+            "list",
+            "u8"
+          ]
+        ]
+      },
+      "tobkiri:core/types@1.0.0": {
+        "callback-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "error-code": [
+          "enum",
+          [
+            "denied",
+            "approval-required",
+            "cancelled",
+            "not-found",
+            "invalid",
+            "limit-exceeded",
+            "conflict",
+            "unavailable",
+            "internal"
+          ]
+        ],
+        "json": "string",
+        "stream-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ]
+      }
+    }
+  },
+  "typed_surface_bytes": 9819,
+  "typed_surface_sha256": "39de0d9e692edb059072cedc463f43a1739c392ec1a7d81585c7cc2cc01f3e0c",
+  "typed_surface_validated": true,
+  "wasm_execution_attempted": true,
+  "wasm_execution_performed": true
+}

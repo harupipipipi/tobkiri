@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import threading
-import time
 from typing import Any
 
 from domain.runtime_config import scheduler_config
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from .scheduler import Scheduler
 from .security import scheduler_enabled
@@ -28,12 +28,15 @@ class SchedulerDaemon:
         self._last_result: dict[str, Any] = {}
         self._last_error = ""
 
-    def start(self) -> dict[str, Any]:
+    def start(
+        self, *, settings_owner: SettingsOwnerPort | None = None,
+    ) -> dict[str, Any]:
         if not scheduler_enabled():
             return {"started": False, "running": False, "reason": "scheduler disabled"}
         if self._thread is not None and self._thread.is_alive():
             return self.status()
         self._stop.clear()
+        self._settings_owner = settings_owner
         self._thread = threading.Thread(target=self._loop, name="defaultspack-scheduler", daemon=True)
         self._thread.start()
         return self.status()
@@ -55,7 +58,9 @@ class SchedulerDaemon:
         while not self._stop.is_set():
             try:
                 if scheduler_enabled():
-                    self._last_result = Scheduler().tick()
+                    self._last_result = Scheduler(
+                        settings_owner=self._settings_owner
+                    ).tick()
                     self._last_error = ""
             except Exception as exc:
                 self._last_error = str(exc)
@@ -69,8 +74,10 @@ class SchedulerDaemon:
             return 60.0
 
 
-def start_scheduler_daemon() -> dict[str, Any]:
-    return SchedulerDaemon().start()
+def start_scheduler_daemon(
+    *, settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
+    return SchedulerDaemon().start(settings_owner=settings_owner)
 
 
 def scheduler_daemon_status() -> dict[str, Any]:

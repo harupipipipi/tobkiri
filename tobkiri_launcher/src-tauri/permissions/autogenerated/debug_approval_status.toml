@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-debug-approval-status"
+description = "Enables the debug_approval_status command without any pre-configured scope."
+commands.allow = ["debug_approval_status"]
+
+[[permission]]
+identifier = "deny-debug-approval-status"
+description = "Denies the debug_approval_status command without any pre-configured scope."
+commands.deny = ["debug_approval_status"]

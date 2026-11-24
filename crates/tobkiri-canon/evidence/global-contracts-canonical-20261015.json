@@ -1,0 +1,131 @@
+{
+  "files": {
+    "Cargo.lock": {
+      "bytes": 91785,
+      "sha256": "505f88069afd6d491e8e26321d39437ccc8b06af0af729d743c80b1de3a89d83"
+    },
+    "Cargo.toml": {
+      "bytes": 3287,
+      "sha256": "a8c23a86991e4604e7ebd6dfecbd2997cc2dec5f46254c7a7ca6aedcf3b245d6"
+    },
+    "crates/tobkiri-canon/Cargo.toml": {
+      "bytes": 424,
+      "sha256": "ab6e35503048986b3a08c88b7b6fee9b70f6dc51ebf8ce466b1eca0b4ea00b3f"
+    },
+    "crates/tobkiri-canon/examples/freeze_launcher_seals.rs": {
+      "bytes": 5910,
+      "sha256": "59bfbd4da9679fade2ad3bdbd3ebaf1f8117e58ad467fd648f11d4dbe982d540"
+    },
+    "crates/tobkiri-canon/src/codec.rs": {
+      "bytes": 16519,
+      "sha256": "d1c2491b98e35433792205bf255d0f1ca5bab36600736bc3e03d9052df9f7379"
+    },
+    "crates/tobkiri-canon/src/files.rs": {
+      "bytes": 3603,
+      "sha256": "31f46dad74e13cb81ecc1ad96aa42dbb68374ae701e2b66eb39242c32b782a42"
+    },
+    "crates/tobkiri-canon/src/ids.rs": {
+      "bytes": 10285,
+      "sha256": "81eb229c3139f8add2199759ab2709a8463fceeb560c6b9771005e61dc4d0da1"
+    },
+    "crates/tobkiri-canon/src/legacy.rs": {
+      "bytes": 5638,
+      "sha256": "96485ffbc08a82f735189f7f47e80c3ddd438be502a4f9c0d12a9d52e901c948"
+    },
+    "crates/tobkiri-canon/src/lib.rs": {
+      "bytes": 7422,
+      "sha256": "4a350021e6d353e68c74b912a3ec7017eb6846255fc690624c60946815f3887e"
+    },
+    "crates/tobkiri-canon/src/ownership.rs": {
+      "bytes": 56634,
+      "sha256": "0c3f318a46db778ee6ab826d6874a4263fd171b3c0f7b06eb76d39b81a591188"
+    },
+    "crates/tobkiri-canon/src/serde_value.rs": {
+      "bytes": 5328,
+      "sha256": "3a8effd0f4698d8c9b50a1b46014925be96c4848006ef1b5e464fdc9cb4aadb4"
+    },
+    "crates/tobkiri-canon/tests/codecs.rs": {
+      "bytes": 4346,
+      "sha256": "4a9c5d439f1d80e245773e04b59af1dda5684ddf8b334ff7c6ef0ac5357cdbf8"
+    },
+    "crates/tobkiri-canon/tests/extra_seals.rs": {
+      "bytes": 10236,
+      "sha256": "d6191d67f3838aede257f6a2e9fc0488814fa82a30954ab3c92fb70de61d67e5"
+    },
+    "crates/tobkiri-canon/tests/ownership.rs": {
+      "bytes": 21161,
+      "sha256": "cf61d20e694b6df3d523f463079df64b3861f2e1f9d6b2e9e690c692cda97ab1"
+    },
+    "crates/tobkiri-canon/tests/vectors.rs": {
+      "bytes": 5408,
+      "sha256": "dd68f2ce29afc15018b6314e8f7f5409aa5c75bbe472bc006560e8567bd7be96"
+    },
+    "tobkiri_runtime/core_runtime/global_contracts/canonical.py": {
+      "bytes": 647,
+      "sha256": "51bb2d362060b64045d218c9bedb3cc0ed0c11bf0476297349f324b7583575d0"
+    },
+    "tools/legacy-vectors/freeze_reference.py": {
+      "bytes": 29179,
+      "sha256": "d149e772e4516f41639eb54627e3faaa38281de31eca231b63dcc2b0f6a03a70"
+    },
+    "tools/legacy-vectors/generate.py": {
+      "bytes": 12748,
+      "sha256": "24da0edaa71b75c00b2c8569d23f3f293eba08370265d719766e8032deb8dddd"
+    },
+    "vectors/canon/LegacyFloat.jsonl": {
+      "bytes": 286978,
+      "sha256": "16f97d2456a914e4c7d11cae6023d680b3665338afd6ded473e02531ccf23516"
+    },
+    "vectors/canon/provenance.json": {
+      "bytes": 13106,
+      "sha256": "29da9cb3b89aea80ad2c76efe4653bff4b5095dabddceb63da1dd4fb26b97758"
+    }
+  },
+  "format": "tobkiri.migration-core-vectors/1",
+  "functions": {
+    "canonical_json": "1c6d49468156ff3294ca3fe4fe92cce8199e2674412af0375339c6e309cc8b2a",
+    "content_identity": "77c9f68aca977f9e468670198b724507a32006992a301607138afa21d77263b7"
+  },
+  "issue": 1520,
+  "legacy_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+  "legacy_unit": "tobkiri_runtime/core_runtime/global_contracts/canonical.py",
+  "limits": [
+    "Closes only the two-function global_contracts/canonical.py mechanism against the frozen corpus.",
+    "Does not close protocol custom byte/depth limits, signatures, authority semantics, workflows, artifacts or aggregate registry modules.",
+    "Does not authorize deletion of legacy source; all other unresolved inventory units and the final migration gate remain open."
+  ],
+  "observed_at": "2026-10-15T08:29:57.933427+00:00",
+  "oracle": {
+    "corpus": "vectors/canon/LegacyFloat.jsonl",
+    "direct_replay_cases": 885,
+    "exact_byte_and_digest_matches": 872,
+    "matching_rejections": 13,
+    "python": "3.14.0",
+    "source_matches_frozen_git": true
+  },
+  "rust_validation": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-p",
+      "tobkiri-canon",
+      "--no-fail-fast"
+    ],
+    "corpus_consumer": "crates/tobkiri-canon/tests/vectors.rs::all_three_python_codec_corpora_match_bytes_and_failures",
+    "exit_code": 0,
+    "finished": "2026-10-15T08:12:51.506807+00:00",
+    "guard_stop": null,
+    "source_identical": true,
+    "started": "2026-10-15T08:12:47.821713+00:00",
+    "tests_failed": 0,
+    "tests_ignored": 0,
+    "tests_passed": 32
+  },
+  "scope": {
+    "canonical_json": "tobkiri_canon::encode(value, Variant::LegacyFloat)",
+    "content_identity": "tobkiri_canon::digest(value, Variant::LegacyFloat)"
+  },
+  "source_tree_sha256": "ab015757630742e839b65df10f90d2e0d54bb8322991b9b88be6e1baad098cc9"
+}

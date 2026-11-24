@@ -16,7 +16,7 @@ RFC 6902 JSON Patch 実装
 import copy
 import json
 import re
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
 
 class JsonPatchError(Exception):
@@ -181,7 +181,7 @@ def _set_by_pointer(doc: Any, pointer: str, value: Any, *, replace: bool = False
             except ValueError:
                 raise JsonPatchError(f"配列に対する無効なインデックス: {last_part}")
     else:
-        raise JsonPatchError(f"値を設定できません: 親がオブジェクトでも配列でもありません")
+        raise JsonPatchError("値を設定できません: 親がオブジェクトでも配列でもありません")
     
     return doc
 
@@ -238,7 +238,7 @@ def _remove_by_pointer(doc: Any, pointer: str) -> Any:
         except ValueError:
             raise JsonPatchError(f"配列に対する無効なインデックス: {last_part}")
     else:
-        raise JsonPatchError(f"削除できません: 親がオブジェクトでも配列でもありません")
+        raise JsonPatchError("削除できません: 親がオブジェクトでも配列でもありません")
     
     return doc
 

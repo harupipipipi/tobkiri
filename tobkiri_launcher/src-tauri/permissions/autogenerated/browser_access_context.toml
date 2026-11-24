@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-access-context"
+description = "Enables the browser_access_context command without any pre-configured scope."
+commands.allow = ["browser_access_context"]
+
+[[permission]]
+identifier = "deny-browser-access-context"
+description = "Denies the browser_access_context command without any pre-configured scope."
+commands.deny = ["browser_access_context"]

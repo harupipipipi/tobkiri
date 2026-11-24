@@ -171,7 +171,7 @@ class TestDefaultspackTransportAdapters(unittest.TestCase):
                 port = server._server.server_address[1]
                 body = b'{"action":"x"}'
                 raw = (
-                    b"POST /api/tools/browser-computer HTTP/1.1\r\n"
+                    b"POST /api/authority/browser-ui-operator HTTP/1.1\r\n"
                     b"Host: 127.0.0.1\r\n"
                     b"Origin: http://127.0.0.1\r\n"
                     b"Content-Type: application/json\r\n"

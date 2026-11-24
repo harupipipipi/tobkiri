@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.local/schemas/command-protocol-v1.schema.json",
+  "title": "Tobkiri Command Protocol v1",
+  "oneOf": [
+    { "$ref": "#/$defs/commandPack" },
+    { "$ref": "#/$defs/resolvedCatalog" }
+  ],
+  "$defs": {
+    "localizedText": {
+      "type": "object",
+      "required": ["fallback"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "fallback": { "type": "string", "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": ["id", "name", "version"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$" },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$" },
+        "aliases": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$" }
+        },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" }
+      },
+      "additionalProperties": false
+    },
+    "option": {
+      "type": "object",
+      "required": ["value", "label"],
+      "properties": {
+        "value": { "type": ["string", "number", "boolean"] },
+        "label": { "$ref": "#/$defs/localizedText" },
+        "description": { "$ref": "#/$defs/localizedText" },
+        "disabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "searchSelect": {
+      "type": "object",
+      "required": ["kind", "argument", "selection", "datasource_ref"],
+      "properties": {
+        "kind": { "const": "search_select" },
+        "argument": { "type": "string", "minLength": 1 },
+        "selection": { "enum": ["single", "multiple"] },
+        "datasource_ref": { "type": "string", "minLength": 3 },
+        "search": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "min_chars": { "type": "integer", "minimum": 0, "maximum": 256 },
+            "debounce_ms": { "type": "integer", "minimum": 0, "maximum": 2000 }
+          },
+          "additionalProperties": false
+        },
+        "keyboard": {
+          "type": "object",
+          "properties": {
+            "commit_keys": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["Enter", "Tab"] }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "select": {
+      "type": "object",
+      "required": ["kind", "argument", "selection"],
+      "properties": {
+        "kind": { "const": "select" },
+        "argument": { "type": "string", "minLength": 1 },
+        "selection": { "enum": ["single", "multiple"] },
+        "options": { "type": "array", "items": { "$ref": "#/$defs/option" } },
+        "datasource_ref": { "type": "string", "minLength": 3 },
+        "layout": { "enum": ["auto", "listbox", "radio", "segmented"] }
+      },
+      "oneOf": [
+        { "required": ["options"], "not": { "required": ["datasource_ref"] } },
+        { "required": ["datasource_ref"], "not": { "required": ["options"] } }
+      ],
+      "additionalProperties": false
+    },
+    "toggle": {
+      "type": "object",
+      "required": ["kind", "argument", "state_ref", "bare_behavior", "show_current_state"],
+      "properties": {
+        "kind": { "const": "toggle" },
+        "argument": { "type": "string", "minLength": 1 },
+        "state_ref": { "type": "string", "minLength": 3 },
+        "bare_behavior": { "const": "toggle" },
+        "show_current_state": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "required": ["kind", "run_on_bare"],
+      "properties": {
+        "kind": { "const": "action" },
+        "run_on_bare": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "formField": {
+      "type": "object",
+      "required": ["argument", "control", "required"],
+      "properties": {
+        "argument": { "type": "string", "minLength": 1 },
+        "control": { "enum": ["text", "textarea", "number", "checkbox", "select", "search_select"] },
+        "required": { "type": "boolean" },
+        "label": { "$ref": "#/$defs/localizedText" },
+        "placeholder": { "$ref": "#/$defs/localizedText" }
+      },
+      "additionalProperties": false
+    },
+    "form": {
+      "type": "object",
+      "required": ["kind", "fields"],
+      "properties": {
+        "kind": { "const": "form" },
+        "fields": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/formField" } }
+      },
+      "additionalProperties": false
+    },
+    "presentation": {
+      "type": "object",
+      "required": ["label", "category", "visibility", "input", "mounts"],
+      "properties": {
+        "label": { "$ref": "#/$defs/localizedText" },
+        "description": { "$ref": "#/$defs/localizedText" },
+        "category": { "type": "string", "minLength": 1 },
+        "visibility": { "enum": ["default", "advanced", "hidden"] },
+        "icon": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "input": {
+          "oneOf": [
+            { "$ref": "#/$defs/searchSelect" },
+            { "$ref": "#/$defs/select" },
+            { "$ref": "#/$defs/toggle" },
+            { "$ref": "#/$defs/action" },
+            { "$ref": "#/$defs/form" }
+          ]
+        },
+        "mounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["slot_ref", "display", "order"],
+            "properties": {
+              "slot_ref": { "type": "string", "minLength": 3 },
+              "display": { "enum": ["persistent", "command"] },
+              "order": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "state_ref", "mutation"],
+          "properties": {
+            "kind": { "const": "state_mutation" },
+            "state_ref": { "type": "string", "minLength": 3 },
+            "mutation": {
+              "type": "object",
+              "required": ["argument", "when_present"],
+              "properties": {
+                "argument": { "type": "string", "minLength": 1 },
+                "when_present": { "const": "set" }
+              },
+              "additionalProperties": false
+            },
+            "offline": {
+              "type": "object",
+              "required": ["queueable", "semantics", "backend_authoritative"],
+              "properties": {
+                "queueable": { "type": "boolean" },
+                "semantics": { "const": "set" },
+                "backend_authoritative": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            "legacy_type": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "operation_ref"],
+          "properties": {
+            "kind": { "enum": ["host_operation", "pack_operation"] },
+            "operation_ref": { "type": "string", "minLength": 3 },
+            "legacy_type": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "resolvedCommand": {
+      "type": "object",
+      "required": ["canonical_id", "pack_id", "pack_generation", "command_version", "identity", "presentation", "execution", "authorization", "constraints", "availability"],
+      "properties": {
+        "canonical_id": { "type": "string", "pattern": "^[a-z][a-z0-9._-]*:[a-z][a-z0-9._-]*$" },
+        "pack_id": { "type": "string", "pattern": "^[a-z][a-z0-9._-]*$" },
+        "pack_generation": { "type": "integer", "minimum": 1 },
+        "command_version": { "type": "string" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "presentation": { "$ref": "#/$defs/presentation" },
+        "execution": { "$ref": "#/$defs/execution" },
+        "authorization": {
+          "type": "object",
+          "required": ["risk", "permissions", "approval_required", "approval_policy", "executor_policy_ref"],
+          "properties": {
+            "risk": { "enum": ["low", "medium", "high"] },
+            "permissions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "approval_required": { "type": "boolean" },
+            "approval_policy": { "enum": ["never", "required"] },
+            "executor_policy_ref": { "type": "string", "minLength": 3 }
+          },
+          "additionalProperties": false
+        },
+        "constraints": {
+          "type": "object",
+          "required": ["modes"],
+          "properties": {
+            "modes": { "type": "array", "items": { "enum": ["chat", "coding", "agent"] }, "uniqueItems": true }
+          },
+          "additionalProperties": false
+        },
+        "availability": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["available", "unavailable"] },
+            "reason_code": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "extensions": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "commandPack": {
+      "type": "object",
+      "required": ["api_version", "kind", "metadata", "commands"],
+      "properties": {
+        "api_version": { "const": "tobkiri.commands/v1" },
+        "kind": { "const": "CommandPack" },
+        "metadata": {
+          "type": "object",
+          "required": ["pack_id", "pack_version", "manifest_version", "display_name", "default_locale"],
+          "properties": {
+            "pack_id": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$" },
+            "pack_version": { "type": "string" },
+            "manifest_version": { "type": "string" },
+            "display_name": { "$ref": "#/$defs/localizedText" },
+            "default_locale": { "type": "string", "minLength": 2 }
+          },
+          "additionalProperties": false
+        },
+        "commands": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/resolvedCommand" } },
+        "extensions": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "commandInvocationRequest": {
+      "type": "object",
+      "required": ["command_ref", "args", "invocation_id", "mode"],
+      "properties": {
+        "command_ref": { "type": "string" },
+        "args": { "type": "object" },
+        "invocation_id": { "type": "string" },
+        "mode": { "enum": ["chat", "coding", "agent"] },
+        "conversation_id": { "type": "string" },
+        "profile_id": { "type": "string" },
+        "catalog_revision": { "type": "string" },
+        "expected_revision": { "type": "integer" },
+        "idempotency_key": { "type": "string" },
+        "client_sequence": { "type": "integer" },
+        "approval_token": { "type": "string" },
+        "authority_request_id": { "type": "string" },
+        "authority_approval_token": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "commandProtocolError": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "commandInvocationResult": {
+      "type": "object",
+      "required": ["api_version", "operation_id", "status", "command_ref", "state_changes"],
+      "properties": {
+        "api_version": { "const": "tobkiri.commands/v1" },
+        "operation_id": { "type": "string" },
+        "status": { "enum": ["succeeded", "failed", "approval_required", "cancelled"] },
+        "command_ref": { "type": "string" },
+        "state_changes": { "type": "array", "items": { "type": "object" } },
+        "error": { "$ref": "#/$defs/commandProtocolError" }
+      },
+      "additionalProperties": true
+    },
+    "resolvedCatalog": {
+      "type": "object",
+      "required": ["api_version", "kind", "catalog_revision", "pack_generations", "rollout", "commands", "states", "datasources", "state_snapshots", "diagnostics"],
+      "properties": {
+        "api_version": { "const": "tobkiri.commands/v1" },
+        "kind": { "const": "ResolvedCommandCatalog" },
+        "catalog_revision": { "type": "string", "minLength": 8 },
+        "pack_generations": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "rollout": {
+          "type": "object",
+          "required": ["feature_flag", "phase", "legacy_execution_enabled"],
+          "properties": {
+            "feature_flag": { "const": "command_protocol_v1" },
+            "phase": { "const": "enforced" },
+            "legacy_execution_enabled": { "const": false }
+          },
+          "additionalProperties": false
+        },
+        "commands": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/resolvedCommand" } },
+        "states": { "type": "array", "items": { "type": "object" } },
+        "datasources": { "type": "array", "items": { "type": "object" } },
+        "state_snapshots": { "type": "array", "items": { "type": "object" } },
+        "diagnostics": { "type": "array", "items": { "type": "object" } },
+        "extensions": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

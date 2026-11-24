@@ -1,0 +1,13 @@
+package local:ai-usage-cost-python@1.0.0;
+
+/// Original cost projection only: no billing or reservation authority.
+/// Payload and successful result are opaque ordered-finite-json-v2 DATA.
+interface usage-cost {
+  use tobkiri:core/types@1.0.0.{error};
+  runtime-info: func() -> string;
+  calculate: func(operation: string, payload: string) -> result<string, error>;
+}
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export usage-cost;
+}

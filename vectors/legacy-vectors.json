@@ -1,0 +1,1909 @@
+{
+  "artifact_tree": [
+    {
+      "corpus_source": "tobkiri_launcher/scripts/tests/fixtures/artifact_integrity_vectors.json",
+      "expected": {
+        "artifact_digest": "sha256:d76c622048ea5ae3dd65bff697f1ba089e396373928dcc1edeb90a30034b6978"
+      },
+      "id": "linux-file",
+      "input": {
+        "files": {
+          "": "ELF-stub-linux\n"
+        },
+        "kind": "file",
+        "root_name": "tobkiri-shell.AppImage",
+        "sha256": "sha256:d76c622048ea5ae3dd65bff697f1ba089e396373928dcc1edeb90a30034b6978",
+        "size": 15
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "corpus_source": "tobkiri_launcher/scripts/tests/fixtures/artifact_integrity_vectors.json",
+      "expected": {
+        "artifact_digest": "sha256:02cd8f6541444eff80a5be3b7de3f6268a59ba26238f660f27295721191b8700"
+      },
+      "id": "windows-exe",
+      "input": {
+        "files": {
+          "": "MZ-stub-windows\r\n"
+        },
+        "kind": "file",
+        "root_name": "tobkiri-shell.exe",
+        "sha256": "sha256:02cd8f6541444eff80a5be3b7de3f6268a59ba26238f660f27295721191b8700",
+        "size": 17
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "corpus_source": "tobkiri_launcher/scripts/tests/fixtures/artifact_integrity_vectors.json",
+      "expected": {
+        "artifact_digest": "sha256:817e9ff56eb5f08b0b0ce29d174e1715113734b37dfff536a27415b41358ff09"
+      },
+      "id": "mac-app",
+      "input": {
+        "files": {
+          "Contents/Info.plist": "plist-fixture\n",
+          "Contents/MacOS/tobkiri-shell": "#!/bin/sh\nexit 0\n"
+        },
+        "kind": "directory",
+        "root_name": "Tobkiri.app",
+        "sha256": "sha256:817e9ff56eb5f08b0b0ce29d174e1715113734b37dfff536a27415b41358ff09",
+        "size": 31
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "corpus_source": "generator fixture inputs",
+      "expected": {
+        "artifact_digest": "sha256:6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+      },
+      "id": "empty-file",
+      "input": {
+        "files": {
+          "": ""
+        },
+        "kind": "file",
+        "root_name": "empty"
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "corpus_source": "generator fixture inputs",
+      "expected": {
+        "artifact_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "id": "empty-directory",
+      "input": {
+        "files": {},
+        "kind": "directory",
+        "root_name": "empty-dir"
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "corpus_source": "generator fixture inputs",
+      "expected": {
+        "artifact_digest": "sha256:4435c41edcbb791fe216e79c173f99854f70a2a53ba87649d37f5063790f4e1c"
+      },
+      "id": "unicode-nested-sort",
+      "input": {
+        "files": {
+          "a/nested.txt": "line\r\n",
+          "z.txt": "last\n",
+          "\ue000.txt": "bmp",
+          "\ud800\udc00.txt": "non-bmp"
+        },
+        "kind": "directory",
+        "root_name": "unicode"
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    },
+    {
+      "expected": {
+        "exception_type": "tobkiri_protocol.errors.ProtocolError",
+        "message": "packaged artifact tree contains a symlink",
+        "status": "error"
+      },
+      "id": "symlink_rejected",
+      "input": {
+        "kind": "symlink-member"
+      },
+      "source_calls": [
+        "artifact.artifact_digest"
+      ]
+    }
+  ],
+  "authority": {
+    "audit_chain": {
+      "cases": [
+        {
+          "expected": {
+            "digest_frame_bytes": {
+              "hex": "7b22637265617465645f6174223a302e302c226576656e745f6964223a22666978747572652e61756469742e31222c226576656e745f7374617465223a227265636f72646564222c226576656e745f74797065223a2266697874757265222c227061796c6f6164223a7b22617070726f766564223a66616c73652c2266697874757265223a747275652c22696e646578223a312c226f7574636f6d65223a22e38182f09f9a80227d2c2270726576696f75735f646967657374223a227368613235363a30303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d",
+              "length": 261,
+              "sha256_hex": "c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4",
+              "utf8": "{\"created_at\":0.0,\"event_id\":\"fixture.audit.1\",\"event_state\":\"recorded\",\"event_type\":\"fixture\",\"payload\":{\"approved\":false,\"fixture\":true,\"index\":1,\"outcome\":\"\u3042\ud83d\ude80\"},\"previous_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"}"
+            },
+            "event_digest": "sha256:c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4"
+          },
+          "id": "audit_chain_event_1",
+          "input": {
+            "created_at": 0.0,
+            "event_id": "fixture.audit.1",
+            "event_state": "recorded",
+            "event_type": "fixture",
+            "payload": {
+              "approved": false,
+              "fixture": true,
+              "index": 1,
+              "outcome": "\u3042\ud83d\ude80"
+            },
+            "previous_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "source_calls": [
+            "authority_store._append_audit",
+            "authority.canonical_json"
+          ]
+        },
+        {
+          "expected": {
+            "digest_frame_bytes": {
+              "hex": "7b22637265617465645f6174223a31652d30372c226576656e745f6964223a22666978747572652e61756469742e32222c226576656e745f7374617465223a227265636f72646564222c226576656e745f74797065223a2266697874757265222c227061796c6f6164223a7b22617070726f766564223a66616c73652c2266697874757265223a747275652c22696e646578223a322c226f7574636f6d65223a22e38182f09f9a80227d2c2270726576696f75735f646967657374223a227368613235363a63373638353865343366333336313436303030383336656137373232363634363635366565346135613037353937316466643861633834336662393462626534227d",
+              "length": 263,
+              "sha256_hex": "d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb",
+              "utf8": "{\"created_at\":1e-07,\"event_id\":\"fixture.audit.2\",\"event_state\":\"recorded\",\"event_type\":\"fixture\",\"payload\":{\"approved\":false,\"fixture\":true,\"index\":2,\"outcome\":\"\u3042\ud83d\ude80\"},\"previous_digest\":\"sha256:c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4\"}"
+            },
+            "event_digest": "sha256:d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb"
+          },
+          "id": "audit_chain_event_2",
+          "input": {
+            "created_at": 1e-07,
+            "event_id": "fixture.audit.2",
+            "event_state": "recorded",
+            "event_type": "fixture",
+            "payload": {
+              "approved": false,
+              "fixture": true,
+              "index": 2,
+              "outcome": "\u3042\ud83d\ude80"
+            },
+            "previous_digest": "sha256:c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4"
+          },
+          "source_calls": [
+            "authority_store._append_audit",
+            "authority.canonical_json"
+          ]
+        },
+        {
+          "expected": {
+            "digest_frame_bytes": {
+              "hex": "7b22637265617465645f6174223a313735303030303030302e3132352c226576656e745f6964223a22666978747572652e61756469742e33222c226576656e745f7374617465223a227265636f72646564222c226576656e745f74797065223a2266697874757265222c227061796c6f6164223a7b22617070726f766564223a66616c73652c2266697874757265223a747275652c22696e646578223a332c226f7574636f6d65223a22e38182f09f9a80227d2c2270726576696f75735f646967657374223a227368613235363a64393462366438306531316666373731313165366464383539353831306631393331386532323564653538653266323862393831306561373631616535646262227d",
+              "length": 272,
+              "sha256_hex": "d748353fae96488b544c0b5c34e7a44de775ccb2ec52d1bc67961e8f16943611",
+              "utf8": "{\"created_at\":1750000000.125,\"event_id\":\"fixture.audit.3\",\"event_state\":\"recorded\",\"event_type\":\"fixture\",\"payload\":{\"approved\":false,\"fixture\":true,\"index\":3,\"outcome\":\"\u3042\ud83d\ude80\"},\"previous_digest\":\"sha256:d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb\"}"
+            },
+            "event_digest": "sha256:d748353fae96488b544c0b5c34e7a44de775ccb2ec52d1bc67961e8f16943611"
+          },
+          "id": "audit_chain_event_3",
+          "input": {
+            "created_at": 1750000000.125,
+            "event_id": "fixture.audit.3",
+            "event_state": "recorded",
+            "event_type": "fixture",
+            "payload": {
+              "approved": false,
+              "fixture": true,
+              "index": 3,
+              "outcome": "\u3042\ud83d\ude80"
+            },
+            "previous_digest": "sha256:d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb"
+          },
+          "source_calls": [
+            "authority_store._append_audit",
+            "authority.canonical_json"
+          ]
+        }
+      ],
+      "corrupt_chain_expected": {
+        "exception_type": "core_runtime.authority.store_contracts.AuthorityStoreError",
+        "message": "authoritative audit chain is invalid",
+        "status": "error"
+      },
+      "fixture_boundary": "Original _append_audit and _verify_audit_rows against isolated :memory: SQLite; injected identity encryption/decryption sink. Encryption bytes, filesystem/process guards and transaction crash behavior are not covered.",
+      "verification_source_call": "authority_store._verify_audit_rows",
+      "verified_chain": [
+        {
+          "created_at": 0.0,
+          "event_digest": "sha256:c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4",
+          "event_id": "fixture.audit.1",
+          "event_state": "recorded",
+          "event_type": "fixture",
+          "payload": {
+            "approved": false,
+            "fixture": true,
+            "index": 1,
+            "outcome": "\u3042\ud83d\ude80"
+          },
+          "previous_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "sequence": 1
+        },
+        {
+          "created_at": 1e-07,
+          "event_digest": "sha256:d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb",
+          "event_id": "fixture.audit.2",
+          "event_state": "recorded",
+          "event_type": "fixture",
+          "payload": {
+            "approved": false,
+            "fixture": true,
+            "index": 2,
+            "outcome": "\u3042\ud83d\ude80"
+          },
+          "previous_digest": "sha256:c76858e43f336146000836ea77226646656ee4a5a075971dfd8ac843fb94bbe4",
+          "sequence": 2
+        },
+        {
+          "created_at": 1750000000.125,
+          "event_digest": "sha256:d748353fae96488b544c0b5c34e7a44de775ccb2ec52d1bc67961e8f16943611",
+          "event_id": "fixture.audit.3",
+          "event_state": "recorded",
+          "event_type": "fixture",
+          "payload": {
+            "approved": false,
+            "fixture": true,
+            "index": 3,
+            "outcome": "\u3042\ud83d\ude80"
+          },
+          "previous_digest": "sha256:d94b6d80e11ff77111e6dd8595810f19318e225de58e2f28b9810ea761ae5dbb",
+          "sequence": 3
+        }
+      ]
+    },
+    "canonical_float_and_integer_cases": [
+      {
+        "expected": {
+          "authority_digest": "sha256:108cff958d80207dcf1bb2f8fdf4cb86a0409b5fdf43c7cc4e82f53d90d3d5af",
+          "canonical_bytes": {
+            "hex": "7b22666c6f6174223a312e302c22696e7465676572223a317d",
+            "length": 25,
+            "sha256_hex": "108cff958d80207dcf1bb2f8fdf4cb86a0409b5fdf43c7cc4e82f53d90d3d5af",
+            "utf8": "{\"float\":1.0,\"integer\":1}"
+          },
+          "status": "ok"
+        },
+        "id": "integer_and_float_distinct",
+        "input_json": "{\"integer\":1,\"float\":1.0}",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:28d634a895fc71eebcc4c868a8185cb92fa568cb70369c3ed9636d5d6b313b39",
+          "canonical_bytes": {
+            "hex": "7b2274696d657374616d70223a2d302e307d",
+            "length": 18,
+            "sha256_hex": "28d634a895fc71eebcc4c868a8185cb92fa568cb70369c3ed9636d5d6b313b39",
+            "utf8": "{\"timestamp\":-0.0}"
+          },
+          "status": "ok"
+        },
+        "id": "negative_zero",
+        "input_json": "{\"timestamp\":-0.0}",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:31095b725d114975e90cd8d0fb1b49177e7038252841e8be5bae6ba18da35950",
+          "canonical_bytes": {
+            "hex": "7b2261223a31652d30372c2262223a31652d30362c2263223a31652b32302c2264223a31652b32317d",
+            "length": 41,
+            "sha256_hex": "31095b725d114975e90cd8d0fb1b49177e7038252841e8be5bae6ba18da35950",
+            "utf8": "{\"a\":1e-07,\"b\":1e-06,\"c\":1e+20,\"d\":1e+21}"
+          },
+          "status": "ok"
+        },
+        "id": "float_exponent_boundaries",
+        "input_json": "{\"a\":1e-7,\"b\":1e-6,\"c\":1e20,\"d\":1e21}",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:e661ff4518a90cab6243410cc9b33de16f40c92c1abde9376ed816dad7138897",
+          "canonical_bytes": {
+            "hex": "7b22637265617465645f6174223a313735303030303030302e3132352c22657870697265735f6174223a313735303030303030312e307d",
+            "length": 55,
+            "sha256_hex": "e661ff4518a90cab6243410cc9b33de16f40c92c1abde9376ed816dad7138897",
+            "utf8": "{\"created_at\":1750000000.125,\"expires_at\":1750000001.0}"
+          },
+          "status": "ok"
+        },
+        "id": "fractional_timestamp",
+        "input_json": "{\"created_at\":1750000000.125,\"expires_at\":1750000001.0}",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:c2bd56866073c75a1755b1e0f532f3640fb3ab2ae07a7d1945ed423f2cec3973",
+          "canonical_bytes": {
+            "hex": "5b35652d3332342c312e37393736393331333438363233313537652b3330385d",
+            "length": 32,
+            "sha256_hex": "c2bd56866073c75a1755b1e0f532f3640fb3ab2ae07a7d1945ed423f2cec3973",
+            "utf8": "[5e-324,1.7976931348623157e+308]"
+          },
+          "status": "ok"
+        },
+        "id": "subnormal_and_max_float",
+        "input_json": "[5e-324,1.7976931348623157e308]",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:7aa043f2a6cb9ffd418b10f042f2c8eba281d240351c1e85eb261b4599ea5151",
+          "canonical_bytes": {
+            "hex": "5b393030373139393235343734303939322c2d393030373139393235343734303939325d",
+            "length": 36,
+            "sha256_hex": "7aa043f2a6cb9ffd418b10f042f2c8eba281d240351c1e85eb261b4599ea5151",
+            "utf8": "[9007199254740992,-9007199254740992]"
+          },
+          "status": "ok"
+        },
+        "id": "integer_beyond_protocol_range",
+        "input_json": "[9007199254740992,-9007199254740992]",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "authority_digest": "sha256:daec79d8b6582badd3b46bd783a72379bc0b5ae29f5d59f6133025aad69bc8d4",
+          "canonical_bytes": {
+            "hex": "7b22ee8080223a322c22f0908080223a317d",
+            "length": 18,
+            "sha256_hex": "daec79d8b6582badd3b46bd783a72379bc0b5ae29f5d59f6133025aad69bc8d4",
+            "utf8": "{\"\ue000\":2,\"\ud800\udc00\":1}"
+          },
+          "status": "ok"
+        },
+        "id": "unicode_keys",
+        "input_json": "{\"\\ud800\\udc00\":1,\"\\ue000\":2}",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "builtins.ValueError",
+          "message": "Out of range float values are not JSON compliant: nan",
+          "status": "error"
+        },
+        "id": "nonfinite_nan_rejected",
+        "input_json": "NaN",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "builtins.ValueError",
+          "message": "Out of range float values are not JSON compliant: inf",
+          "status": "error"
+        },
+        "id": "nonfinite_infinity_rejected",
+        "input_json": "Infinity",
+        "source_calls": [
+          "authority.canonical_json",
+          "authority.authority_digest"
+        ]
+      }
+    ],
+    "interactive_confirmation": {
+      "expected_digest": "sha256:0ffebdf7a59f192e4ea2828fe10959a8b2a8c54fe1c7e6caa75e292f8b448855",
+      "input": "fixture only: \u3042\ud83d\ude80",
+      "source_calls": [
+        "authority.interactive_confirmation_digest"
+      ]
+    },
+    "lease_codec": {
+      "expected": {
+        "decoded": [
+          "fixture.lease.1",
+          "sha256:48a89c5188522cabfcfdb1635b51fea1f22fe94c6d833c0b37489ea66fef6225"
+        ],
+        "derived_mac_key_hex": "5c33ebb74c61fc3c300cfe6b8f11b737e083d20d4af36ca2608fb309b0935308",
+        "lease_canonical_bytes": {
+          "hex": "7b2261637469766174696f6e5f646967657374223a227368613235363a39393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939393939222c2261637469766174696f6e5f6964223a22666978747572652e61637469766174696f6e222c2261756469745f7265736572766174696f6e5f6964223a22666978747572652e61756469742e7265736572766174696f6e222c22617574686f72697a65645f73636f7065223a7b226361706162696c697479223a22666978747572652e72656164222c2264696d656e73696f6e73223a7b2270617468223a5b22666978747572652f61222c22666978747572652f62225d7d2c2265786163745f726571756573745f646967657374223a6e756c6c2c226f7061717565223a66616c73652c2271756f746173223a7b226279746573223a3132387d2c2273656d616e746963735f646967657374223a227368613235363a36363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636227d2c2263616c6c5f636861696e223a5b5d2c2263616c6c6572223a7b22636f6e74726163745f7265766973696f6e5f646967657374223a227368613235363a33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333222c2266756e6374696f6e5f6964223a22666978747572652e63616c6c6572222c2266756e6374696f6e5f696d706c656d656e746174696f6e5f646967657374223a227368613235363a32323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232323232222c226f7065726174696f6e5f6964223a22666978747572652e696e766f6b65222c22706172656e745f61727469666163745f646967657374223a227368613235363a31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131227d2c2263616c6c65725f626f6f745f65706f6368223a312c2263616c6c65725f646f6d61696e5f6964223a22666978747572652e646f6d61696e2e63616c6c6572222c2263616c6c65725f7075626c69736865725f6c696e65616765223a22666978747572652e7075626c69736865722e63616c6c6572222c226566666563745f646967657374223a227368613235363a38383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838383838222c22657870697265735f6174223a313735303030303030312e302c2266656e63696e675f746f6b656e223a332c226772616e745f6964223a22666978747572652e6772616e74222c22686f73745f657874656e73696f6e5f6964223a22666978747572652e686f7374222c226973737565645f6174223a313735303030303030302e3132352c226c656173655f6964223a22666978747572652e6c656173652e31222c22706c616e5f646967657374223a227368613235363a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2270726f66696c655f617574686f726974795f646967657374223a227368613235363a62626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c2270726f66696c655f6964223a22666978747572652e70726f66696c65222c2270726f76696465725f617574686f726974795f646967657374223a227368613235363a63636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363222c2270726f76696465725f617574686f726974795f6964223a22666978747572652e70726f7669646572222c22726571756573745f646967657374223a227368613235363a37373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737373737222c22726571756573745f6964223a22666978747572652e726571756573742e31222c227265736f757263655f6e616d657370616365223a22666978747572652e6e616d657370616365222c2273656375726974795f65706f6368223a342c22746172676574223a7b22636f6e74726163745f7265766973696f6e5f646967657374223a227368613235363a33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333222c2266756e6374696f6e5f6964223a22666978747572652e746172676574222c2266756e6374696f6e5f696d706c656d656e746174696f6e5f646967657374223a227368613235363a35353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535353535222c226f7065726174696f6e5f6964223a22666978747572652e696e766f6b65222c22706172656e745f61727469666163745f646967657374223a227368613235363a34343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434343434227d2c227461726765745f626f6f745f65706f6368223a322c227461726765745f646f6d61696e5f6964223a22666978747572652e646f6d61696e2e746172676574222c227461726765745f7075626c69736865725f6c696e65616765223a22666978747572652e7075626c69736865722e746172676574227d",
+          "length": 2256,
+          "sha256_hex": "48a89c5188522cabfcfdb1635b51fea1f22fe94c6d833c0b37489ea66fef6225",
+          "utf8": "{\"activation_digest\":\"sha256:9999999999999999999999999999999999999999999999999999999999999999\",\"activation_id\":\"fixture.activation\",\"audit_reservation_id\":\"fixture.audit.reservation\",\"authorized_scope\":{\"capability\":\"fixture.read\",\"dimensions\":{\"path\":[\"fixture/a\",\"fixture/b\"]},\"exact_request_digest\":null,\"opaque\":false,\"quotas\":{\"bytes\":128},\"semantics_digest\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\"},\"call_chain\":[],\"caller\":{\"contract_revision_digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"function_id\":\"fixture.caller\",\"function_implementation_digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"operation_id\":\"fixture.invoke\",\"parent_artifact_digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"},\"caller_boot_epoch\":1,\"caller_domain_id\":\"fixture.domain.caller\",\"caller_publisher_lineage\":\"fixture.publisher.caller\",\"effect_digest\":\"sha256:8888888888888888888888888888888888888888888888888888888888888888\",\"expires_at\":1750000001.0,\"fencing_token\":3,\"grant_id\":\"fixture.grant\",\"host_extension_id\":\"fixture.host\",\"issued_at\":1750000000.125,\"lease_id\":\"fixture.lease.1\",\"plan_digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"profile_authority_digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"profile_id\":\"fixture.profile\",\"provider_authority_digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"provider_authority_id\":\"fixture.provider\",\"request_digest\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"request_id\":\"fixture.request.1\",\"resource_namespace\":\"fixture.namespace\",\"security_epoch\":4,\"target\":{\"contract_revision_digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"function_id\":\"fixture.target\",\"function_implementation_digest\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"operation_id\":\"fixture.invoke\",\"parent_artifact_digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\"},\"target_boot_epoch\":2,\"target_domain_id\":\"fixture.domain.target\",\"target_publisher_lineage\":\"fixture.publisher.target\"}"
+        },
+        "lease_digest": "sha256:48a89c5188522cabfcfdb1635b51fea1f22fe94c6d833c0b37489ea66fef6225",
+        "normalized_lease_definition": {
+          "activation_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "activation_id": "fixture.activation",
+          "audit_reservation_id": "fixture.audit.reservation",
+          "authorized_scope": {
+            "capability": "fixture.read",
+            "dimensions": {
+              "path": [
+                "fixture/a",
+                "fixture/b"
+              ]
+            },
+            "exact_request_digest": null,
+            "opaque": false,
+            "quotas": {
+              "bytes": 128
+            },
+            "semantics_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "call_chain": [],
+          "caller": {
+            "contract_revision_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "function_id": "fixture.caller",
+            "function_implementation_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "operation_id": "fixture.invoke",
+            "parent_artifact_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "caller_boot_epoch": 1,
+          "caller_domain_id": "fixture.domain.caller",
+          "caller_publisher_lineage": "fixture.publisher.caller",
+          "effect_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "expires_at": 1750000001.0,
+          "fencing_token": 3,
+          "grant_id": "fixture.grant",
+          "host_extension_id": "fixture.host",
+          "issued_at": 1750000000.125,
+          "lease_id": "fixture.lease.1",
+          "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "profile_authority_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "profile_id": "fixture.profile",
+          "provider_authority_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provider_authority_id": "fixture.provider",
+          "request_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "request_id": "fixture.request.1",
+          "resource_namespace": "fixture.namespace",
+          "security_epoch": 4,
+          "target": {
+            "contract_revision_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "function_id": "fixture.target",
+            "function_implementation_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "operation_id": "fixture.invoke",
+            "parent_artifact_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "target_boot_epoch": 2,
+          "target_domain_id": "fixture.domain.target",
+          "target_publisher_lineage": "fixture.publisher.target"
+        },
+        "tampered": {
+          "exception_type": "core_runtime.authority.v4_models.AuthorityDenied",
+          "message": "InvocationLease token is invalid",
+          "status": "error"
+        },
+        "token": "eyJkaWdlc3QiOiJzaGEyNTY6NDhhODljNTE4ODUyMmNhYmZjZmRiMTYzNWI1MWZlYTFmMjJmZTk0YzZkODMzYzBiMzc0ODllYTY2ZmVmNjIyNSIsImxlYXNlX2lkIjoiZml4dHVyZS5sZWFzZS4xIn0=.ydRQAS6BsvTJH3RIMkRiFdzG_sMQZBuZOYddFxQVdns=",
+        "token_payload_bytes": {
+          "hex": "7b22646967657374223a227368613235363a34386138396335313838353232636162666366646231363335623531666561316632326665393463366438333363306233373438396561363666656636323235222c226c656173655f6964223a22666978747572652e6c656173652e31227d",
+          "length": 113,
+          "sha256_hex": "805bf3eb67c07136c44a6254fbb68b9b2b3719cdcb7663ef818352921727e05e",
+          "utf8": "{\"digest\":\"sha256:48a89c5188522cabfcfdb1635b51fea1f22fe94c6d833c0b37489ea66fef6225\",\"lease_id\":\"fixture.lease.1\"}"
+        },
+        "token_signature_bytes": {
+          "hex": "c9d450012e81b2f4c91f744832446215dcc6fec310641b9939875d171415767b",
+          "length": 32,
+          "sha256_hex": "a145c6277ff35aeb2243ba0fd8226206419f50974b667c1868632543b4c68ee2"
+        }
+      },
+      "fixture_precondition": "receiver key material is fixed test data; filesystem/process guard is not exercised",
+      "input": {
+        "fernet_key_ascii": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "lease_definition": {
+          "activation_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "activation_id": "fixture.activation",
+          "audit_reservation_id": "fixture.audit.reservation",
+          "authorized_scope": {
+            "capability": "fixture.read",
+            "dimensions": {
+              "path": [
+                "fixture/b",
+                "fixture/a",
+                "fixture/a"
+              ]
+            },
+            "exact_request_digest": null,
+            "opaque": false,
+            "quotas": {
+              "bytes": 128
+            },
+            "semantics_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "call_chain": [],
+          "caller": {
+            "contract_revision_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "function_id": "fixture.caller",
+            "function_implementation_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "operation_id": "fixture.invoke",
+            "parent_artifact_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "caller_boot_epoch": 1,
+          "caller_domain_id": "fixture.domain.caller",
+          "caller_publisher_lineage": "fixture.publisher.caller",
+          "effect_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "expires_at": 1750000001.0,
+          "fencing_token": 3,
+          "grant_id": "fixture.grant",
+          "host_extension_id": "fixture.host",
+          "issued_at": 1750000000.125,
+          "lease_id": "fixture.lease.1",
+          "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "profile_authority_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "profile_id": "fixture.profile",
+          "provider_authority_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provider_authority_id": "fixture.provider",
+          "request_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "request_id": "fixture.request.1",
+          "resource_namespace": "fixture.namespace",
+          "security_epoch": 4,
+          "target": {
+            "contract_revision_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "function_id": "fixture.target",
+            "function_implementation_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "operation_id": "fixture.invoke",
+            "parent_artifact_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          "target_boot_epoch": 2,
+          "target_domain_id": "fixture.domain.target",
+          "target_publisher_lineage": "fixture.publisher.target"
+        }
+      },
+      "source_calls": [
+        "authority_store.__init__._mac_key_assignment",
+        "authority.InvocationLease.from_dict",
+        "authority.InvocationLease.to_dict",
+        "authority.InvocationLease.digest",
+        "authority_store._encode_lease_token",
+        "authority_store._decode_lease_token"
+      ]
+    }
+  },
+  "ed25519_pack": {
+    "expected": {
+      "public_key_raw_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "signature_raw_hex": "663b2107518c0d7f0b27c4e0e4c0adc3515f24176ac070c34534dadc99a4f7ab23ac09140a84c696d032ea5fd9805ec5e7052feeac377fbbfbc0678e65180201",
+      "signed_manifest": {
+        "api_version": "tobkiri.signed-pack/v1",
+        "authority_granted": false,
+        "build_provenance": {
+          "fixture": true,
+          "notes": "\u3042\ud83d\ude80"
+        },
+        "contract_versions": {
+          "fixture.a": "1.0.0",
+          "fixture.z": "2.0.0"
+        },
+        "core_compatibility": ">=0",
+        "created_at": "2000-01-01T00:00:00+00:00",
+        "files": [
+          {
+            "mode": 420,
+            "path": "handler.py",
+            "sha256": "601030c2dbd04cd70dec5f8d513c63a20361583851f8a40b3ff50cbe6f351f78",
+            "size": 18
+          },
+          {
+            "mode": 493,
+            "path": "run.sh",
+            "sha256": "306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb",
+            "size": 17
+          },
+          {
+            "mode": 420,
+            "path": "\u3042\ud83d\ude80.txt",
+            "sha256": "0dacb15c385e877867acd8ef0978465b3eaa88307773b14e5e10e46f7040fc40",
+            "size": 10
+          }
+        ],
+        "pack_id": "local.fixture",
+        "publisher_id": "fixture.publisher",
+        "requested_capabilities": [
+          "fs.read",
+          "network.read"
+        ],
+        "signature": {
+          "algorithm": "Ed25519",
+          "key_id": "56475aa75463474c0285df5dbf2bcab7",
+          "value": "ZjshB1GMDX8LJ8Tg5MCtw1FfJBdqwHDDRTTa3Jmk96sjrAkUCoTGltAy6l_ZgF7F5wUv7qw3f7v7wGeOZRgCAQ"
+        },
+        "version": "1.2.3"
+      },
+      "tampered_envelope": {
+        "exception_type": "core_runtime.pack_signature.PackSignatureError",
+        "message": "Pack signature mismatch",
+        "status": "error"
+      },
+      "unsigned_canonical_bytes": {
+        "hex": "7b226170695f76657273696f6e223a22746f626b6972692e7369676e65642d7061636b2f7631222c22617574686f726974795f6772616e746564223a66616c73652c226275696c645f70726f76656e616e6365223a7b2266697874757265223a747275652c226e6f746573223a22e38182f09f9a80227d2c22636f6e74726163745f76657273696f6e73223a7b22666978747572652e61223a22312e302e30222c22666978747572652e7a223a22322e302e30227d2c22636f72655f636f6d7061746962696c697479223a223e3d30222c22637265617465645f6174223a22323030302d30312d30315430303a30303a30302b30303a3030222c2266696c6573223a5b7b226d6f6465223a3432302c2270617468223a2268616e646c65722e7079222c22736861323536223a2236303130333063326462643034636437306465633566386435313363363361323033363135383338353166386134306233666635306362653666333531663738222c2273697a65223a31387d2c7b226d6f6465223a3439332c2270617468223a2272756e2e7368222c22736861323536223a2233303663366361373430373536303334303739373836366530373765303533363237616434303932373764316239646135383130366663653463663731376362222c2273697a65223a31377d2c7b226d6f6465223a3432302c2270617468223a22e38182f09f9a802e747874222c22736861323536223a2230646163623135633338356538373738363761636438656630393738343635623365616138383330373737336231346535653130653436663730343066633430222c2273697a65223a31307d5d2c227061636b5f6964223a226c6f63616c2e66697874757265222c227075626c69736865725f6964223a22666978747572652e7075626c6973686572222c227265717565737465645f6361706162696c6974696573223a5b2266732e72656164222c226e6574776f726b2e72656164225d2c2276657273696f6e223a22312e322e33227d",
+        "length": 745,
+        "sha256_hex": "dafda33e09844378640f5239d0bcdf197eed875d04757f324b8d8ef801ac7232",
+        "utf8": "{\"api_version\":\"tobkiri.signed-pack/v1\",\"authority_granted\":false,\"build_provenance\":{\"fixture\":true,\"notes\":\"\u3042\ud83d\ude80\"},\"contract_versions\":{\"fixture.a\":\"1.0.0\",\"fixture.z\":\"2.0.0\"},\"core_compatibility\":\">=0\",\"created_at\":\"2000-01-01T00:00:00+00:00\",\"files\":[{\"mode\":420,\"path\":\"handler.py\",\"sha256\":\"601030c2dbd04cd70dec5f8d513c63a20361583851f8a40b3ff50cbe6f351f78\",\"size\":18},{\"mode\":493,\"path\":\"run.sh\",\"sha256\":\"306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb\",\"size\":17},{\"mode\":420,\"path\":\"\u3042\ud83d\ude80.txt\",\"sha256\":\"0dacb15c385e877867acd8ef0978465b3eaa88307773b14e5e10e46f7040fc40\",\"size\":10}],\"pack_id\":\"local.fixture\",\"publisher_id\":\"fixture.publisher\",\"requested_capabilities\":[\"fs.read\",\"network.read\"],\"version\":\"1.2.3\"}"
+      },
+      "unsigned_manifest": {
+        "api_version": "tobkiri.signed-pack/v1",
+        "authority_granted": false,
+        "build_provenance": {
+          "fixture": true,
+          "notes": "\u3042\ud83d\ude80"
+        },
+        "contract_versions": {
+          "fixture.a": "1.0.0",
+          "fixture.z": "2.0.0"
+        },
+        "core_compatibility": ">=0",
+        "created_at": "2000-01-01T00:00:00+00:00",
+        "files": [
+          {
+            "mode": 420,
+            "path": "handler.py",
+            "sha256": "601030c2dbd04cd70dec5f8d513c63a20361583851f8a40b3ff50cbe6f351f78",
+            "size": 18
+          },
+          {
+            "mode": 493,
+            "path": "run.sh",
+            "sha256": "306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb",
+            "size": 17
+          },
+          {
+            "mode": 420,
+            "path": "\u3042\ud83d\ude80.txt",
+            "sha256": "0dacb15c385e877867acd8ef0978465b3eaa88307773b14e5e10e46f7040fc40",
+            "size": 10
+          }
+        ],
+        "pack_id": "local.fixture",
+        "publisher_id": "fixture.publisher",
+        "requested_capabilities": [
+          "fs.read",
+          "network.read"
+        ],
+        "version": "1.2.3"
+      },
+      "verify_envelope": {
+        "authority_granted": false,
+        "key_id": "56475aa75463474c0285df5dbf2bcab7",
+        "pack_id": "local.fixture",
+        "publisher_id": "fixture.publisher",
+        "verified": true,
+        "version": "1.2.3"
+      },
+      "verify_file_inventory": {
+        "authority_granted": false,
+        "key_id": "56475aa75463474c0285df5dbf2bcab7",
+        "pack_id": "local.fixture",
+        "publisher_id": "fixture.publisher",
+        "verified": true,
+        "version": "1.2.3"
+      }
+    },
+    "input": {
+      "files": {
+        "handler.py": {
+          "mode": 420,
+          "utf8": "VALUE = 'fixture'\n"
+        },
+        "run.sh": {
+          "mode": 493,
+          "utf8": "#!/bin/sh\nexit 0\n"
+        },
+        "\u3042\ud83d\ude80.txt": {
+          "mode": 420,
+          "utf8": "test-only\n"
+        }
+      },
+      "manifest_arguments": {
+        "build_provenance": {
+          "fixture": true,
+          "notes": "\u3042\ud83d\ude80"
+        },
+        "contract_versions": {
+          "fixture.a": "1.0.0",
+          "fixture.z": "2.0.0"
+        },
+        "core_compatibility": ">=0",
+        "created_at": "2000-01-01T00:00:00+00:00",
+        "pack_id": "local.fixture",
+        "publisher_id": "fixture.publisher",
+        "requested_capabilities": [
+          "network.read",
+          "fs.read",
+          "network.read"
+        ],
+        "version": "1.2.3"
+      },
+      "test_only_ed25519_seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    "source_calls": [
+      "pack.build_signed_manifest",
+      "pack._canonical_bytes",
+      "pack.sign_manifest",
+      "pack.verify_signed_manifest",
+      "pack.verify_signed_pack"
+    ]
+  },
+  "exact_bytes_convention": "Small outputs contain full hex and UTF-8 when valid. Large bounds contain a lossless concat/repeated-byte recipe plus actual length and SHA-256.",
+  "fixtures_only": true,
+  "format": "tobkiri.legacy-differential-vectors.v1",
+  "not_covered": [
+    "Fernet ciphertext and key-store encryption compatibility",
+    "Filesystem/process guards, transaction/crash semantics, revocation and live authority",
+    "PackVM sealed application/environment manifests",
+    "Chat RunSeal random nonce/marker format and change-request seal semantics",
+    "All domain-specific content hashes and every legacy digest call site"
+  ],
+  "protocol": {
+    "canonical_direct_inputs": [
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "JSON object keys must be strings",
+          "status": "error"
+        },
+        "id": "direct_nonstring_key",
+        "input_python_expression": "{1: \"x\"}",
+        "source_calls": [
+          "protocol.canonical_json"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "unsupported JSON value type: tuple",
+          "status": "error"
+        },
+        "id": "direct_tuple",
+        "input_python_expression": "(1, 2)",
+        "source_calls": [
+          "protocol.canonical_json"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json string contains invalid Unicode",
+          "status": "error"
+        },
+        "id": "direct_unpaired_surrogate",
+        "input_python_expression": "\"\\ud800\"",
+        "source_calls": [
+          "protocol.canonical_json"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "floating point values are not permitted; use an exact string or integer",
+          "status": "error"
+        },
+        "id": "direct_floating_point",
+        "input_python_expression": "1.0",
+        "source_calls": [
+          "protocol.canonical_json"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "integer exceeds I-JSON safe range; use a canonical decimal string",
+          "status": "error"
+        },
+        "id": "direct_unsafe_integer",
+        "input_python_expression": "2**53",
+        "source_calls": [
+          "protocol.canonical_json"
+        ]
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "exact_bytes_recipe": {
+              "kind": "concat",
+              "parts": [
+                {
+                  "hex": "22"
+                },
+                {
+                  "count": 4194302,
+                  "repeat_byte_hex": "61"
+                },
+                {
+                  "hex": "22"
+                }
+              ]
+            },
+            "first_32_bytes_hex": "2261616161616161616161616161616161616161616161616161616161616161",
+            "last_32_bytes_hex": "6161616161616161616161616161616161616161616161616161616161616122",
+            "length": 4194304,
+            "sha256_hex": "3791e43d44a3e0f0acabae101c860a33d54e29c22be6c342615483fedd931b28"
+          },
+          "canonical_digest": "sha256:3791e43d44a3e0f0acabae101c860a33d54e29c22be6c342615483fedd931b28",
+          "status": "ok"
+        },
+        "id": "canonical_bytes_at_4mib",
+        "input_python_expression": "'a' * 4194302",
+        "source_calls": [
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "canonical JSON exceeds size limit",
+          "status": "error"
+        },
+        "id": "canonical_bytes_over_4mib",
+        "input_python_expression": "'a' * 4194303",
+        "source_calls": [
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ]
+      }
+    ],
+    "canonical_object_inputs": [
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2261223a22e38182f09f9a80222c227a223a317d",
+            "length": 21,
+            "sha256_hex": "957b2c0d98f94faf90e43b3e47845717965c42679a65163c0f03bc44dba60423",
+            "utf8": "{\"a\":\"\u3042\ud83d\ude80\",\"z\":1}"
+          },
+          "status": "ok"
+        },
+        "id": "object",
+        "input": {
+          "a": "\u3042\ud83d\ude80",
+          "z": 1
+        },
+        "source_calls": [
+          "protocol.canonical_bytes"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "canonical document must be an object",
+          "status": "error"
+        },
+        "id": "array_rejected",
+        "input": [],
+        "source_calls": [
+          "protocol.canonical_bytes"
+        ]
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "canonical document must be an object",
+          "status": "error"
+        },
+        "id": "scalar_rejected",
+        "input": 0,
+        "source_calls": [
+          "protocol.canonical_bytes"
+        ]
+      }
+    ],
+    "strict_loads": [
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "6e756c6c",
+            "length": 4,
+            "sha256_hex": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "utf8": "null"
+          },
+          "canonical_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "status": "ok"
+        },
+        "id": "null",
+        "input_bytes": {
+          "hex": "6e756c6c",
+          "length": 4,
+          "sha256_hex": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "utf8": "null"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "5b747275652c66616c73655d",
+            "length": 12,
+            "sha256_hex": "153c9dbcc7025ecd7e50ce6d83f1995233dfc636bc869098e3a8d84288fd938a",
+            "utf8": "[true,false]"
+          },
+          "canonical_digest": "sha256:153c9dbcc7025ecd7e50ce6d83f1995233dfc636bc869098e3a8d84288fd938a",
+          "status": "ok"
+        },
+        "id": "booleans",
+        "input_bytes": {
+          "hex": "5b747275652c66616c73655d",
+          "length": 12,
+          "sha256_hex": "153c9dbcc7025ecd7e50ce6d83f1995233dfc636bc869098e3a8d84288fd938a",
+          "utf8": "[true,false]"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2261223a22546f626b697269c2a0e38182222c227a223a307d",
+            "length": 26,
+            "sha256_hex": "d2f338e01e313c6947379c317c7f0793e6160cb95729103e0f6b7c807ef38b18",
+            "utf8": "{\"a\":\"Tobkiri\u00a0\u3042\",\"z\":0}"
+          },
+          "canonical_digest": "sha256:d2f338e01e313c6947379c317c7f0793e6160cb95729103e0f6b7c807ef38b18",
+          "status": "ok"
+        },
+        "id": "sorted_keys_and_unicode",
+        "input_bytes": {
+          "hex": "7b227a223a302c2261223a22546f626b6972695c75303061305c7533303432227d",
+          "length": 33,
+          "sha256_hex": "55ea1abfd8610a69be7de615d40e330c7c34bd341d7387c6a860306d2db8a321",
+          "utf8": "{\"z\":0,\"a\":\"Tobkiri\\u00a0\\u3042\"}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2261223a332c22ee8080223a322c22f0908080223a312c22f09f9a80223a347d",
+            "length": 33,
+            "sha256_hex": "7884e902005031f4642817003d7540ca0717ff2cfc027f39d7cc7b6014d77546",
+            "utf8": "{\"a\":3,\"\ue000\":2,\"\ud800\udc00\":1,\"\ud83d\ude80\":4}"
+          },
+          "canonical_digest": "sha256:7884e902005031f4642817003d7540ca0717ff2cfc027f39d7cc7b6014d77546",
+          "status": "ok"
+        },
+        "id": "non_bmp_codepoint_key_sort",
+        "input_bytes": {
+          "hex": "7b225c75643830305c7564633030223a312c225c7565303030223a322c2261223a332c225c75643833645c7564653830223a347d",
+          "length": 52,
+          "sha256_hex": "a71b18824c5133eab3fa079a240e105146791f78fbae3202e13452e3870504a5",
+          "utf8": "{\"\\ud800\\udc00\":1,\"\\ue000\":2,\"a\":3,\"\\ud83d\\ude80\":4}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2273223a225c75303030305c625c665c6e5c725c742fe280a8e280a9227d",
+            "length": 31,
+            "sha256_hex": "6a5346fe33f4d96996667c601857e8b648b8ca9ca24b54f6dc47322efa653790",
+            "utf8": "{\"s\":\"\\u0000\\b\\f\\n\\r\\t/\u2028\u2029\"}"
+          },
+          "canonical_digest": "sha256:6a5346fe33f4d96996667c601857e8b648b8ca9ca24b54f6dc47322efa653790",
+          "status": "ok"
+        },
+        "id": "escaped_controls_and_separators",
+        "input_bytes": {
+          "hex": "7b2273223a225c75303030305c625c665c6e5c725c742f5c75323032385c7532303239227d",
+          "length": 37,
+          "sha256_hex": "c98efcff67abd57fccf4b2b1075fe229a2df0ee61face6fdc9310e55e8b523a3",
+          "utf8": "{\"s\":\"\\u0000\\b\\f\\n\\r\\t/\\u2028\\u2029\"}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2265cc81223a226465636f6d706f736564222c22c3a9223a22636f6d706f736564227d",
+            "length": 36,
+            "sha256_hex": "8117f7eb721338d1c046fc7a3905d1f77b7a920abc82436194992a55af52f571",
+            "utf8": "{\"e\u0301\":\"decomposed\",\"\u00e9\":\"composed\"}"
+          },
+          "canonical_digest": "sha256:8117f7eb721338d1c046fc7a3905d1f77b7a920abc82436194992a55af52f571",
+          "status": "ok"
+        },
+        "id": "unicode_normalization_preserved",
+        "input_bytes": {
+          "hex": "7b22655c7530333031223a226465636f6d706f736564222c225c7530306539223a22636f6d706f736564227d",
+          "length": 44,
+          "sha256_hex": "65280005b7660590e7844933aefda03fedb228d4a6ec72cd71add2bb5a0fc082",
+          "utf8": "{\"e\\u0301\":\"decomposed\",\"\\u00e9\":\"composed\"}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "5b2d393030373139393235343734303939312c393030373139393235343734303939315d",
+            "length": 36,
+            "sha256_hex": "cbad3dd0e71e92fb3519919946bde0ab3086ddacce65983bddec595cb27c19da",
+            "utf8": "[-9007199254740991,9007199254740991]"
+          },
+          "canonical_digest": "sha256:cbad3dd0e71e92fb3519919946bde0ab3086ddacce65983bddec595cb27c19da",
+          "status": "ok"
+        },
+        "id": "safe_integer_bounds",
+        "input_bytes": {
+          "hex": "5b2d393030373139393235343734303939312c393030373139393235343734303939315d",
+          "length": 36,
+          "sha256_hex": "cbad3dd0e71e92fb3519919946bde0ab3086ddacce65983bddec595cb27c19da",
+          "utf8": "[-9007199254740991,9007199254740991]"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "duplicate JSON object key: 'a'",
+          "status": "error"
+        },
+        "id": "duplicate_keys",
+        "input_bytes": {
+          "hex": "7b2261223a312c2261223a327d",
+          "length": 13,
+          "sha256_hex": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+          "utf8": "{\"a\":1,\"a\":2}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "duplicate JSON object key: 'a'",
+          "status": "error"
+        },
+        "id": "nested_duplicate_keys",
+        "input_bytes": {
+          "hex": "7b226f75746572223a7b2261223a312c2261223a327d7d",
+          "length": 23,
+          "sha256_hex": "4760da1a74435f1d95c0063275e2235b559dd9fe9d1041ea50f7790521515048",
+          "utf8": "{\"outer\":{\"a\":1,\"a\":2}}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "floating point values are not permitted; use an exact string or integer",
+          "status": "error"
+        },
+        "id": "float_integral",
+        "input_bytes": {
+          "hex": "7b226e223a312e307d",
+          "length": 9,
+          "sha256_hex": "3b6b06ecd1c968c8e738e0f11c4bb361fca80a9a694de22fe66a05286afbd081",
+          "utf8": "{\"n\":1.0}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "floating point values are not permitted; use an exact string or integer",
+          "status": "error"
+        },
+        "id": "float_negative_zero",
+        "input_bytes": {
+          "hex": "2d302e30",
+          "length": 4,
+          "sha256_hex": "c26617c7ccbcaa6631b45d851b8cf56e21d2ca624bdb1193afdbd4b560702cec",
+          "utf8": "-0.0"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "floating point values are not permitted; use an exact string or integer",
+          "status": "error"
+        },
+        "id": "float_exponent",
+        "input_bytes": {
+          "hex": "31652d37",
+          "length": 4,
+          "sha256_hex": "5b33e02f2c5103a05d32f6ba9cb058294452bfbf393967f68bb30c1bdcbbab22",
+          "utf8": "1e-7"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "non-finite JSON number: NaN",
+          "status": "error"
+        },
+        "id": "nan",
+        "input_bytes": {
+          "hex": "4e614e",
+          "length": 3,
+          "sha256_hex": "d5b592c05dc25b5032553f1b27f4139be95e881f73db33b02b05ab20c3f9981e",
+          "utf8": "NaN"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "non-finite JSON number: Infinity",
+          "status": "error"
+        },
+        "id": "positive_infinity",
+        "input_bytes": {
+          "hex": "496e66696e697479",
+          "length": 8,
+          "sha256_hex": "d0067cad9a63e0813759a2bb841051ca73570c0da2e08e840a8eb45db6a7a010",
+          "utf8": "Infinity"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "non-finite JSON number: -Infinity",
+          "status": "error"
+        },
+        "id": "negative_infinity",
+        "input_bytes": {
+          "hex": "2d496e66696e697479",
+          "length": 9,
+          "sha256_hex": "c64ddf11bcd45660f0cf66dd0c22d2b4570ef3d3fc6527a9a6f6c722aefa3c39",
+          "utf8": "-Infinity"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "integer exceeds I-JSON safe range; use a canonical decimal string",
+          "status": "error"
+        },
+        "id": "unsafe_positive_integer",
+        "input_bytes": {
+          "hex": "39303037313939323534373430393932",
+          "length": 16,
+          "sha256_hex": "c681da39d7273a6a24c15c9cac3a75526ff2ecf8ba4ee60346a0c70c8163bdb2",
+          "utf8": "9007199254740992"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "integer exceeds I-JSON safe range; use a canonical decimal string",
+          "status": "error"
+        },
+        "id": "unsafe_negative_integer",
+        "input_bytes": {
+          "hex": "2d39303037313939323534373430393932",
+          "length": 17,
+          "sha256_hex": "83e109bfd7fb4984b47a46f363627c18dbbd7e57e36b05a04cd162d304df72e9",
+          "utf8": "-9007199254740992"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json input is not valid UTF-8",
+          "status": "error"
+        },
+        "id": "invalid_utf8",
+        "input_bytes": {
+          "hex": "7b2261223a22ff227d",
+          "length": 9,
+          "sha256_hex": "dc2222acf0a31b9e965c6577a25c70f729766e07124482731257cb4bca738af7"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json string contains invalid Unicode",
+          "status": "error"
+        },
+        "id": "unpaired_high_surrogate",
+        "input_bytes": {
+          "hex": "7b2261223a225c7564383030227d",
+          "length": 14,
+          "sha256_hex": "89f8ca88ea20e6cd48ed0ab6b731b66377cab0c8fb9a7187ea96ac6813ed24e4",
+          "utf8": "{\"a\":\"\\ud800\"}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json string contains invalid Unicode",
+          "status": "error"
+        },
+        "id": "unpaired_low_surrogate_key",
+        "input_bytes": {
+          "hex": "7b225c7564666666223a307d",
+          "length": 12,
+          "sha256_hex": "e517199aef349e145e72c45deaf1352c09e96265ce9404d0d8aa804901879f49",
+          "utf8": "{\"\\udfff\":0}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "22f09f9a8022",
+            "length": 6,
+            "sha256_hex": "8d4bdd145400e3e242cbdac47a55f7298bed88a60d26a123a5837384ec060e54",
+            "utf8": "\"\ud83d\ude80\""
+          },
+          "canonical_digest": "sha256:8d4bdd145400e3e242cbdac47a55f7298bed88a60d26a123a5837384ec060e54",
+          "status": "ok"
+        },
+        "id": "valid_surrogate_pair",
+        "input_bytes": {
+          "hex": "225c75643833645c756465383022",
+          "length": 14,
+          "sha256_hex": "d315d6a892d2d59a04fc3993b6fa356a6c507df2dd4712861944c4d127f0814e",
+          "utf8": "\"\\ud83d\\ude80\""
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b305d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+            "length": 129,
+            "sha256_hex": "f0244ae1938270f711155b0a26a4307cde7050495140dd858a88a1cfc378cf40",
+            "utf8": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+          },
+          "canonical_digest": "sha256:f0244ae1938270f711155b0a26a4307cde7050495140dd858a88a1cfc378cf40",
+          "status": "ok"
+        },
+        "id": "depth_64",
+        "input_bytes": {
+          "hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b305d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+          "length": 129,
+          "sha256_hex": "f0244ae1938270f711155b0a26a4307cde7050495140dd858a88a1cfc378cf40",
+          "utf8": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json nesting exceeds depth limit",
+          "status": "error"
+        },
+        "id": "depth_65",
+        "input_bytes": {
+          "hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b305d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+          "length": 131,
+          "sha256_hex": "2574b71c86249bc36bf15157b4883f41da049924b6ddd4477f68af56d73d76b2",
+          "utf8": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "invalid JSON: Illegal trailing comma before end of object: line 1 column 7 (char 6)",
+          "status": "error"
+        },
+        "id": "malformed_trailing_comma",
+        "input_bytes": {
+          "hex": "7b2261223a312c7d",
+          "length": 8,
+          "sha256_hex": "aa99a5ce3eb0dd8355f0bfb15376ea1d862ad75d0d278af1f8c280ca8c02c640",
+          "utf8": "{\"a\":1,}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "30",
+            "length": 1,
+            "sha256_hex": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            "utf8": "0"
+          },
+          "canonical_digest": "sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+          "status": "ok"
+        },
+        "id": "input_bytes_at_4mib",
+        "input_bytes": {
+          "exact_bytes_recipe": {
+            "kind": "concat",
+            "parts": [
+              {
+                "hex": "30"
+              },
+              {
+                "count": 4194303,
+                "repeat_byte_hex": "20"
+              }
+            ]
+          },
+          "first_32_bytes_hex": "3020202020202020202020202020202020202020202020202020202020202020",
+          "last_32_bytes_hex": "2020202020202020202020202020202020202020202020202020202020202020",
+          "length": 4194304,
+          "sha256_hex": "4629994e3edb2cc3c12970cc8e60f2c40f6dce7311dac6f8e85a734764eb230c"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json input exceeds size limit",
+          "status": "error"
+        },
+        "id": "input_bytes_over_4mib",
+        "input_bytes": {
+          "exact_bytes_recipe": {
+            "kind": "concat",
+            "parts": [
+              {
+                "hex": "30"
+              },
+              {
+                "count": 4194304,
+                "repeat_byte_hex": "20"
+              }
+            ]
+          },
+          "first_32_bytes_hex": "3020202020202020202020202020202020202020202020202020202020202020",
+          "last_32_bytes_hex": "2020202020202020202020202020202020202020202020202020202020202020",
+          "length": 4194305,
+          "sha256_hex": "52d08e63c7ff220580c1035156e546168ce70ade1c5e671bd127b5905862c466"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {}
+      },
+      {
+        "expected": {
+          "canonical_bytes": {
+            "hex": "7b2261223a317d",
+            "length": 7,
+            "sha256_hex": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+            "utf8": "{\"a\":1}"
+          },
+          "canonical_digest": "sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+          "status": "ok"
+        },
+        "id": "custom_byte_bound_at_limit",
+        "input_bytes": {
+          "hex": "7b2261223a317d",
+          "length": 7,
+          "sha256_hex": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+          "utf8": "{\"a\":1}"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {
+          "max_bytes": 7
+        }
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json input exceeds size limit",
+          "status": "error"
+        },
+        "id": "custom_byte_bound_over_limit",
+        "input_bytes": {
+          "hex": "7b2261223a317d20",
+          "length": 8,
+          "sha256_hex": "e76a443e8bc10145c8e0c0a855e89b3720b75277fff801aba27a797999712bdd",
+          "utf8": "{\"a\":1} "
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {
+          "max_bytes": 7
+        }
+      },
+      {
+        "expected": {
+          "exception_type": "tobkiri_protocol.errors.CanonicalizationError",
+          "message": "json nesting exceeds depth limit",
+          "status": "error"
+        },
+        "id": "custom_depth_zero",
+        "input_bytes": {
+          "hex": "5b305d",
+          "length": 3,
+          "sha256_hex": "d0bca111f8628137adc4c16f123496dcdd1d590d06cb5d9acd68b39fe656fb97",
+          "utf8": "[0]"
+        },
+        "source_calls": [
+          "protocol.strict_loads",
+          "protocol.canonical_json",
+          "protocol.canonical_digest"
+        ],
+        "strict_loads_kwargs": {
+          "max_depth": 0
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "dependency_versions": {
+      "cryptography": "50.0.0",
+      "packaging": "26.2"
+    },
+    "generator_sha256_hex": "d149e772e4516f41639eb54627e3faaa38281de31eca231b63dcc2b0f6a03a70",
+    "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+    "python": "3.14.0",
+    "referenced_files_match_commit": true,
+    "source_calls": {
+      "artifact.artifact_digest": {
+        "callable_source_sha256_hex": "674b0ba7ade713bb74eb2d8d372350fa75dd42365185b203b31a807a7704c029",
+        "execution": "direct call to original imported source callable",
+        "first_line": 17,
+        "qualified_name": "artifact_digest",
+        "source": "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+      },
+      "authority.InvocationLease.digest": {
+        "callable_source_sha256_hex": "1b2195970d4d8e5360697c5393b7882d4faa85915b7366766d993bbfc5ec87d8",
+        "execution": "direct call to original imported source callable",
+        "first_line": 1217,
+        "qualified_name": "InvocationLease.digest",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority.InvocationLease.from_dict": {
+        "callable_source_sha256_hex": "bca8bd209d8f645390dd7b7e7e90411c8b62dde7ed3d763eaf3de34f6ad1a761",
+        "execution": "direct call to original imported source callable",
+        "first_line": 1258,
+        "qualified_name": "InvocationLease.from_dict",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority.InvocationLease.to_dict": {
+        "callable_source_sha256_hex": "f0ab04ddde82e1108132d42a4a05345f1979bd2a59de17325b7e7e12c752eb0e",
+        "execution": "direct call to original imported source callable",
+        "first_line": 1223,
+        "qualified_name": "InvocationLease.to_dict",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority.authority_digest": {
+        "callable_source_sha256_hex": "87800d5bc68f1b52ec751356929cc93dfa3ab551c6481eae346b4971f74b7a07",
+        "execution": "direct call to original imported source callable",
+        "first_line": 116,
+        "qualified_name": "authority_digest",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority.canonical_json": {
+        "callable_source_sha256_hex": "f2cbf8b42f4ebd5f8642155ada084b0422b0afcf90b77479005cd75e162223cc",
+        "execution": "direct call to original imported source callable",
+        "first_line": 100,
+        "qualified_name": "canonical_json",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority.interactive_confirmation_digest": {
+        "callable_source_sha256_hex": "2de723ea34ed2d12f33ecf88f7411d92c56c312a3434068db7ed0529998407c0",
+        "execution": "direct call to original imported source callable",
+        "first_line": 173,
+        "qualified_name": "interactive_confirmation_digest",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+      },
+      "authority_store.__init__._mac_key_assignment": {
+        "exact_source_segment": "self._mac_key = hashlib.sha256(self._fernet_key + b\":lease-mac:v1\").digest()",
+        "execution": "compile and execute the original AST assignment only; no constructor",
+        "first_line": 339,
+        "source": "tobkiri_runtime/core_runtime/authority/v4_store.py",
+        "source_segment_sha256_hex": "1d12b96c55a5e8e264fb00875a7c7e333601683cbb8f22fcbb00e0efc19e5a4e"
+      },
+      "authority_store._append_audit": {
+        "callable_source_sha256_hex": "a678ff08178c9ba47191a545fc493fd1f69b9339212b5414b80d6b6875504625",
+        "execution": "direct call to original imported source callable",
+        "first_line": 3397,
+        "qualified_name": "AuthorityStore._append_audit",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+      },
+      "authority_store._decode_lease_token": {
+        "callable_source_sha256_hex": "ff5cbe2851685c7ab54a28850f5a7af695300ea3781107a7c92863ffc7268b0a",
+        "execution": "direct call to original imported source callable",
+        "first_line": 3457,
+        "qualified_name": "AuthorityStore._decode_lease_token",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+      },
+      "authority_store._encode_lease_token": {
+        "callable_source_sha256_hex": "98efd1c8da07e9c72111905a007ff4c9ad198450f9f0bfad6b52614f90e76914",
+        "execution": "direct call to original imported source callable",
+        "first_line": 3449,
+        "qualified_name": "AuthorityStore._encode_lease_token",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+      },
+      "authority_store._verify_audit_rows": {
+        "callable_source_sha256_hex": "edd0be1eb46ebe31c66345c87b7d1c727402e622f29463538ea9145c4033a336",
+        "execution": "direct call to original imported source callable",
+        "first_line": 4064,
+        "qualified_name": "AuthorityStore._verify_audit_rows",
+        "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+      },
+      "pack._canonical_bytes": {
+        "callable_source_sha256_hex": "1b6e416a0c55fb41248ac698763ac445fd2521910ed27289d8bc37ec7600a0bf",
+        "execution": "direct call to original imported source callable",
+        "first_line": 438,
+        "qualified_name": "_canonical_bytes",
+        "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+      },
+      "pack.build_signed_manifest": {
+        "callable_source_sha256_hex": "f1683694baaaf8f773e2df039ef94533530cdb51fba411f45c3b8d7863a3ad64",
+        "execution": "direct call to original imported source callable",
+        "first_line": 63,
+        "qualified_name": "build_signed_manifest",
+        "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+      },
+      "pack.sign_manifest": {
+        "callable_source_sha256_hex": "a4d3c9eaa81fed3af3756957777faa10b1150faf8ebc1ff3779c346827b68b1d",
+        "execution": "direct call to original imported source callable",
+        "first_line": 109,
+        "qualified_name": "sign_manifest",
+        "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+      },
+      "pack.verify_signed_manifest": {
+        "callable_source_sha256_hex": "61f5a8c41f5039a84df5fdfe803b733a29e5a9a604a4ba1ba9646a2c11951bf6",
+        "execution": "direct call to original imported source callable",
+        "first_line": 134,
+        "qualified_name": "verify_signed_manifest",
+        "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+      },
+      "pack.verify_signed_pack": {
+        "callable_source_sha256_hex": "73ec1d5da5d1a65a70d7ba64ae5911be00bf5dea16eeb5c72344e37d65ab879c",
+        "execution": "direct call to original imported source callable",
+        "first_line": 225,
+        "qualified_name": "verify_signed_pack",
+        "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+      },
+      "protocol.canonical_bytes": {
+        "callable_source_sha256_hex": "7f27c68f22f2608be947693d5147709e84dcd0976376a473c89ad82cff1ae654",
+        "execution": "direct call to original imported source callable",
+        "first_line": 104,
+        "qualified_name": "canonical_bytes",
+        "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+      },
+      "protocol.canonical_digest": {
+        "callable_source_sha256_hex": "3bcda5f8aafd92772b70ea8351d43ab501fddacd881f4c138550f0bc34fb5d79",
+        "execution": "direct call to original imported source callable",
+        "first_line": 111,
+        "qualified_name": "canonical_digest",
+        "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+      },
+      "protocol.canonical_json": {
+        "callable_source_sha256_hex": "c2f8ef224a72e70deda05b7b3cf08cbe13343153d6e094c32591c614fdceab5f",
+        "execution": "direct call to original imported source callable",
+        "first_line": 86,
+        "qualified_name": "canonical_json",
+        "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+      },
+      "protocol.strict_loads": {
+        "callable_source_sha256_hex": "ee030e565eaecfa581b0de26f3a8c35509ac6ecff353e8132435477596e64c53",
+        "execution": "direct call to original imported source callable",
+        "first_line": 24,
+        "qualified_name": "strict_loads",
+        "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+      },
+      "workflow._decode": {
+        "callable_source_sha256_hex": "91ccf76ebc63918ee1eaa566eb1af306c2effb2508684ebf60c32b8f13d1f886",
+        "execution": "direct call to original imported source callable",
+        "first_line": 167,
+        "qualified_name": "WorkflowStoreV4._decode",
+        "source": "tobkiri_runtime/core_runtime/workflow_v4/store.py"
+      },
+      "workflow._encode": {
+        "callable_source_sha256_hex": "a0760711d9d7d7b215ff08f1ff591f21da020e5a4f10a568e5429062941c4249",
+        "execution": "direct call to original imported source callable",
+        "first_line": 158,
+        "qualified_name": "WorkflowStoreV4._encode",
+        "source": "tobkiri_runtime/core_runtime/workflow_v4/store.py"
+      }
+    },
+    "source_tree": "/Users/haru/.codex/worktrees/e8bc/tobikiri-pr-1322",
+    "sources": {
+      "tobkiri_launcher/scripts/tests/fixtures/artifact_integrity_vectors.json": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 795,
+        "sha256_hex": "0505017d0080f8dd0fb87322bcf34969fcfa68c8627599e2c34284a7d5a36298"
+      },
+      "tobkiri_runtime/core_runtime/authority/store_contracts.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 1509,
+        "sha256_hex": "7a03d73bff3fb1238b14df14e2c3194464ba9c7d9c3aed0268b301ac4e23f72d"
+      },
+      "tobkiri_runtime/core_runtime/authority/v4_models.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 54232,
+        "sha256_hex": "61c505e7fb2e73d17c5f3972e6ef4e657d2571fe2b6e99ecd6a3ad577ebd9a8e"
+      },
+      "tobkiri_runtime/core_runtime/authority/v4_store.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 179537,
+        "sha256_hex": "27c4af9822bad5fc1a1c9ddefebfc6e6ac7e8f61b6debbca87da114a8de63e7b"
+      },
+      "tobkiri_runtime/core_runtime/pack_signature.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 19276,
+        "sha256_hex": "abe62f0226c151c849f49e27b9fbdbe6c399cccb36a5827230fa7399c01ece6d"
+      },
+      "tobkiri_runtime/core_runtime/workflow_v4/models.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 6002,
+        "sha256_hex": "b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684"
+      },
+      "tobkiri_runtime/core_runtime/workflow_v4/store.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 24776,
+        "sha256_hex": "fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea"
+      },
+      "tobkiri_runtime/tobkiri_protocol/canonical.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 5465,
+        "sha256_hex": "9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"
+      },
+      "tobkiri_runtime/tobkiri_protocol/errors.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 1047,
+        "sha256_hex": "2292de2b3fd27e3fe644979d7aee20a40e4b77b2366dd4c5ac3ad3a449acbddf"
+      },
+      "tobkiri_runtime/tobkiri_protocol/platform_artifact.py": {
+        "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+        "length": 9528,
+        "sha256_hex": "c55797250942fe23a48a971860ea5b55d722abb3fad1ecc83ebdce1ffe7a80c8"
+      }
+    }
+  },
+  "purpose": "Preparatory reference evidence for issue #1520 R11.4; no production architecture decision",
+  "secrets": "Every seed/key/token is deterministic public test data. Never use these in production.",
+  "workflow_hmac": {
+    "cases": [
+      {
+        "expected": {
+          "decoded": {
+            "state": "queued",
+            "version": 1
+          },
+          "payload_bytes": {
+            "hex": "7b227374617465223a22717565756564222c2276657273696f6e223a317d",
+            "length": 30,
+            "sha256_hex": "386dcc39a01dc8045c9542605a19da7a7d599592e192a8cba6c9933eb4ecba29",
+            "utf8": "{\"state\":\"queued\",\"version\":1}"
+          },
+          "seal_lowercase_hex": "627388fcb3dd19bd06693f9b75d05e04cb6a3aaae1f77105df4355467a419053",
+          "tampered_payload": {
+            "exception_type": "core_runtime.workflow_v4.models.WorkflowDenied",
+            "message": "workflow state authentication failed",
+            "status": "error"
+          },
+          "tampered_seal": {
+            "exception_type": "core_runtime.workflow_v4.models.WorkflowDenied",
+            "message": "workflow state authentication failed",
+            "status": "error"
+          }
+        },
+        "id": "minimal",
+        "input": {
+          "state": "queued",
+          "version": 1
+        },
+        "source_calls": [
+          "workflow._encode",
+          "workflow._decode"
+        ]
+      },
+      {
+        "expected": {
+          "decoded": {
+            "checkpoint_id": "fixture:1",
+            "payload": {
+              "keys": [
+                null,
+                true,
+                0
+              ],
+              "message": "\u3042\ud83d\ude80"
+            },
+            "time_ms": 1750000000125
+          },
+          "payload_bytes": {
+            "hex": "7b22636865636b706f696e745f6964223a22666978747572653a31222c227061796c6f6164223a7b226b657973223a5b6e756c6c2c747275652c305d2c226d657373616765223a22e38182f09f9a80227d2c2274696d655f6d73223a313735303030303030303132357d",
+            "length": 106,
+            "sha256_hex": "2278ae4906667a6de890bd0640ec8605537a2c071eaaa40b6a97b48507abb9d8",
+            "utf8": "{\"checkpoint_id\":\"fixture:1\",\"payload\":{\"keys\":[null,true,0],\"message\":\"\u3042\ud83d\ude80\"},\"time_ms\":1750000000125}"
+          },
+          "seal_lowercase_hex": "663b23e527e94ccbfde43178549ed5a011c843c296bc6a02f7e6d30cb2f4580e",
+          "tampered_payload": {
+            "exception_type": "core_runtime.workflow_v4.models.WorkflowDenied",
+            "message": "workflow state authentication failed",
+            "status": "error"
+          },
+          "tampered_seal": {
+            "exception_type": "core_runtime.workflow_v4.models.WorkflowDenied",
+            "message": "workflow state authentication failed",
+            "status": "error"
+          }
+        },
+        "id": "unicode_checkpoint",
+        "input": {
+          "checkpoint_id": "fixture:1",
+          "payload": {
+            "keys": [
+              null,
+              true,
+              0
+            ],
+            "message": "\u3042\ud83d\ude80"
+          },
+          "time_ms": 1750000000125
+        },
+        "source_calls": [
+          "workflow._encode",
+          "workflow._decode"
+        ]
+      }
+    ],
+    "fixture_receiver": "WorkflowStoreV4.__new__; only _seal_key assigned; __init__ never called",
+    "test_only_seal_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  }
+}

@@ -1,0 +1,857 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_workspace_mount_pack",
+  "source_identity": "sha256:5e81b6ad12ef020e960edf94b92df8623632cbfaed2c4943b8a38cc6c82356e5",
+  "variants": [
+    {
+      "variant_id": "rumi_workspace_mount_pack.project-directory.service.python",
+      "function_id": "rumi_workspace_mount_pack.project-directory.service",
+      "implementation_path": "runtime/mounts.py",
+      "implementation_digest": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
+          "operation_id": "workspace.directory.acquire",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 300000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-execute.service.python",
+      "function_id": "rumi_workspace_mount_pack.project-workspace-execute.service",
+      "implementation_path": "runtime/mounts.py",
+      "implementation_digest": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
+          "operation_id": "workspace.mount.execute",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_workspace_mount_pack.project-workspace-prepare.service.python",
+      "function_id": "rumi_workspace_mount_pack.project-workspace-prepare.service",
+      "implementation_path": "runtime/mounts.py",
+      "implementation_digest": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.workspace.project.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d056461165d71085afdfb6985aa32435c939f42eabfbd2256a7fb226ba3915d9",
+          "operation_id": "workspace.mount.prepare",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "primary_selection_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "selection_ids": {
+                    "items": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "selection_ids",
+                  "primary_selection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activation_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "expected_revision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "plan_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "primary_workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "profile_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "request_digest": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "root_identity": {
+                        "items": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "root_path": {
+                        "maxLength": 32768,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "roots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_name": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "root_identity": {
+                              "items": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "maxItems": 2,
+                              "minItems": 2,
+                              "type": "array"
+                            },
+                            "root_path": {
+                              "maxLength": 32768,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "workspace_id": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workspace_id",
+                            "root_path",
+                            "root_identity",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 32,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "security_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": "tobkiri.workspace.project-plan.v1"
+                      },
+                      "workspace_id": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "profile_id",
+                      "activation_id",
+                      "plan_digest",
+                      "security_epoch",
+                      "workspace_id",
+                      "root_path",
+                      "root_identity",
+                      "display_name",
+                      "expected_revision",
+                      "request_digest"
+                    ],
+                    "type": "object"
+                  },
+                  "request": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "selection_id"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "primary_selection_id": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]+$",
+                            "type": "string"
+                          },
+                          "selection_ids": {
+                            "items": {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]+$",
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "selection_ids",
+                          "primary_selection_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_workspace_mount_pack.workspace-mount.manage.python",
+      "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
+      "implementation_path": "runtime/mounts.py",
+      "implementation_digest": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.workspace.mount.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:5bd8db43405c1c7582f1f00f7e9ea2b897191363c85c2cf15b51ddcd9ccb40f7",
+          "operation_id": "rumi_workspace_mount_pack.workspace-mount",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_workspace_mount_pack.workspace-mount.resource.python",
+      "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "implementation_path": "runtime/mounts.py",
+      "implementation_digest": "sha256:6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:0eb680282fe3fdfb339c4ba0d9103931f61cc9480674db0ee053366555b340ea",
+  "catalog_digest": "sha256:66d421f6f48015c0af41cdd089db1e2f88e1d049315790c60bf36d24b9875282"
+}

@@ -146,7 +146,7 @@ test("company task board renders dispatched completed runs", () => {
   assert.match(html, /minimax_worker/);
   assert.match(html, /completed/);
   assert.match(html, /stub\/default/);
-  assert.match(html, /Employee Conversation/);
+  assert.match(html, /Subagent Conversation/);
   assert.match(html, /Deep research with DuckDuckGo/);
   assert.match(html, /Run a real MiniMax task through Company Workspace/);
   assert.match(html, /Agent reply/);
@@ -182,12 +182,12 @@ test("company workspace renders a visible empty state before a chat exists", () 
     }),
   );
 
-  assert.match(html, /Employees/);
-  assert.match(html, /Employee Group/);
-  assert.match(html, /Employee workspace options/);
+  assert.match(html, /Main Agent &amp; Subagents/);
+  assert.match(html, /Subagent Team/);
+  assert.match(html, /Subagent Team options/);
   assert.doesNotMatch(html, />Routes</);
   assert.doesNotMatch(html, />P2P</);
-  assert.match(html, /Start or send a chat message to create its employee group/);
+  assert.match(html, /Start or send a chat message to create its Subagent Team/);
   assert.doesNotMatch(html, /Rumi Operations Company/);
 });
 
@@ -223,7 +223,7 @@ test("company workspace selects and renders the first global MiMo company withou
 
   assert.equal(selectedId, MIMO_CODING_COMPANY_ID);
   assert.match(html, /MiMo Coding Company/);
-  assert.match(html, /7 employees/);
+  assert.match(html, /7 Agents/);
   assert.match(html, /6 tasks/);
   assert.doesNotMatch(html, /Start or send a chat message/);
 });
@@ -326,22 +326,22 @@ test("company workspace keeps active MiMo company visible when only runtime reso
 
   assert.equal(enrichedCompany.id, MIMO_CODING_COMPANY_ID);
   assert.match(html, /MiMo Coding Company/);
-  assert.match(html, /1 employees/);
-  assert.doesNotMatch(html, /No employee group loaded/);
+  assert.match(html, /1 Agents/);
+  assert.doesNotMatch(html, /No Subagent Team loaded/);
 });
 
-test("company tree does not claim the employee group is missing while loading", () => {
+test("company tree does not claim the Subagent Team is missing while loading", () => {
   const html = renderToStaticMarkup(
     createElement(CompanyTree, {
       companies: [],
       activeCompanyId: null,
       busy: true,
-      emptyMessage: "No employee group loaded.",
+      emptyMessage: "No Subagent Team loaded.",
     }),
   );
 
-  assert.match(html, /Loading employee group/);
-  assert.doesNotMatch(html, /No employee group loaded/);
+  assert.match(html, /Loading Subagent Team/);
+  assert.doesNotMatch(html, /No Subagent Team loaded/);
 });
 
 test("company tree disambiguates companies with duplicate display names", () => {
@@ -431,7 +431,7 @@ test("company workspace resolves selected history company groups", () => {
   }), null);
 });
 
-test("compact history company group keeps the selectable source group", () => {
+test("compact history Team bucket retains company workspace selection", () => {
   const groups = buildGroupsFromChats([
     {
       id: "mimo-company-chat",
@@ -445,11 +445,36 @@ test("compact history company group keeps the selectable source group", () => {
     },
   ]);
   const railGroup = buildCompactHistoryRailItems(groups)
-    .find((item) => item.type === "group" && item.id === "company:mimo-coding-company");
+    .find((item) => item.type === "group" && item.id === "group-company");
 
   if (!railGroup || railGroup.type !== "group") {
-    assert.fail("Expected compact rail to include the company group.");
+    assert.fail("Expected compact rail to include the automatic Team bucket.");
   }
+  assert.equal(railGroup.title, "Team");
+  assert.notEqual(railGroup.group.custom, true);
+  assert.deepEqual(railGroup.group.chats.map((chat) => chat.id), ["mimo-company-chat"]);
+  assert.equal(groups.some((group) => group.id === "company:mimo-coding-company"), false);
+  assert.equal(resolveCompanyWorkspaceHintFromGroup(railGroup.group), "mimo-coding-company");
+});
+
+test("compact history preserves a company-prefixed canonical Project source", () => {
+  const projectId = "company:mimo-coding-company";
+  const groups = buildGroupsFromChats([{
+    id: "canonical-company-chat",
+    title: "MiMo Project conversation",
+    date: "Today",
+    type: "chat",
+    metadata: { group_id: projectId, group_title: "Stale hint" },
+  }], [{ id: projectId, title: "Canonical MiMo Project" }]);
+  const railGroup = buildCompactHistoryRailItems(groups)
+    .find((item) => item.type === "group" && item.id === projectId);
+  if (!railGroup || railGroup.type !== "group") {
+    assert.fail("Expected compact rail to retain the canonical Project.");
+  }
+  assert.equal(railGroup.title, "Canonical MiMo Project");
+  assert.equal(railGroup.group.custom, true);
+  assert.equal(railGroup.group.sourceGroupId, projectId);
+  assert.deepEqual(railGroup.group.chats.map((chat) => chat.id), ["canonical-company-chat"]);
   assert.equal(resolveCompanyWorkspaceHintFromGroup(railGroup.group), "mimo-coding-company");
 });
 
@@ -621,8 +646,8 @@ test("company tabs avoid empty configured states when card counts are known", ()
   assert.doesNotMatch(channelHtml, /No messages in this channel/);
   assert.match(taskHtml, /6 tasks recorded/);
   assert.doesNotMatch(taskHtml, /No delegated tasks/);
-  assert.match(agentHtml, /7 employees configured/);
-  assert.doesNotMatch(agentHtml, /No employees configured/);
+  assert.match(agentHtml, /7 Agents configured/);
+  assert.doesNotMatch(agentHtml, /No Subagents configured/);
 });
 
 test("company p2p panel disables durable actions while p2p is disabled", () => {
@@ -786,7 +811,7 @@ test("company agent list renders latest agent run errors", () => {
 
   assert.match(html, /Stub Worker/);
   assert.match(html, /error/);
-  assert.match(html, /Employee Conversation/);
+  assert.match(html, /Subagent Conversation/);
   assert.match(html, /Try the same task with stub\/default/);
   assert.match(html, /stub: provider is not configured/);
 });

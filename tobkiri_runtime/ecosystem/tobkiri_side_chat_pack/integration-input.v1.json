@@ -1,0 +1,995 @@
+{
+  "schema": "tobkiri.pack-integration-input.v1",
+  "pack_catalog_record": {
+    "pack_id": "tobkiri_side_chat_pack",
+    "authority": "v4-authoritative",
+    "display_name": "Tobkiri Side Chat",
+    "description": "Optional independent child history with fresh parent context.",
+    "version": "1.0.0",
+    "kind": "host_extension",
+    "dependencies": {},
+    "capabilities": [
+      "conversation.read",
+      "conversation.manage",
+      "turn.read",
+      "turn.execute",
+      "turn.stop",
+      "turn.reconcile",
+      "conversation.side.read",
+      "conversation.side.manage",
+      "conversation.side.turn"
+    ],
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "secrets": [],
+    "execution_boundary": "host_brokered",
+    "approval_policy": "capability_gated",
+    "workspace_boundary": "host_brokered",
+    "required_contracts": [
+      {
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_conversation_store_pack.conversation-manage"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.resource.turn.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.event.turn.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_turn_runtime_pack.turn-events"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.turn.saved.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_turn_runtime_pack.turn-saved"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_turn_runtime_pack.turn-stop"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.turn.reconcile.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": false,
+        "operations": [
+          "rumi_turn_runtime_pack.turn-reconcile"
+        ]
+      }
+    ],
+    "provided_contracts": [
+      {
+        "contract_id": "tobkiri.resource.side-chat.v1",
+        "version": "1.0.0",
+        "owner": "tobkiri_side_chat_pack",
+        "provider_id": "tobkiri_side_chat_pack.resource",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.read"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "parent_conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "turn_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "get"
+                  }
+                },
+                "required": [
+                  "parent_conversation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "events"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        },
+        "operations": [
+          {
+            "id": "tobkiri_side_chat_pack.side-chat-resource",
+            "entrypoint_id": "side-chat-resource",
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+          }
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.side-chat.v1",
+        "version": "1.0.0",
+        "owner": "tobkiri_side_chat_pack",
+        "provider_id": "tobkiri_side_chat_pack.manage",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.manage"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "parent_conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "expected_parent_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "ensure"
+                  }
+                },
+                "required": [
+                  "parent_conversation_id",
+                  "expected_parent_revision"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        },
+        "operations": [
+          {
+            "id": "tobkiri_side_chat_pack.side-chat-manage",
+            "entrypoint_id": "side-chat-manage",
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+          }
+        ]
+      },
+      {
+        "contract_id": "tobkiri.service.side-chat.turn.v1",
+        "version": "1.0.0",
+        "owner": "tobkiri_side_chat_pack",
+        "provider_id": "tobkiri_side_chat_pack.turn",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.turn"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "turn_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "expected_parent_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "expected_child_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 61440
+                  },
+                  {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "send"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id",
+                  "expected_parent_revision",
+                  "expected_child_revision",
+                  "content"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "stop"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "reconcile"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        },
+        "operations": [
+          {
+            "id": "tobkiri_side_chat_pack.side-chat-turn",
+            "entrypoint_id": "side-chat-turn",
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
+          }
+        ]
+      }
+    ],
+    "runtime_artifacts": [
+      {
+        "path": "runtime/host.py",
+        "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+        "kind": "executable"
+      },
+      {
+        "path": "runtime/side_chat.py",
+        "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
+        "kind": "sidecar"
+      },
+      {
+        "path": "pack-source.v1.json",
+        "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
+        "kind": "sidecar"
+      },
+      {
+        "path": "frontend/contributions/side-chat.json",
+        "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
+        "kind": "sidecar",
+        "index_role": "sidecar"
+      }
+    ],
+    "legacy_ids": [],
+    "legacy_operations": [],
+    "migration": {
+      "removal_wave": 0,
+      "sunset_at": "2027-12-31"
+    },
+    "source_evidence": [
+      {
+        "path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
+        "rule_id": "reviewed-side-chat-source",
+        "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad"
+      }
+    ],
+    "source_provenance": {
+      "mode": "canonical-v4",
+      "owner": "tobkiri_side_chat_pack",
+      "source_format": "pack.v4.json"
+    }
+  },
+  "semantic_source_entry": {
+    "entries": [
+      {
+        "function_id": "tobkiri_side_chat_pack.resource",
+        "contract_id": "tobkiri.resource.side-chat.v1",
+        "contract_version": "1.0.0",
+        "operation_ids": [
+          "tobkiri_side_chat_pack.side-chat-resource"
+        ],
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "parent_conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "turn_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "get"
+                  }
+                },
+                "required": [
+                  "parent_conversation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "events"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "function_id": "tobkiri_side_chat_pack.manage",
+        "contract_id": "tobkiri.action.side-chat.v1",
+        "contract_version": "1.0.0",
+        "operation_ids": [
+          "tobkiri_side_chat_pack.side-chat-manage"
+        ],
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "parent_conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "expected_parent_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "ensure"
+                  }
+                },
+                "required": [
+                  "parent_conversation_id",
+                  "expected_parent_revision"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "function_id": "tobkiri_side_chat_pack.turn",
+        "contract_id": "tobkiri.service.side-chat.turn.v1",
+        "contract_version": "1.0.0",
+        "operation_ids": [
+          "tobkiri_side_chat_pack.side-chat-turn"
+        ],
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "turn_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "expected_parent_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "expected_child_revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 61440
+                  },
+                  {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "send"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id",
+                  "expected_parent_revision",
+                  "expected_child_revision",
+                  "content"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "stop"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "reconcile"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "turn_id"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "effect_reviews": [
+    {
+      "function_id": "tobkiri_side_chat_pack.resource",
+      "contract_id": "tobkiri.resource.side-chat.v1",
+      "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
+      "contract_version": "1.0.0",
+      "capability": "conversation.side.read",
+      "effect_class": "read",
+      "effect_ceiling": [
+        "capability:conversation.side.read"
+      ],
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "parent_conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "turn_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "get"
+                }
+              },
+              "required": [
+                "parent_conversation_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "events"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object"
+        },
+        "error": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "function_id": "tobkiri_side_chat_pack.manage",
+      "contract_id": "tobkiri.action.side-chat.v1",
+      "operation_id": "tobkiri_side_chat_pack.side-chat-manage",
+      "contract_version": "1.0.0",
+      "capability": "conversation.side.manage",
+      "effect_class": "privileged",
+      "effect_ceiling": [
+        "capability:conversation.side.manage",
+        "host:brokered-execution"
+      ],
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "parent_conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "expected_parent_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "ensure"
+                }
+              },
+              "required": [
+                "parent_conversation_id",
+                "expected_parent_revision"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object"
+        },
+        "error": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "function_id": "tobkiri_side_chat_pack.turn",
+      "contract_id": "tobkiri.service.side-chat.turn.v1",
+      "operation_id": "tobkiri_side_chat_pack.side-chat-turn",
+      "contract_version": "1.0.0",
+      "capability": "conversation.side.turn",
+      "effect_class": "privileged",
+      "effect_ceiling": [
+        "capability:conversation.side.turn",
+        "host:brokered-execution"
+      ],
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "turn_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "expected_parent_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "expected_child_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "content": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 61440
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "send"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id",
+                "expected_parent_revision",
+                "expected_child_revision",
+                "content"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "stop"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "reconcile"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object"
+        },
+        "error": {
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "host_factory": {
+    "module": "ecosystem.tobkiri_side_chat_pack.runtime.host",
+    "symbol": "HOST_PROVIDER_FACTORY"
+  },
+  "ui_contributions": [
+    "frontend/contributions/side-chat.json"
+  ],
+  "guest_source_addition": "tobkiri_protocol/conversation_context.py",
+  "requested_default_selection": "optional; no installed or release evidence",
+  "ui_progress_dependency": {
+    "contract_id": "tobkiri.resource.turn.progress.v1",
+    "contract_version": "1.0.0",
+    "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+    "optional": true,
+    "owner": "Application frontend resource capture; exact signed edge and readiness remain integration-owned",
+    "required_host_effects": [
+      "pure",
+      "read"
+    ]
+  }
+}

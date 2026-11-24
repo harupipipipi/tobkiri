@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bot, ClipboardCheck, Copy, Cpu, KeyRound, Link2, ListChecks, Monitor, Network, PackageCheck, Shield, UserCheck } from "lucide-react";
+import { Bot, ClipboardCheck, Copy, Cpu, KeyRound, Link2, ListChecks, Monitor, Network, PackageCheck, Shield, UserCheck } from "lucide-react";
 
+import { runtimeOperationAllowed, DESKTOP_UNSUPPORTED_REASON } from "../../features/sandboxes/runtimeStatus";
 import { cn } from "../../lib/cn";
 import { sandboxesApi } from "../../features/sandboxes/api";
-import type { DesktopInstance, RuntimeIsolationFacts } from "../../features/sandboxes/types";
+import type { DesktopInstance, RuntimeIsolationFacts, RuntimeOperationSupport } from "../../features/sandboxes/types";
+import { ErrorNotice } from "../ErrorNotice";
 
 type DesktopInspectorProps = {
   desktop: DesktopInstance | null;
+  operationSupport?: RuntimeOperationSupport;
   hasLease: boolean;
   leaseError?: string | null;
   actionError?: string | null;
@@ -70,6 +73,7 @@ function desktopRole(desktop: DesktopInstance): string | null {
 
 export function DesktopInspector({
   desktop,
+  operationSupport,
   hasLease,
   leaseError,
   actionError,
@@ -87,10 +91,10 @@ export function DesktopInspector({
     url.searchParams.delete("desktop_access_key");
     url.searchParams.delete("access_key");
     return url.toString();
-  }, [desktop?.seat_id]);
+  }, [desktop?.seat_id, operationSupport?.access]);
 
   useEffect(() => {
-    if (!desktop?.seat_id) {
+    if (!desktop?.seat_id || !runtimeOperationAllowed(operationSupport, "access")) {
       setGrants([]);
       return;
     }
@@ -99,10 +103,10 @@ export function DesktopInspector({
       .then((result) => { if (active) setGrants(result.grants); })
       .catch(() => { if (active) setGrants([]); });
     return () => { active = false; };
-  }, [desktop?.seat_id]);
+  }, [desktop?.seat_id, operationSupport?.access]);
 
   const revokeGrant = (grantId: string) => {
-    if (!desktop?.seat_id) return;
+    if (!desktop?.seat_id || !runtimeOperationAllowed(operationSupport, "access")) return;
     void sandboxesApi.revokeDesktopGrant(desktop.seat_id, grantId).then(() => {
       setGrants((current) => current.map((grant) => (
         grant.credential_id === grantId || grant.code_id === grantId
@@ -229,6 +233,8 @@ export function DesktopInspector({
             <button
               type="button"
               onClick={() => onRequestAccess?.(desktop.seat_id)}
+              disabled={!runtimeOperationAllowed(operationSupport, "access")}
+              title={DESKTOP_UNSUPPORTED_REASON}
               className="h-8 rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 hover:bg-zinc-900"
             >
               Request access
@@ -249,7 +255,8 @@ export function DesktopInspector({
                   const requestId = grantRequestId.trim();
                   if (requestId) onGrantAccess?.(desktop.seat_id, requestId);
                 }}
-                disabled={!grantRequestId.trim()}
+                disabled={!grantRequestId.trim() || !runtimeOperationAllowed(operationSupport, "access")}
+                title={DESKTOP_UNSUPPORTED_REASON}
                 className="h-8 rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Grant
@@ -272,6 +279,8 @@ export function DesktopInspector({
                   <button
                     type="button"
                     onClick={() => revokeGrant(grantId)}
+                    disabled={!runtimeOperationAllowed(operationSupport, "access")}
+                    title={DESKTOP_UNSUPPORTED_REASON}
                     className="mt-1 rounded border border-red-500/30 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/10"
                   >
                     Revoke access
@@ -302,24 +311,20 @@ export function DesktopInspector({
         </div>
         <div className="rounded-md border border-zinc-800 bg-zinc-950/60 px-3">
           {factRow("Assigned agent", desktop.assigned_agent || "Unassigned")}
-          {factRow("Control", hasLease ? "Human takeover" : desktop.control?.holder === "ai" ? "AI" : "Available")}
+          {factRow("Control", !runtimeOperationAllowed(operationSupport, "control") ? "操作未接続" : hasLease ? "Human takeover" : desktop.control?.holder === "ai" ? "AI" : "Available")}
           {desktop.control?.message && factRow("Control note", desktop.control.message)}
         </div>
       </section>
 
       {(desktop.last_error || leaseError || actionError) && (
-        <section className="rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-red-100">
-          <div className="flex items-center gap-1.5 font-semibold">
-            <AlertTriangle size={13} />
-            <span>Latest issue</span>
-          </div>
-          <p className="mt-1">
-            {actionError
-              || leaseError
-              || (typeof desktop.last_error === "string" ? desktop.last_error : desktop.last_error?.message)
-              || "Unknown desktop error."}
-          </p>
-        </section>
+        <ErrorNotice
+          message={actionError
+            || leaseError
+            || (typeof desktop.last_error === "string" ? desktop.last_error : desktop.last_error?.message)
+            || "Unknown desktop error."}
+          title="Latest issue"
+          copyLabel="デスクトップのエラーをコピー"
+        />
       )}
     </aside>
   );

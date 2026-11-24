@@ -1,0 +1,77 @@
+{
+  "artifact_set_digest": "sha256:539a4b9781eaf6f888591b744d9f37b46581626761ce982077c4edb64254cc9b",
+  "artifacts": [
+    {
+      "digest": "sha256:455ccb8d64b1d0b8067bc42698fd3ec3c6d25d13ae4b92f4edb31f88aaeba0a7",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:69436dce929cbb98edb7801097829f92c8800affabdd0090962d8b2bb5f3f98d",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:1b427fa503bdd0eca45dc37901aa02c9fcd09a5e29250c2fc7851154a242ab5f",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:5bebd23f8de56c8e9359803cec2ee80e13c0a48a1f07d1e6372c60dcdc9f5443",
+      "path": "runtime/calendar_completion_source.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:192eaa3956ea51aeb84b436805f338cba15920f92d4559dce040d0a123a76b29",
+      "path": "runtime/chat_reference.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:18b1a5762385b08f2377553ebb5d3dc437d9930d694e998ad02717a5231f81be",
+      "path": "runtime/chat_reference_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:7d97cf7bed10fe7b6ff4a5e2cf6f005a0412f6b3083483388cb0c0ee76acf74c",
+      "path": "runtime/completion_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:3ece1aac3b0c0b23b27e6b45978028eb7aeaed6087c4afee49685489bde87958",
+      "path": "runtime/host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+      "path": "runtime/manage_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
+      "path": "runtime/message_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2d23700b575e5a8cb7d52e63f070a2dd2c7a1d4eee6abecf1eff3adcc5f66a95",
+      "path": "runtime/saved_project_context.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:76f288670824bf0b4da4d546ea92e800ff4428a9602f01e875ba1f8bf2fc2f63",
+      "path": "runtime/saved_receipt.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9fd9f8c27a2f49784c24aeb196ce1beec1b6e524b2911aa8af1a7524baecd293",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:2895b4628d19f9afb36fe76a4e4eb8bd01fa62b4ef50dca28fc98bac094d6dc4"
+  },
+  "pack_id": "rumi_conversation_store_pack",
+  "source_identity": "sha256:6973b40cd4407b7b6c9deb9a06c6724b7434be2d583b4b71b9704cfdd5e5339c"
+}

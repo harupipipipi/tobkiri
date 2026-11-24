@@ -1,0 +1,16 @@
+{
+  "schema": "io.tobkiri.profile-bundle-generation-policy.v1",
+  "bundle_root": "ecosystem/defaultspack/v4",
+  "desktop_entrypoint": "defaultspack/desktop_app.py",
+  "frontend_contract_map": "defaultspack/frontend_contract_map.v4.json",
+  "legacy_pack_id_aliases": {
+    "rumi-file-inspect": "rumi_file_inspect_pack"
+  },
+  "legacy_provider_edge_aliases": {
+    "defaultspack.file.inspect": {
+      "target_provider_id": "rumi_file_inspect_pack.file-inspect.service",
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "operation_id": "rumi_file_inspect_pack.file-inspect"
+    }
+  }
+}

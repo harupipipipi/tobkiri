@@ -1,0 +1,24 @@
+package local:gateway-finalizer-development-replay;
+let bridge = new local:bridge { ... };
+let caller = new local:caller {
+  "local:ai-tool-bridge-ordered-python/bridge@2.0.0": bridge["local:ai-tool-bridge-ordered-python/bridge@2.0.0"],
+  ...
+};
+let usage = new local:usage-cost { ... };
+let normalizer = new local:stream-normalizer { ... };
+let finalizer = new local:finalizer {
+  "local:ai-gateway-tool-caller-python/caller@1.0.0": caller["local:ai-gateway-tool-caller-python/caller@1.0.0"],
+  "local:ai-usage-cost-python/usage-cost@1.0.0": usage["local:ai-usage-cost-python/usage-cost@1.0.0"],
+  "local:ai-stream-normalizer-python/stream-normalizer@1.0.0": normalizer["local:ai-stream-normalizer-python/stream-normalizer@1.0.0"],
+  ...
+};
+export bridge["local:ai-tool-bridge-ordered-python/bridge@2.0.0"];
+export caller["local:ai-gateway-tool-caller-python/caller@1.0.0"];
+export usage["local:ai-usage-cost-python/usage-cost@1.0.0"];
+export normalizer["local:ai-stream-normalizer-python/stream-normalizer@1.0.0"];
+export finalizer["local:ai-gateway-finalizer-python/finalizer@1.0.0"];
+export bridge["tobkiri:core/lifecycle@1.0.0"] as "bridge-lifecycle";
+export caller["tobkiri:core/lifecycle@1.0.0"] as "caller-lifecycle";
+export usage["tobkiri:core/lifecycle@1.0.0"] as "usage-cost-lifecycle";
+export normalizer["tobkiri:core/lifecycle@1.0.0"] as "stream-normalizer-lifecycle";
+export finalizer["tobkiri:core/lifecycle@1.0.0"] as "finalizer-lifecycle";

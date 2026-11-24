@@ -7,6 +7,8 @@ under the key ``io.http.route``.
 
 import sys
 import os
+import inspect
+from functools import partial
 
 
 def run(context):
@@ -17,15 +19,20 @@ def run(context):
 
     interface_registry = context["interface_registry"]
     source_component = context.get("_source_component", "defaultspack:chat:chat")
+    settings_owner = context.get("_settings_owner_port")
 
-    def _lazy(module_path, func_name="run"):
+    def _lazy(module_path, func_name="run", *, settings_owner=None):
         """Return a lazy handler that imports the module on first call."""
         def handler(request_data, context):
             import importlib
             mod = importlib.import_module(module_path)
             fn = getattr(mod, func_name)
+            if "settings_owner" in inspect.signature(fn).parameters:
+                return fn(request_data, context, settings_owner=settings_owner)
             return fn(request_data, context)
         return handler
+
+    owner_route = partial(_lazy, settings_owner=settings_owner)
 
     routes = [
         # --- Existing conversation routes ---
@@ -65,10 +72,10 @@ def run(context):
         # --- External chat integrations ---
         ("GET", "/api/integrations/secrets", _lazy("blocks.integrations.secrets"), {}),
         ("POST", "/api/integrations/secrets", _lazy("blocks.integrations.secrets"), {}),
-        ("POST", "/api/integrations/slack/events", _lazy("blocks.integrations.slack"), {}),
-        ("POST", "/api/integrations/line/webhook", _lazy("blocks.integrations.line"), {}),
-        ("POST", "/api/integrations/discord/interactions", _lazy("blocks.integrations.discord"), {}),
-        ("POST", "/api/integrations/discord/events", _lazy("blocks.integrations.discord"), {}),
+        ("POST", "/api/integrations/slack/events", owner_route("blocks.integrations.slack"), {}),
+        ("POST", "/api/integrations/line/webhook", owner_route("blocks.integrations.line"), {}),
+        ("POST", "/api/integrations/discord/interactions", owner_route("blocks.integrations.discord"), {}),
+        ("POST", "/api/integrations/discord/events", owner_route("blocks.integrations.discord"), {}),
         ("GET", "/api/external/tokens", _lazy("blocks.external.tokens"), {}),
         ("POST", "/api/external/tokens", _lazy("blocks.external.tokens"), {}),
         ("GET", "/api/external/sources", _lazy("blocks.external.sources"), {}),

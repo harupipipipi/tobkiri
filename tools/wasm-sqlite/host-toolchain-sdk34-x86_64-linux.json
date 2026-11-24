@@ -1,0 +1,167 @@
+{
+  "profile": "sdk34-x86_64-linux-v1",
+  "status": "archive/tool/sysroot hashes streamed and verified; Linux compiler execution/module equality unexecuted",
+  "source_url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz",
+  "archive_sha256": "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4",
+  "archive_bytes": 192383077,
+  "sdk_root": "wasi-sdk-34.0-x86_64-linux",
+  "compiler_sha256": "061f88b9f4c48f3742434c2513d5038ab7fa4dc27abff5cb13b5eaedcb51d6ea",
+  "linker_sha256": "ec1daef61bc84256bf7c4a8491b3ea9abcc7163d9aaf6aa8e8bc6faa18f99043",
+  "libc_sha256": "a9aff53312240258085fd94da05e18545f4c98b2f6a91ce4985b519eb8159fb9",
+  "tools": {
+    "clang": {
+      "requested": "bin/clang",
+      "resolved": "bin/clang-23",
+      "chain": [
+        "bin/clang",
+        "bin/clang-23"
+      ],
+      "bytes": 118616,
+      "sha256": "061f88b9f4c48f3742434c2513d5038ab7fa4dc27abff5cb13b5eaedcb51d6ea",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "wasm_ld": {
+      "requested": "bin/wasm-ld",
+      "resolved": "bin/lld",
+      "chain": [
+        "bin/wasm-ld",
+        "bin/lld"
+      ],
+      "bytes": 4201984,
+      "sha256": "ec1daef61bc84256bf7c4a8491b3ea9abcc7163d9aaf6aa8e8bc6faa18f99043",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "wasip1_libc": {
+      "requested": "share/wasi-sysroot/lib/wasm32-wasip1/libc.a",
+      "resolved": "share/wasi-sysroot/lib/wasm32-wasip1/libc.a",
+      "chain": [
+        "share/wasi-sysroot/lib/wasm32-wasip1/libc.a"
+      ],
+      "bytes": 3245870,
+      "sha256": "a9aff53312240258085fd94da05e18545f4c98b2f6a91ce4985b519eb8159fb9",
+      "elf": null
+    }
+  },
+  "native_libraries": {
+    "lib/libclang-cpp.so": {
+      "kind": "symlink",
+      "target": "lib/libclang-cpp.so.23.1-wasi-sdk"
+    },
+    "lib/liblldb.so.23.1.0-wasi-sdk": {
+      "kind": "file",
+      "bytes": 19092104,
+      "sha256": "98ab71b053fb5897491c460d4ed43c8660550ec54ef1af1d3d1cd6da3e584c67",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/libxml2.so.16.1.2": {
+      "kind": "file",
+      "bytes": 1137136,
+      "sha256": "4c975ef35693559fbcc2f4d18e3a60fa4c774b4d088ff7f5cf8c098c1f6846e1",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/liblldb.so": {
+      "kind": "symlink",
+      "target": "lib/liblldb.so.23.1-wasi-sdk"
+    },
+    "lib/libclang.so": {
+      "kind": "symlink",
+      "target": "lib/libclang.so.23.1-wasi-sdk"
+    },
+    "lib/libxml2.so.16": {
+      "kind": "symlink",
+      "target": "lib/libxml2.so.16.1.2"
+    },
+    "lib/libclang-cpp.so.23.1-wasi-sdk": {
+      "kind": "file",
+      "bytes": 67053832,
+      "sha256": "86c45d722a045c966bbf80ebb8608507e4748c055ce2ba4144fa5d4a885dbca9",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/libclang.so.23.1.0-wasi-sdk": {
+      "kind": "file",
+      "bytes": 38074000,
+      "sha256": "3616804308a11134508bf6ee76f85274a985a205c7486edcb22e5d4cf886929b",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/liblldb.so.23.1-wasi-sdk": {
+      "kind": "symlink",
+      "target": "lib/liblldb.so.23.1.0-wasi-sdk"
+    },
+    "lib/libxml2.so": {
+      "kind": "symlink",
+      "target": "lib/libxml2.so.16"
+    },
+    "lib/libedit.so": {
+      "kind": "symlink",
+      "target": "lib/libedit.so.0.0.76"
+    },
+    "lib/libedit.so.0": {
+      "kind": "symlink",
+      "target": "lib/libedit.so.0.0.76"
+    },
+    "lib/libedit.so.0.0.76": {
+      "kind": "file",
+      "bytes": 895504,
+      "sha256": "9267ac2e304ba422ae89e9a847354d7112dae1659634db892c99c639834a91dd",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/libLLVM.so.23.1-wasi-sdk": {
+      "kind": "file",
+      "bytes": 64792472,
+      "sha256": "a5dfb02de8cc50d0b49b6ef5d7d10fbdb911f06725a23a3ba66a80a197bcc2df",
+      "elf": {
+        "class": 2,
+        "endianness": 1,
+        "machine": 62
+      }
+    },
+    "lib/libLLVM-23-wasi-sdk.so": {
+      "kind": "symlink",
+      "target": "lib/libLLVM.so.23.1-wasi-sdk"
+    },
+    "lib/libclang.so.23.1-wasi-sdk": {
+      "kind": "symlink",
+      "target": "lib/libclang.so.23.1.0-wasi-sdk"
+    },
+    "lib/libLLVM.so": {
+      "kind": "symlink",
+      "target": "lib/libLLVM.so.23.1-wasi-sdk"
+    }
+  },
+  "sysroot_inventory_sha256": "95c6cb208e82e370c5372838693967a244b7d6560f1956f10afe067faa58a217",
+  "sysroot_member_count": 17734,
+  "inventory_encoding": "archive-order length-prefixed canonical JSON [path,entry]",
+  "required_module_sha256": "d52e4d9ec0ee1d6bee0cb26918d907d96722442950787a5c45656d674e3ccc02",
+  "required_module_bytes": 1073130,
+  "base_producer_sha256": "da85688c3c5a571ce12f9a119b40db2be624d5d02d7e86746999d5e5b2356399",
+  "stream_inspector_sha256": "4b47d99f9d9ae9c23505c33fa578fae80f4d92a9fed0712fee4e9be0677b0453",
+  "producer_script_sha256": "c372bd8669193eebde2b9f42913ed2325e63fda616df2835c029c360e8d752ea"
+}

@@ -1,0 +1,9 @@
+package tobkiri-ui:libc-poll-oracle@1.0.0;
+
+interface probe {
+  run: func() -> string;
+}
+
+world libc-poll-oracle {
+  export probe;
+}

@@ -15,7 +15,11 @@ from domain.tool.registry import ToolRegistry  # noqa: E402
 from domain.tool_policy.policy import decide_tool_policy  # noqa: E402
 
 
-def test_tool_components_include_default_tools_pack_browser_and_computer_surfaces():
+def test_tool_components_include_selected_default_tools_pack_browser_and_computer_surfaces(monkeypatch):
+    monkeypatch.setattr(
+        "domain.components.registry.effective_pack_ids",
+        lambda: frozenset({"defaultspack", "rumi_default_tools_pack"}),
+    )
     registry = DomainComponentRegistry(build_domain_component_roots(DEFAULTSPACK_ROOT))
 
     assert registry.get("tools", "browser_computer").source_pack_id == "rumi_default_tools_pack"
@@ -27,7 +31,15 @@ def test_tool_components_include_default_tools_pack_browser_and_computer_surface
     )
 
 
-def test_tool_registry_loads_manifest_backed_tool_components():
+def test_tool_registry_loads_manifest_backed_tool_components(monkeypatch):
+    monkeypatch.setattr(
+        "domain.components.registry.effective_pack_ids",
+        lambda: frozenset({"defaultspack", "rumi_default_tools_pack"}),
+    )
+    monkeypatch.setattr(
+        "domain.tool.registry.effective_pack_ids",
+        lambda: frozenset({"defaultspack", "rumi_default_tools_pack"}),
+    )
     ToolRegistry._instance = None
     registry = ToolRegistry()
     tool_ids = {tool["tool_id"] for tool in registry.list_tools()}
@@ -51,7 +63,15 @@ def test_tool_registry_loads_manifest_backed_tool_components():
     assert browser_tool["metadata"]["source_pack_id"] == "rumi_default_tools_pack"
 
 
-def test_manifest_backed_tool_components_keep_approval_policy_enforced():
+def test_manifest_backed_tool_components_keep_approval_policy_enforced(monkeypatch):
+    monkeypatch.setattr(
+        "domain.components.registry.effective_pack_ids",
+        lambda: frozenset({"defaultspack", "rumi_default_tools_pack"}),
+    )
+    monkeypatch.setattr(
+        "domain.tool.registry.effective_pack_ids",
+        lambda: frozenset({"defaultspack", "rumi_default_tools_pack"}),
+    )
     ToolRegistry._instance = None
     registry = ToolRegistry()
 
@@ -119,9 +139,7 @@ def test_component_tool_id_must_match_component_id(monkeypatch, tmp_path):
     registry = ToolRegistry()
     browser_tool = registry.get("browser_computer")
 
-    assert browser_tool["summary"] != "MALICIOUS SHADOW"
-    assert browser_tool["requires_approval"] is True
-    assert browser_tool["source_pack_id"] == "rumi_default_tools_pack"
+    assert browser_tool is None
 
 
 def test_component_tool_cannot_spoof_source_pack_to_shadow_existing_tool(monkeypatch, tmp_path):
@@ -133,12 +151,26 @@ def test_component_tool_cannot_spoof_source_pack_to_shadow_existing_tool(monkeyp
     )
 
     component_registry = DomainComponentRegistry([shadow_root / "domain"])
-    assert component_registry.get("tools", "browser_computer").source_pack_id == "shadow_pack"
+    assert component_registry.get("tools", "browser_computer").source_pack_id == ""
 
     ToolRegistry._instance = None
     registry = ToolRegistry()
     browser_tool = registry.get("browser_computer")
 
-    assert browser_tool["summary"] != "MALICIOUS SHADOW"
-    assert browser_tool["requires_approval"] is True
-    assert browser_tool["source_pack_id"] == "rumi_default_tools_pack"
+    assert browser_tool is None
+
+
+def test_installed_pack_roots_ignore_legacy_ecosystem_manifest(monkeypatch, tmp_path):
+    pack_root = tmp_path / "legacy-only"
+    pack_root.mkdir()
+    (pack_root / "ecosystem.json").write_text(
+        json.dumps({"pack_id": "legacy-only"}), encoding="utf-8"
+    )
+    monkeypatch.setattr("domain.tool.registry.effective_pack_ids", lambda: frozenset({"legacy-only"}))
+    monkeypatch.setattr(ToolRegistry, "_ecosystem_dir", lambda self: tmp_path)
+
+    ToolRegistry._instance = None
+    registry = ToolRegistry()
+
+    assert pack_root not in registry._installed_pack_roots()
+    ToolRegistry._instance = None

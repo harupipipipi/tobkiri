@@ -1,0 +1,243 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.memory.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_instance_id": "memory-store.resource",
+        "required_capabilities": [
+          "memory.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.memory.manage.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_instance_id": "memory-store.manage",
+        "required_capabilities": [
+          "memory.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.memory.migrate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_instance_id": "memory-store.migrate",
+        "required_capabilities": [
+          "memory.migrate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "contract_id": "rumi.resource.memory.v1",
+      "id": "memory-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_memory_store_pack.runtime.store",
+      "symbol": "create_memory_resource"
+    },
+    {
+      "artifact_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "contract_id": "rumi.action.memory.manage.v1",
+      "id": "memory-manage",
+      "loader": "python",
+      "module": "ecosystem.rumi_memory_store_pack.runtime.store",
+      "symbol": "create_memory_action"
+    },
+    {
+      "artifact_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "contract_id": "rumi.action.memory.migrate.v1",
+      "id": "memory-migrate",
+      "loader": "python",
+      "module": "ecosystem.rumi_memory_store_pack.runtime.store",
+      "symbol": "create_migration_action"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.memory.manage.v1",
+            "rumi.action.memory.migrate.v1",
+            "rumi.resource.memory.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Single-write authoritative memory storage.",
+        "display_name": "Rumi Memory Store",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:e6c41be1578ca92be19f9dbe4658903bcb9e0ba737c11f31f836e0ee3bc1d6f1",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+          },
+          "owner_surfaces": [
+            "memory"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "dual_write": false,
+            "local_first": true
+          }
+        },
+        "pack_id": "rumi_memory_store_pack",
+        "pack_identity": "rumi:ecosystem/rumi_memory_store_pack",
+        "provenance": {
+          "build_identity": "rumi_memory_store_pack:1.0.0",
+          "content_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "memory.manage",
+          "memory.migrate",
+          "memory.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_memory_store_pack"
+    },
+    "rumi.memory_store.boundary": {
+      "embedding_index_authoritative": false,
+      "markdown_projection": false,
+      "secondary_sqlite": false,
+      "single_write": true
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_memory_store_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.memory.store",
+      "defaultspack.domain.memory2.sqlite_store",
+      "defaultspack.domain.memory2.markdown_store"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore the marker-bound owner backup; retain legacy source read-only.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Single-write authoritative memory storage.",
+    "display_name": "Rumi Memory Store",
+    "id": "rumi.memory_store",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "memory.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "memory.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "memory.migrate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_memory_store_pack:1.0.0",
+    "content_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.memories",
+      "retention": "record expiry or explicit deletion",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ class BubblewrapSandboxSpec:
     immutable_root: Path
     workspace: WorkspaceMount
     argv: tuple[str, ...]
+    data: WorkspaceMount | None = None
     env: dict[str, str] = field(default_factory=dict)
     network_enabled: bool = False
     uid: int | None = None
@@ -34,6 +35,8 @@ class BubblewrapSandboxSpec:
             raise ValueError("argv is required")
         if self.workspace.target != "/workspace":
             raise ValueError("workspace target is fixed to /workspace")
+        if self.data is not None and self.data.target != "/data":
+            raise ValueError("data target is fixed to /data")
 
 
 @dataclass(frozen=True)

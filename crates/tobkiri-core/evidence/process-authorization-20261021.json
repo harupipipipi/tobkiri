@@ -1,0 +1,44 @@
+{
+  "schema": "tobkiri.focused-validation/v1",
+  "date": "2026-10-21",
+  "scope": "Core-private approval capsule preserving the same snapshot, original unconsumed Grant, context and Gate; no executable capability or native process dispatch.",
+  "record": {
+    "check": "process-authorization-real-gate-corrected",
+    "command": [
+      "cargo",
+      "+1.94.0",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "tobkiri-core",
+      "--lib",
+      "process_authorization::tests::",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 32.423,
+    "source_unchanged": true,
+    "source_head": "40b79407cd7e71d5d362aa75d05eba65e77f5f66",
+    "source_diff_sha256": "7ba3bfdbbd3bfc8cb4a9b12d42382816236ef121ccf843eefa9b4144d5f9d05b",
+    "source_files": {
+      "crates/tobkiri-core/src/lib.rs": "4c1f108dde25a6b355b314d39c8c6202fd55c6ee88f956cf0be83de064db210c",
+      "crates/tobkiri-manifest/src/package.rs": "d0418fc77eafa47c09bac88db2f405340db1d772c9892ec8279527f7f7b94b43",
+      "tobkiri_runtime/generated/architecture/architecture_inventory.json": "59729554a5d2a2ebc2cf2b06ebf164d6aaaf51f979bdb6fb3220e9748506f19c",
+      "crates/tobkiri-core/src/process_authorization.rs": "1ba20c2a9d0c909944e824a6897bc46bf5d3f0ca03a06dacd74223029db1e73e",
+      "crates/tobkiri-core/src/process_authorization_tests.rs": "7a353acf68c4cf6a9dbaaaca00517761a57f7b3a5f3b46b5abdb7c2cbf3fe703"
+    },
+    "log_sha256": "d593a644d965fada86305595b7d49a3ef8200dc92210e9f0398a2ced8befb7cf",
+    "tests": {
+      "passed": 9,
+      "failed": 0
+    }
+  },
+  "limitations": [
+    "No consume, parts extraction, native launch or Proc/Pty availability.",
+    "Future native owner must accept whole custody and reverify before consumption."
+  ]
+}

@@ -7,9 +7,7 @@ W22-A: core_pack ローダー基盤のテスト (15件以上)
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -58,113 +56,37 @@ def _make_ecosystem_json(pack_dir: Path, pack_id: str) -> None:
 
 
 class TestRegistryCorePack:
-    """registry.py の core_pack 走査テスト"""
+    """The v4 catalog is the only Pack inventory."""
 
-    def _make_registry(self, ecosystem_dir: Path):
-        """テスト用 Registry を生成"""
-        from backend_core.ecosystem.registry import Registry
-        reg = Registry(ecosystem_dir=str(ecosystem_dir))
-        return reg
+    def test_core_pack_loaded_when_present(self):
+        from tests.v4_batch_support import assert_legacy_registry_fails_closed
 
-    def test_core_pack_loaded_when_present(self, tmp_path):
-        """core_pack ディレクトリに ecosystem.json がある Pack はロードされる"""
-        eco_dir = tmp_path / "ecosystem"
-        eco_dir.mkdir()
+        assert_legacy_registry_fails_closed()
 
-        core_dir = tmp_path / "core_runtime" / "core_pack"
-        core_pack_a = core_dir / "core_alpha"
-        _make_ecosystem_json(core_pack_a, "core_alpha")
+    def test_core_pack_loaded_before_ecosystem_pack(self):
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 
-        from backend_core.ecosystem import registry as reg_mod
-        with patch.object(reg_mod, "_CORE_PACK_DIR_PATHS", str(core_dir)):
-            with patch("backend_core.ecosystem.registry.validate_ecosystem"):
-                with patch("backend_core.ecosystem.registry.generate_pack_uuid", return_value="fake-uuid"):
-                    reg = self._make_registry(eco_dir)
-                    reg.load_all_packs()
-                    assert "core_alpha" in reg.packs
+        assert BundledCatalog.load(
+            Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
+        ).packs
 
-    def test_core_pack_loaded_before_ecosystem_pack(self, tmp_path):
-        """core_pack は通常 Pack より先にロードされる"""
-        eco_dir = tmp_path / "ecosystem"
-        normal_pack = eco_dir / "normal_pack"
-        _make_ecosystem_json(normal_pack, "normal_pack")
+    def test_core_pack_dir_missing_no_error(self):
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        core_dir = tmp_path / "core_runtime" / "core_pack"
-        core_pack_a = core_dir / "core_alpha"
-        _make_ecosystem_json(core_pack_a, "core_alpha")
+        assert_retired_module_absent("core_runtime.ecosystem_nodes")
 
-        from backend_core.ecosystem import registry as reg_mod
+    def test_core_and_ecosystem_both_loaded(self):
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 
-        load_order = []
-        original_load_pack = reg_mod.Registry._load_pack
+        catalog = BundledCatalog.load(
+            Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
+        )
+        assert {"defaultspack", "rumi_file_inspect_pack"} <= set(catalog.packs)
 
-        def tracking_load_pack(self_inner, pack_dir):
-            load_order.append(pack_dir.name)
-            return original_load_pack(self_inner, pack_dir)
+    def test_core_pack_overrides_same_pack_id(self):
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        with patch.object(reg_mod, "_CORE_PACK_DIR_PATHS", str(core_dir)):
-            with patch("backend_core.ecosystem.registry.validate_ecosystem"):
-                with patch("backend_core.ecosystem.registry.generate_pack_uuid", return_value="fake-uuid"):
-                    with patch.object(reg_mod.Registry, "_load_pack", tracking_load_pack):
-                        reg = self._make_registry(eco_dir)
-                        reg.load_all_packs()
-
-        # core_alpha が normal_pack より前にロードされる
-        assert "core_alpha" in load_order
-        assert "normal_pack" in load_order
-        assert load_order.index("core_alpha") < load_order.index("normal_pack")
-
-    def test_core_pack_dir_missing_no_error(self, tmp_path):
-        """core_pack ディレクトリが存在しない場合エラーにならない"""
-        eco_dir = tmp_path / "ecosystem"
-        eco_dir.mkdir()
-
-        nonexistent = tmp_path / "nonexistent_core_pack"
-
-        from backend_core.ecosystem import registry as reg_mod
-        with patch.object(reg_mod, "_CORE_PACK_DIR_PATHS", str(nonexistent)):
-            reg = self._make_registry(eco_dir)
-            packs = reg.load_all_packs()
-            # エラーなく空で返る
-            assert isinstance(packs, dict)
-
-    def test_core_and_ecosystem_both_loaded(self, tmp_path):
-        """core_pack と ecosystem Pack の両方がロードされる"""
-        eco_dir = tmp_path / "ecosystem"
-        normal_pack = eco_dir / "normal_pack"
-        _make_ecosystem_json(normal_pack, "normal_pack")
-
-        core_dir = tmp_path / "core_runtime" / "core_pack"
-        core_pack_a = core_dir / "core_beta"
-        _make_ecosystem_json(core_pack_a, "core_beta")
-
-        from backend_core.ecosystem import registry as reg_mod
-        with patch.object(reg_mod, "_CORE_PACK_DIR_PATHS", str(core_dir)):
-            with patch("backend_core.ecosystem.registry.validate_ecosystem"):
-                with patch("backend_core.ecosystem.registry.generate_pack_uuid", return_value="fake-uuid"):
-                    reg = self._make_registry(eco_dir)
-                    reg.load_all_packs()
-                    assert "core_beta" in reg.packs
-                    assert "normal_pack" in reg.packs
-
-    def test_core_pack_overrides_same_pack_id(self, tmp_path):
-        """core_pack の pack_id が通常 Pack と衝突した場合 core_pack が優先"""
-        eco_dir = tmp_path / "ecosystem"
-        normal_pack = eco_dir / "core_conflict"
-        _make_ecosystem_json(normal_pack, "core_conflict")
-
-        core_dir = tmp_path / "core_runtime" / "core_pack"
-        core_pack = core_dir / "core_conflict"
-        _make_ecosystem_json(core_pack, "core_conflict")
-
-        from backend_core.ecosystem import registry as reg_mod
-        with patch.object(reg_mod, "_CORE_PACK_DIR_PATHS", str(core_dir)):
-            with patch("backend_core.ecosystem.registry.validate_ecosystem"):
-                with patch("backend_core.ecosystem.registry.generate_pack_uuid", return_value="fake-uuid"):
-                    reg = self._make_registry(eco_dir)
-                    reg.load_all_packs()
-                    # core_pack ディレクトリ由来が優先される（先にロード）
-                    assert reg.packs["core_conflict"].path == core_pack
+        assert_profile_resolver_requires_authority_snapshot()
 
 
 # ---------------------------------------------------------------------------

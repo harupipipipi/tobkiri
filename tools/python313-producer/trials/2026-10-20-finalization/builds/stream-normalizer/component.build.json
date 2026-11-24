@@ -1,0 +1,237 @@
+{
+  "format": "tobkiri.component-build/2",
+  "language": "python",
+  "build_mode": "hash-bound-custom-python313-producer-trial",
+  "production_enabled": false,
+  "guest_runtime_identity_verified": false,
+  "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+  "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+  "producer_sources": {
+    "driver.py": "73745f29709323438646934e15a4aced739a8657bd360ea5a050d881b59eed1d",
+    "build_component.py": "c8366a81728ee406d25ae3abd51bff14cd16900a7745834716ccbd3813e6cc94",
+    "composition.py": "c349a13710e82d82a0bd2d659b80c373cbac8d89ec6e6b87c0bed47c0e42fdd7"
+  },
+  "build_plan_sha256": "99d9c6b864bb5ca66f3ac93b2f32408c2d8f1c9946fe19c1b7098001053813a6",
+  "source_manifest": [
+    {
+      "source": "python/app.py",
+      "destination": "app.py",
+      "sha256": "bfbfc5a8d2d6fa184f162585c370b96eb23b51f46d47a4aa1dd441906eb9e4f2",
+      "bytes": 2211
+    },
+    {
+      "source": "python/inventory.json",
+      "destination": "inventory.json",
+      "sha256": "24df2873314ce68f26890fbe2bbb8745dc2de9562f18753917bcaffaf6161bb2",
+      "bytes": 10758
+    },
+    {
+      "source": "python/ordered_json.py",
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "bytes": 8961
+    },
+    {
+      "source": "python/ordered_json_v2.py",
+      "destination": "ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "bytes": 8184
+    },
+    {
+      "source": "python/original_stream_normalizer.py",
+      "destination": "original_stream_normalizer.py",
+      "sha256": "611e174b7b101ffe67960b80501421261e6a9322977b2a3c991253a1c28fc38f",
+      "bytes": 3189
+    },
+    {
+      "source": "python/provenance.json",
+      "destination": "provenance.json",
+      "sha256": "fd09dff6ce0b82489dec86b1c931dd14050ccfb4a8b2d155bce7bb212657c65f",
+      "bytes": 5399
+    },
+    {
+      "source": "python/stream_normalizer_adapter.py",
+      "destination": "stream_normalizer_adapter.py",
+      "sha256": "c77c5c0f14c28ec60bba0586102743556e0438e7f581792c336371ebc12fed20",
+      "bytes": 2508
+    },
+    {
+      "source": "wit/deps/tobkiri-core/core.wit",
+      "destination": "wit/deps/tobkiri-core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "bytes": 5732
+    },
+    {
+      "source": "wit/pack.wit",
+      "destination": "wit/pack.wit",
+      "sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07",
+      "bytes": 474
+    }
+  ],
+  "source_manifest_sha256": "6d1930da85b850de2c4fa93f1400c2f991e32c268e235015f46493ef1ea1a8f4",
+  "bindings": {
+    "files": [
+      {
+        "path": "componentize_py_async_support/__init__.py",
+        "sha256": "020eea916ee9a23e118d8ec688846209b501b182b7520fa7cff6450d635dcd19",
+        "bytes": 19180
+      },
+      {
+        "path": "componentize_py_async_support/futures.py",
+        "sha256": "d1ccb9b8a630d27eaca5d50a49d390eca1edd9e1a24cdacefe5d6f1ec2b2f096",
+        "bytes": 5814
+      },
+      {
+        "path": "componentize_py_async_support/streams.py",
+        "sha256": "e9e846a731e3e6578e3d20d5d2a42ffdb797e0ef04134529196e3e75b36274ca",
+        "bytes": 13165
+      },
+      {
+        "path": "componentize_py_runtime.pyi",
+        "sha256": "f1e3d6e0deffc0d7c4b7981e419a565e249fb3f430f2695ef389402d5f832367",
+        "bytes": 1271
+      },
+      {
+        "path": "componentize_py_types.py",
+        "sha256": "9fcd0eed0f50db129f5421a75aa915f71d5abfb45ec0777ece33bdaed12e4efc",
+        "bytes": 911
+      },
+      {
+        "path": "poll_loop.py",
+        "sha256": "294060653c9c4b7124f9af863d079ba2fb9c77606e98d7b47365c5c2ea4a1872",
+        "bytes": 12181
+      },
+      {
+        "path": "wit_world/__init__.py",
+        "sha256": "e596e615d830399ad56968fdb51e285bff2593bd67ad654ec3846bdf586945e1",
+        "bytes": 437
+      },
+      {
+        "path": "wit_world/exports/__init__.py",
+        "sha256": "5f0b57c56bb14e4f1993f1a06024588f26878dec2426dab4c31938a6fd7b580e",
+        "bytes": 1054
+      },
+      {
+        "path": "wit_world/exports/lifecycle.py",
+        "sha256": "a2772c08013607d263616e26464a80c02573e281ba22d8bec5dcf3c459e26214",
+        "bytes": 401
+      },
+      {
+        "path": "wit_world/exports/stream_normalizer.py",
+        "sha256": "16a80fa9d2c2e705e564d63f8cb527677432146526241c283f4a165267b22c89",
+        "bytes": 553
+      },
+      {
+        "path": "wit_world/imports/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "wit_world/imports/audit.py",
+        "sha256": "e58f672e4ee4415ff8989ac5e53f2ccc18f73f66b2eda14302311061ed333236",
+        "bytes": 726
+      },
+      {
+        "path": "wit_world/imports/clock.py",
+        "sha256": "10334bc544d15f8995607ba697f392d00214f9187ad44357ed24a487c9927e6d",
+        "bytes": 658
+      },
+      {
+        "path": "wit_world/imports/flow.py",
+        "sha256": "024af6368362cb4ef1a5e67963172e988458392e314b06e66840d955c0cb426a",
+        "bytes": 1633
+      },
+      {
+        "path": "wit_world/imports/random.py",
+        "sha256": "8954abdd87af6eb6f4c36963b39b59d2144cdac460fb9c321783ef462002f304",
+        "bytes": 460
+      },
+      {
+        "path": "wit_world/imports/types.py",
+        "sha256": "f98893461f38b401d67a439b19d11e9259f5deee03d401527e03147cb5f15525",
+        "bytes": 1137
+      }
+    ],
+    "manifest_sha256": "e2978105ecfe1f2a739b6c3162697d80e98396d23c33bc333fb8403843df3eec"
+  },
+  "options": {
+    "stub_wasi": true,
+    "inherited_environment": false,
+    "site_packages": "explicit empty private VIRTUAL_ENV",
+    "compiler_process_pythonhashseed": "0",
+    "guest_pythonhashseed": "upstream compiler default uncontrolled"
+  },
+  "commands": {
+    "bindings": [
+      "/producer",
+      "-d",
+      "wit",
+      "-w",
+      "pack",
+      "bindings",
+      "."
+    ],
+    "componentize": [
+      "/producer",
+      "-d",
+      "wit",
+      "-w",
+      "pack",
+      "componentize",
+      "--stub-wasi",
+      "app",
+      "-o",
+      "component.wasm"
+    ]
+  },
+  "composition": {
+    "tool": "wac-cli",
+    "version": "0.12.0",
+    "tool_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda",
+    "wit_sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07",
+    "composition_source": "package local:sdk-python-outer;\nlet implementation = new local:python-inner { ... };\nexport implementation[\"tobkiri:core/lifecycle@1.0.0\"];\nexport implementation[\"local:ai-stream-normalizer-python/stream-normalizer@1.0.0\"];\n",
+    "composition_source_sha256": "172a0b09e685a445a18651086a26f23af049f5ffb30ec8c6313bc91e449679cd",
+    "flags": {
+      "define_components": true,
+      "validate": true,
+      "ambient_dependency_directory": false,
+      "typed_target_validation": true
+    }
+  },
+  "target_validation": {
+    "tool": "wac-cli",
+    "world": "pack",
+    "exact_exports": true,
+    "typed_target_check": true
+  },
+  "inner": {
+    "artifact_sha256": "e991d89bd43997f1fc1c9e776a5e343be1763da7ba800706da26d6e8a683a537",
+    "artifact_bytes": 17897398,
+    "imports": [
+      "tobkiri:core/audit@1.0.0",
+      "tobkiri:core/clock@1.0.0",
+      "tobkiri:core/flow@1.0.0",
+      "tobkiri:core/random@1.0.0",
+      "tobkiri:core/types@1.0.0"
+    ],
+    "exports": [
+      "exports",
+      "local:ai-stream-normalizer-python/stream-normalizer@1.0.0",
+      "tobkiri:core/lifecycle@1.0.0"
+    ]
+  },
+  "world": "pack",
+  "imports": [
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "exports": [
+    "local:ai-stream-normalizer-python/stream-normalizer@1.0.0",
+    "tobkiri:core/lifecycle@1.0.0"
+  ],
+  "artifact_sha256": "6cd50d3e2569c627b47a4cfa6087a4616c65d69b49b15066ea200dbafe2b7bcb",
+  "artifact_bytes": 17898872
+}

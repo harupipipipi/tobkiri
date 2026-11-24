@@ -1,0 +1,232 @@
+name: Issue 1520 original five-Pack native Core replay
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313-native.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'packs/Cargo.toml'
+      - 'packs/Cargo.lock'
+      - 'packs/guest-sdk/**'
+      - 'packs/ordered-python-compat/**'
+      - 'packs/local.ai-usage-cost-rust/**'
+      - 'packs/local.ai-stream-normalizer-rust/**'
+      - 'packs/local.ai-tool-bridge-rust/**'
+      - 'packs/local.ai-gateway-tool-caller-rust/**'
+      - 'packs/local.ai-gateway-finalizer-rust/**'
+      - 'tools/python313-producer/native_graph.py'
+      - 'tools/quality/test_python313_native.py'
+      - 'tools/quality/python_provider_compat/**'
+      - 'tools/quality/python_tool_bridge_compat/**'
+      - 'crates/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-five-native:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-native-five
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      PRODUCER_RUN: '40131893888'
+      PRODUCER_HEAD: 7131e5c56981dfe98590f5843df4228516f3f204
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the existing native proof platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          proof_device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$proof_device"
+          diskutil info "$proof_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt
+          targets: wasm32-wasip2
+      - name: Verify native artifact transport regressions
+        run: python3 -B tools/quality/test_python313_native.py
+      - name: Authenticate the successful coherent producer and source head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/original-five-producer-run.json"
+          python3 -B - "$RUNNER_TEMP/original-five-producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if run['head_sha'] != sys.argv[2] or run['status'] != 'completed' or run['conclusion'] != 'success':
+              raise SystemExit('original-five producer identity or terminal outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-five-components-and-shared-code
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-five-inputs
+      - name: Generate the unchanged independent original provider and bridge observations
+        run: |
+          python3 -B tools/quality/python_provider_compat/generate.py \
+            --output-dir "$RUNNER_TEMP/original-provider-oracle"
+          python3 -B tools/quality/python_tool_bridge_compat/generate.py \
+            --output-dir "$RUNNER_TEMP/original-bridge-oracle"
+      - name: Bind complete original artifacts, shared code and all source oracles
+        id: bind_original_graph
+        run: >-
+          python3 -B tools/python313-producer/native_graph.py
+          --root "$RUNNER_TEMP/original-five-inputs"
+          --provider "$RUNNER_TEMP/original-provider-oracle/receipt.json"
+          --bridge "$RUNNER_TEMP/original-bridge-oracle/receipt.json"
+          --evidence "$RUNNER_TEMP/original-five-native-evidence"
+          --github-env "$GITHUB_ENV"
+      - name: Verify exact shared-code derivation and original manifest integrity
+        run: |
+          cargo fmt --all -- --check
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/original-shared-integrity.log" --expected-passed 3 -- \
+            cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules:: -- --nocapture
+      - name: Classify typed runtime failures without private diagnostic text
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-runtime-diagnostics.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-wasm --lib entry_diagnostics::tests
+          -- --nocapture
+      - name: Verify durable ACK replay and explicit fixture fault detection
+        if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-terminal-ack.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test terminal
+          repeated_terminal_ack_checks_current_payload_without_rewriting_delivered_row
+          -- --exact --nocapture
+      - name: Revalidate concurrently acknowledged supervisor batch rows
+        if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-supervisor-batch.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-store --test terminal supervised_stale_batch_
+          -- --nocapture
+      - name: Replay all 215 original cases through actual Core and Gate
+        if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-five-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test rust_python_providers
+          original_python_shared_finalizer_replays_all_cases_through_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Build the existing five Rust candidates for the same native comparison
+        id: build_rust_graph
+        if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
+        run: >-
+          cargo build --locked --release --manifest-path packs/Cargo.toml
+          --target wasm32-wasip2
+          -p tobkiri-pack-ai-usage-cost-rust
+          -p tobkiri-pack-ai-stream-normalizer-rust
+          -p tobkiri-pack-ai-tool-bridge-rust
+          -p tobkiri-pack-ai-gateway-tool-caller-rust
+          -p tobkiri-pack-ai-gateway-finalizer-rust
+      - name: Bind the actual Rust components without changing any source oracle
+        id: bind_rust_graph
+        if: ${{ !cancelled() && steps.build_rust_graph.outcome == 'success' }}
+        run: |
+          python3 -B - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['CARGO_TARGET_DIR']) / 'wasm32-wasip2/release'
+          prefix = 'TOBKIRI_TEST_RUST_PROVIDERS_'
+          roles = (('USAGE', 'usage-cost'), ('STREAM', 'stream-normalizer'),
+                   ('BRIDGE', 'tool-bridge'), ('CALLER', 'gateway-tool-caller'),
+                   ('FINALIZER', 'gateway-finalizer'))
+          values, artifacts = {}, []
+          for role, name in roles:
+              path = root / ('tobkiri_pack_ai_' + name.replace('-', '_') + '_rust.wasm')
+              if path.resolve() != path or not path.is_file() or path.stat().st_size > 32 * 1024 * 1024:
+                  raise SystemExit('physical bounded Rust component required')
+              data = path.read_bytes()
+              if not data.startswith(b'\0asm\x0d\0\x01\0'):
+                  raise SystemExit('actual Rust component required')
+              digest = hashlib.sha256(data).hexdigest()
+              values.update({prefix + role + '_COMPONENT': str(path),
+                             prefix + role + '_SHA256': digest,
+                             prefix + role + '_IMPLEMENTATION': 'rust'})
+              artifacts.append({'role': role, 'bytes': len(data), 'sha256': digest})
+          if sum(item['bytes'] for item in artifacts) > 64 * 1024 * 1024:
+              raise SystemExit('Rust component catalog exceeds unchanged limit')
+          # Core independently counts noncomponent source too. All four source
+          # oracle paths/pins stay inherited from the original graph binding.
+          for key, name in (('COMPOSITION_EVIDENCE_DIR', 'rust-five-native-evidence'),
+                            ('ADMISSION_EVIDENCE_DIR', 'rust-five-admission-evidence')):
+              evidence = Path(os.environ['RUNNER_TEMP']) / name
+              if evidence.exists() or evidence.is_symlink():
+                  raise SystemExit('fresh Rust comparison evidence required')
+              values[prefix + key] = str(evidence)
+          with Path(os.environ['GITHUB_ENV']).open('a') as output:
+              for key, value in values.items():
+                  if '\n' in value or '\r' in value:
+                      raise SystemExit('invalid native comparison environment')
+                  output.write(f'{key}={value}\n')
+          receipt = {'head': os.environ['GITHUB_SHA'], 'artifacts': artifacts,
+                     'oracles_unchanged': True, 'production_enabled': False}
+          (Path(os.environ['RUNNER_TEMP']) / 'rust-five-artifact-bindings.json').write_text(
+              json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Compare all 215 source cases against Rust on the same Core and limits
+        if: ${{ !cancelled() && steps.bind_rust_graph.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/rust-five-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test rust_python_providers
+          rust_providers_and_gateway_roles_compose_through_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Observe existing outer transport admission boundaries separately from parity
+        if: ${{ !cancelled() && steps.bind_rust_graph.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/rust-five-admission.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test rust_python_providers
+          admission::rust_provider_outer_transport_admission_boundaries
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain actual native evidence and diagnostics without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-five-native-evidence
+          path: |
+            ${{ runner.temp }}/original-five-producer-run.json
+            ${{ runner.temp }}/original-provider-oracle/receipt.json
+            ${{ runner.temp }}/original-bridge-oracle/receipt.json
+            ${{ runner.temp }}/original-shared-integrity.log
+            ${{ runner.temp }}/original-shared-integrity.receipt.json
+            ${{ runner.temp }}/original-terminal-ack.log
+            ${{ runner.temp }}/original-terminal-ack.receipt.json
+            ${{ runner.temp }}/original-supervisor-batch.log
+            ${{ runner.temp }}/original-supervisor-batch.receipt.json
+            ${{ runner.temp }}/original-runtime-diagnostics.log
+            ${{ runner.temp }}/original-runtime-diagnostics.receipt.json
+            ${{ runner.temp }}/original-five-native.log
+            ${{ runner.temp }}/original-five-native.receipt.json
+            ${{ runner.temp }}/original-five-native-evidence
+            ${{ runner.temp }}/rust-five-artifact-bindings.json
+            ${{ runner.temp }}/rust-five-native.log
+            ${{ runner.temp }}/rust-five-native.receipt.json
+            ${{ runner.temp }}/rust-five-native-evidence
+            ${{ runner.temp }}/rust-five-admission.log
+            ${{ runner.temp }}/rust-five-admission.receipt.json
+            ${{ runner.temp }}/rust-five-admission-evidence
+          if-no-files-found: warn

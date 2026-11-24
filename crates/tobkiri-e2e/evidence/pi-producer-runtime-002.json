@@ -1,0 +1,92 @@
+{
+  "M2_artifact_files_changed": [],
+  "acceptance": {
+    "M4_complete": false,
+    "Python_runtime_parity": "pending",
+    "all_837_legacy_inventory_rows": "todo",
+    "full_Harness_tool_loop": "pending",
+    "protected_fs_effect_and_approval_proof": "pending"
+  },
+  "adapter_files": {
+    "component.build.json": {
+      "bytes": 1541,
+      "sha256": "sha256:f434e69f0583929d2bd816293b037fca2e3e88af27e071fd6566930111cfdf18"
+    },
+    "component.wasm": {
+      "bytes": 369996,
+      "sha256": "sha256:e26d1ed78ec2f0cda3ae313ba85971b5f455634113e3d5f64a9d7e8c17c1b85c"
+    },
+    "config.json": {
+      "bytes": 3,
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "wit/deps/core.wit": {
+      "bytes": 5732,
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    },
+    "wit/deps/harness-agent.wit": {
+      "bytes": 384,
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26"
+    },
+    "wit/deps/harness-chat.wit": {
+      "bytes": 1900,
+      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c"
+    },
+    "wit/pack.wit": {
+      "bytes": 291,
+      "sha256": "sha256:d28a754aeca0b8089d9e9edf83bcf2059b240e42d056a75ea1c71d0d4ae34bcc"
+    },
+    "wit/pi-adapter.wit": {
+      "bytes": 611,
+      "sha256": "sha256:80bbe4b791713b28a5f885e9036c7c681907812803842494bf1d6eabae837b81"
+    },
+    "wit/pi-extension.shape.json": {
+      "bytes": 86,
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8"
+    }
+  },
+  "adapter_manifest_document_sha256": "sha256:759002002655d61032e4aa19c841027ff97981f08e86ff2e99bd1a1d76d6631a",
+  "command": "CARGO_TARGET_DIR=\"$PWD/../.work/cargo-target\" CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 cargo test -p tobkiri-e2e --locked --test pi -- --ignored --nocapture",
+  "elapsed_test_seconds": "47.30",
+  "exit_code": 0,
+  "format": "tobkiri.pi-runtime-evidence/1",
+  "host_allowlist_changes": false,
+  "originals": {
+    "hello": {
+      "component_bytes": 13117545,
+      "component_sha256": "sha256:d927c43a6aa7d5d2af9a895bd818d8d66388b596605275c62d68173c303d6150",
+      "original_sha256": "sha256:0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
+      "unchanged_original": true,
+      "upstream_commit": "b06c1f2cf1dea6af8748ddeee18c23587d2cb7c6"
+    },
+    "protected-paths": {
+      "component_bytes": 12156679,
+      "component_sha256": "sha256:ffe77d6fd08a99e3c553feb6b44972db929fd091fb1c7ba6a16cd15ff4c45b56",
+      "original_sha256": "sha256:9ca66b1f3b1b9a61cc5ddc660f92cca2ea66c4264a1bdb6b00e0da5844399fe2",
+      "unchanged_original": true,
+      "upstream_commit": "b06c1f2cf1dea6af8748ddeee18c23587d2cb7c6"
+    }
+  },
+  "previous_attempt": "m4-pending.json",
+  "producer_correction": "self-contained owned shape plus separately compiled qualified guest-package world",
+  "runtime_scope": {
+    "hello": "exact content and details through compiled wrapper, Rust adapter and gate",
+    "protected_paths": "five guard decisions through compiled wrapper, Rust adapter and gate; UI notify branch executed"
+  },
+  "runtime_tests_passed": 2,
+  "source_hash_capture": "Source hashes were captured after execution; before/after source identity was not captured or claimed.",
+  "source_hashes": {
+    "Cargo.lock": "sha256:8a99d7c91d58705c826232894ee9f6d5eeb1573d938eda2804bf584a0b639439",
+    "crates/tobkiri-e2e/tests/pi.rs": "sha256:26aeb0fee47bbb921ba6b5edf451cd3534771d6b8820fdff34f61edc6260e003",
+    "crates/tobkiri-e2e/tests/support/mod.rs": "sha256:c60d1ea929e3921d5e0d5a54cb80c94e120160611589e2ede5f82cb2fea1ae5d",
+    "packs/build.py": "sha256:fac70817efe9ba59230dcbd1b3e7ecd40dc05654da7a8806e277a137feece16d",
+    "packs/local.pi-adapter/build.rs": "sha256:bf17d04faa238db8e59f153cfa6eb8e4e6faf50aec7f076c945d7ed7f8c094dc",
+    "packs/local.pi-adapter/src/lib.rs": "sha256:721f85530073ff7bb2d97b10599e58a9f64ce47f3066233f2e699a755c3a03f8",
+    "packs/local.pi-adapter/wit/pack.wit": "sha256:d28a754aeca0b8089d9e9edf83bcf2059b240e42d056a75ea1c71d0d4ae34bcc",
+    "packs/shapes/pi-adapter.wit": "sha256:80bbe4b791713b28a5f885e9036c7c681907812803842494bf1d6eabae837b81"
+  },
+  "source_oracle_changes": false,
+  "source_qualification": "Executed before Q1 strict User policy, typed SQL and outbox contract changes; this is a bounded example runtime proof, not final current-policy acceptance.",
+  "test_executable_sha256": "sha256:27f60e126ec92dffa5a41a053c11ced9920c3a3854844a285a9be304023112ec",
+  "wrappers_rebuilt": false
+}

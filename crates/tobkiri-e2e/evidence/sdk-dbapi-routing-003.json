@@ -1,0 +1,45 @@
+{
+  "checks": [
+    "tagged scalar transport",
+    "ordered duplicate names and zero-row metadata",
+    "seven-field description",
+    "unknown rowcount -1",
+    "connection lastrowid snapshot",
+    "bounded fetchmany and iteration",
+    "lazy begin / commit / close rollback / resource drop",
+    "no batch partial commit",
+    "unsupported modes/converters/scripts/dict params fail",
+    "declared enum marshalling without string fallback; actual new-WIT binding replay pending"
+  ],
+  "command": "python3 -B -m unittest discover -s sdk/python/tests -v",
+  "deterministic_initializer_scope": "three native declaration tests only; original producer source patch/toolbuild/reproducibility proof remain pending",
+  "exec_typed_arg_order": [
+    "statement",
+    "params",
+    "max-rows",
+    "result-policy"
+  ],
+  "exit_code": 0,
+  "format": "tobkiri.sdk-dbapi-evidence/1",
+  "migration_inventory_all_837": "todo",
+  "policies": [
+    "allow-rows",
+    "forbid-rows"
+  ],
+  "routing": "execute always exec-typed allow-rows; executemany exec-typed forbid-rows in one lazy explicit transaction",
+  "scope": "native SDK tests with record-only resources; bounded SQLite, Gate and actual Python wasm DB-API proof remain pending",
+  "source_before_after_identity": "not captured or claimed",
+  "source_hashes_after_execution": {
+    "crates/tobkiri-wit/wit/core-v1-1/core.wit": "sha256:519ae1215e01df9d782e0f5808cc53207b5be71f1f10e9f7bf1073796c66c90f",
+    "sdk/python/deterministic_plan.py": "sha256:887ec4c45bd8da81213275c1f4620c6c8aa784dc5c6a23984332793c0ebc2d40",
+    "sdk/python/tests/test_dbapi.py": "sha256:716dbdaebba5e8fa2847e93e6c9338f614c0178572194312eaa128d743807c90",
+    "sdk/python/tests/test_deterministic_plan.py": "sha256:d75cb73376336325cab23e3a2ccc120ff4c0d737a9ed2e7b7a5b386e67fc371c",
+    "sdk/python/tobkiri_sdk/_binding.py": "sha256:6ef3ade0b0a14e0e6e5f785d5e57197fe91ec22a5e8ab23c7ee9ddcbd5ee2360",
+    "sdk/python/tobkiri_sdk/generated.py": "sha256:5d534487dc1c04ce6f0b3e1fa66f3f7b27c1f8666fca842568904580c45dd9dc",
+    "sdk/python/tobkiri_sdk/sql_codec.py": "sha256:863adde3b6eb7fae8b9b173ecf6f32c71f9d79b9d90971478c6258bcef4305ef",
+    "sdk/python/tobkiri_sdk/sql_result.py": "sha256:032f595b86177b30324eb47e8fa2a6113b2186d5ccef7ab7a72a59be6a74b258",
+    "sdk/python/tobkiri_sdk/storage.py": "sha256:b0719b3b1c907f73afc2b5c64a0b273e1298f761f9324062b0eb2d6986cfcee2"
+  },
+  "tests_passed": 27,
+  "wire": "tobkiri:core/storage@1.1.0"
+}

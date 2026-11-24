@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .paths import ECOSYSTEM_DIR, find_ecosystem_json
+from .pack_boundary import finite_children
 from .validation import check_path_within, is_safe_staging_id, validate_pack_id
 
 BACKUP_ROOT = "user_data/pack_backups"
@@ -101,7 +102,7 @@ class PackApplier:
         if not payload_dir.exists():
             return ApplyResult(success=False, error="payload directory not found")
 
-        top_dirs = [d for d in payload_dir.iterdir() if d.is_dir()]
+        top_dirs = list(finite_children(payload_dir, directories_only=True))
         if len(top_dirs) != 1:
             return ApplyResult(
                 success=False,
@@ -285,7 +286,7 @@ class PackApplier:
                 event_type=event_type,
                 success=success,
                 details=details,
-                error=details.get("error"),
+                error=str(details.get("error") or ""),
             )
         except Exception:
             pass

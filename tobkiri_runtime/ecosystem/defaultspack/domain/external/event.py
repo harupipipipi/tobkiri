@@ -46,15 +46,33 @@ class ExternalEvent:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "ExternalEvent":
+        event_value = value.get("event")
+        payload_value = value.get("payload")
+        metadata_value = value.get("metadata")
+        event: dict[str, object] = (
+            {str(key): item for key, item in event_value.items()}
+            if isinstance(event_value, dict)
+            else {}
+        )
+        payload: dict[str, object] = (
+            {str(key): item for key, item in payload_value.items()}
+            if isinstance(payload_value, dict)
+            else {}
+        )
+        metadata: dict[str, object] = (
+            {str(key): item for key, item in metadata_value.items()}
+            if isinstance(metadata_value, dict)
+            else {}
+        )
         return cls(
             provider=str(value.get("provider") or ""),
             workspace=principal_from(value.get("workspace"), default_type="unknown"),
             scope=principal_from(value.get("scope"), default_type="unknown"),
             actor=principal_from(value.get("actor"), default_type="unknown"),
             conversation=principal_from(value.get("conversation"), default_type="external"),
-            event=dict(value.get("event") if isinstance(value.get("event"), dict) else {}),
-            payload=dict(value.get("payload") if isinstance(value.get("payload"), dict) else {}),
+            event=event,
+            payload=payload,
             verified=bool(value.get("verified")),
-            metadata=dict(value.get("metadata") if isinstance(value.get("metadata"), dict) else {}),
+            metadata=metadata,
             received_at=int(value.get("received_at") or _now_ms()),
         )

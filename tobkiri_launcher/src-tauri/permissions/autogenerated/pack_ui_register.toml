@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pack-ui-register"
+description = "Enables the pack_ui_register command without any pre-configured scope."
+commands.allow = ["pack_ui_register"]
+
+[[permission]]
+identifier = "deny-pack-ui-register"
+description = "Denies the pack_ui_register command without any pre-configured scope."
+commands.deny = ["pack_ui_register"]

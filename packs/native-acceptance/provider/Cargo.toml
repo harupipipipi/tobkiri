@@ -1,0 +1,24 @@
+[package]
+name = "tobkiri-pack-native-acceptance-provider"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+[workspace]
+resolver = "3"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "=0.62.0"
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+strip = true
+opt-level = "s"
+panic = "abort"

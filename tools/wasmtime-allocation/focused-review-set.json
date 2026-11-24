@@ -1,0 +1,37 @@
+{
+  "scope": "Immutable source review, not runtime/allocation test proof",
+  "paths": [
+    {
+      "path": "crates/tobkiri-canon/src/lib.rs",
+      "bytes": 7407,
+      "sha256": "91780ab91cc1218f2aa9eea9370d7d75ea7108a5ab5b3f61a35004a31c2a9ac9"
+    },
+    {
+      "path": "crates/tobkiri-canon/src/ownership.rs",
+      "bytes": 49123,
+      "sha256": "fe00f2b2248ebc69ec9df868c07df6110a85f3492e8f61e7233f22017e18cd8b"
+    },
+    {
+      "path": "crates/tobkiri-canon/tests/ownership.rs",
+      "bytes": 17166,
+      "sha256": "dcbaabd9e8796def5f8b3940852f328ff16d50395c18cf42ca5a7f6d13c8664e"
+    },
+    {
+      "path": "vendor/wasmtime/src/runtime/component/allocation.rs",
+      "bytes": 25770,
+      "sha256": "599082ee3c45ec556c94733595c78c42b0812fa49fcd6f6dfbda4e58e6e5898c"
+    },
+    {
+      "path": "tools/wasmtime-allocation/upstream-delta.patch",
+      "bytes": 93494,
+      "sha256": "7da7911a7fd82e947543b87d6552bf02d2abe261885267662f1634b60b3d60cc"
+    },
+    {
+      "path": "tools/wasmtime-allocation/README.md",
+      "bytes": 9374,
+      "sha256": "1b77abc03a46cf5afbbd7229e22331ebf9a99cc440ab91f59a5acfcceb8ad217"
+    }
+  ],
+  "total_bytes": 202334,
+  "limit_bytes": 204800
+}

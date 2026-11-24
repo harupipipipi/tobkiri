@@ -1,0 +1,7 @@
+package local:echo-llm@1.0.0;
+
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export local:echo-chat/llm-provider@1.0.0;
+  export tobkiri:core/stream-source@1.0.0;
+}

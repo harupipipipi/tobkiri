@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "panel-session-reauthorization",
+  "description": "Allows the live Launcher panel to obtain a fresh one-time panel session after activation; Rust validates the actual caller window, port, and route.",
+  "local": false,
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
+  },
+  "permissions": ["allow-reauthorize-panel-session"]
+}

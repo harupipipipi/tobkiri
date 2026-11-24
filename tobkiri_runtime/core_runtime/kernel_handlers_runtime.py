@@ -19,20 +19,36 @@ Mixin方式でKernelクラスに合成される。
 
 from __future__ import annotations
 
-import copy
 
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Protocol, Tuple
 
-from .flow_loader import FlowDefinition, FlowStep
+from .flow_loader import FlowDefinition
 
 from .paths import ECOSYSTEM_DIR
 from .kernel_flow_converter import FlowConverter
 
 from .logging_utils import get_structured_logger
 from .metrics import get_metrics_collector
+from .capability_proxy import HostCapabilityProxyServer
+from .diagnostics import Diagnostics
+from .egress_proxy import UDSEgressProxyManager
+
+
+class _InterfaceRegistryPort(Protocol):
+    def get(self, key: str, strategy: str = "first") -> Any: ...
+
+    def list(self) -> Dict[str, Any]: ...
+
+    def register(
+        self,
+        key: str,
+        value: Any,
+        *,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None: ...
 
 # M-10: 共通 FlowConverter インスタンス
 _flow_converter = FlowConverter()
@@ -54,6 +70,39 @@ class KernelRuntimeHandlersMixin:
     __init__ を持たない。self の属性（diagnostics, interface_registry 等）は
     KernelCore.__init__ で初期化済みの前提でアクセスする。
     """
+
+    diagnostics: Diagnostics
+    interface_registry: _InterfaceRegistryPort
+    _uds_proxy_manager: Optional[UDSEgressProxyManager]
+    _capability_proxy: Optional[HostCapabilityProxyServer]
+
+    if TYPE_CHECKING:
+        def execute_flow_sync(
+            self,
+            flow_id: str,
+            context: Optional[Dict[str, Any]] = None,
+            timeout: Optional[float] = None,
+            trusted_context: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]: ...
+
+        async def _handle_universal_call_async(
+            self,
+            step: Dict[str, Any],
+            ctx: Dict[str, Any],
+        ) -> Dict[str, Any]: ...
+
+        def _resolve_value(
+            self,
+            value: Any,
+            ctx: Dict[str, Any],
+            depth: int = 0,
+        ) -> Any: ...
+
+        def _get_uds_proxy_manager(self) -> UDSEgressProxyManager: ...
+
+        def _get_capability_proxy(self) -> HostCapabilityProxyServer: ...
+
+        def _now_ts(self) -> str: ...
 
     # ------------------------------------------------------------------
     # ハンドラ登録（Kernel._init_kernel_handlers から呼ばれる）
@@ -534,16 +583,16 @@ class KernelRuntimeHandlersMixin:
         if resolution_info:
             exec_ctx["_flow_resolution"] = resolution_info
 
-        result = self.execute_flow_sync(resolved_flow_id, exec_ctx, timeout)
+        flow_result = self.execute_flow_sync(resolved_flow_id, exec_ctx, timeout)
 
         return {
-            "_kernel_step_status": "success" if "_error" not in result else "failed",
+            "_kernel_step_status": "success" if "_error" not in flow_result else "failed",
             "_kernel_step_meta": {
                 "flow_id": resolved_flow_id,
                 "original_flow_id": original_flow_id if resolve else None,
                 "resolved": resolve and (resolved_flow_id != original_flow_id),
             },
-            "result": result
+            "result": flow_result
         }
 
     # ------------------------------------------------------------------
@@ -579,7 +628,6 @@ class KernelRuntimeHandlersMixin:
             loop = None
 
         if loop and loop.is_running():
-            import concurrent.futures
             future = asyncio.run_coroutine_threadsafe(
                 self._handle_universal_call_async(step, ctx), loop,
             )
@@ -722,7 +770,9 @@ class KernelRuntimeHandlersMixin:
         )
 
         # 結果を記録
-        status = "success" if result.success else "failed"
+        status: Literal["success", "failed"] = (
+            "success" if result.success else "failed"
+        )
         self.diagnostics.record_step(
             phase=phase,
             step_id=step_id,
@@ -1006,11 +1056,23 @@ class KernelRuntimeHandlersMixin:
         try:
             from .network_grant_manager import get_network_grant_manager
             from .audit_logger import get_audit_logger
-            from .egress_proxy import initialize_egress_proxy
+            from .egress_proxy import EgressProxyServer, initialize_egress_proxy
             ngm = get_network_grant_manager()
             audit = get_audit_logger()
+            raw_host = args.get("host")
+            host = (
+                raw_host
+                if isinstance(raw_host, str)
+                else EgressProxyServer.DEFAULT_HOST
+            )
+            raw_port = args.get("port")
+            port = (
+                raw_port
+                if isinstance(raw_port, int)
+                else EgressProxyServer.DEFAULT_PORT
+            )
             proxy = initialize_egress_proxy(
-                host=args.get("host"), port=args.get("port"),
+                host=host, port=port,
                 network_grant_manager=ngm, audit_logger=audit, auto_start=True
             )
             if proxy.is_running():

@@ -11,7 +11,10 @@ Setup metadata lives at `ecosystem/setup_pack/rumi_model_evals_pack/pack.json`.
 When changing this pack:
 
 - Keep files under `ecosystem/rumi_model_evals_pack/` and setup metadata under `ecosystem/setup_pack/rumi_model_evals_pack/pack.json`.
-- Keep the pack declarative. Do not add eval runners, Python scripts, shell scripts, notebooks, SQL files, handlers, routes, or provider adapters.
+- Keep runtime code limited to the artifact-bound catalog reader,
+  non-executing plan builder, and deterministic local scorer. Do not add remote
+  eval runners, shell scripts, notebooks, SQL files, routes, or provider
+  adapters.
 - Keep network default as `none`.
 - Do not include provider keys, credentials, private endpoints, or account-specific payloads.
 - Treat defaultspack provider catalog as authoritative; use overlay and gate metadata only.
@@ -32,7 +35,8 @@ Manual checks:
 - Required docs/assets exist.
 - PackSelector discovers setup metadata and dependencies.
 - Overlap and defaultspack promotion metadata are explicit.
-- No secret-looking or executable payloads are present.
+- Runtime code remains covered by `artifact-manifest.json` and contains no
+  provider-call or credential-loading path.
 
 ## Common Breakages
 

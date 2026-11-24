@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "auxiliary-presentation-open",
+  "description": "Launches the active verified Presentation from Tobkiri auxiliary surfaces",
+  "local": false,
+  "windows": ["ambient-trigger", "finger-recording"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*"
+    ]
+  },
+  "permissions": ["allow-launch-active-presentation-from-auxiliary"]
+}

@@ -1,19 +1,16 @@
+"""Compatibility projection for pack-owned prompt composition edge state."""
+
 from __future__ import annotations
 
 from blocks._common import error, ok
-from blocks.prompt._model_profiles import with_model_profiles
 from domain.prompt.usage import toggle_prompt_edge
 
 
 def run(input_data: dict, context: dict) -> dict:
-    del context
-    data = with_model_profiles(input_data if isinstance(input_data, dict) else {})
-    preview = bool(data.get("preview") or data.get("_preview"))
+    """Validate the runtime graph, then persist through the global owner."""
+    if context.get("_tool_server_approved") is not True:
+        return error("Prompt edge mutation requires approval", "PROMPT_STUDIO_DENIED")
     try:
-        return ok(toggle_prompt_edge(data, preview=preview))
-    except PermissionError as exc:
-        return error(str(exc), "PROMPT_DISABLE_FORBIDDEN")
-    except ValueError as exc:
-        return error(str(exc), "INVALID_INPUT")
+        return ok(toggle_prompt_edge(input_data, preview=False))
     except Exception as exc:
         return error(str(exc), "PROMPT_TOGGLE_FAILED")

@@ -1,0 +1,19 @@
+{
+  "files": 83,
+  "bytes": 1360136,
+  "pins_sha256": "d8ed300d82dd36e2bf09cd2988850fb0a2291d604b37da0fc72a48345f91c916",
+  "pins": {
+    "caller": {
+      "artifact_sha256": "cb561cb9b9b85aaf1de9cb74a57ffece061bd4b8100d6030b5aabc79b2cb7fc1",
+      "receipt_sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477"
+    },
+    "provider": {
+      "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+      "receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d"
+    },
+    "source_observations_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
+    "wac_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda",
+    "runner_source_bindings_sha256": "3c4d619cd758dee5405d4fa6b4f3697cc065ad0e764409c7b276085f05d22e18",
+    "composition_wac_sha256": "107675f2bfcdbe32bd7eab4c77a9aa9bde2e6dc2e6d1aa9378989a006f2ba4b4"
+  }
+}

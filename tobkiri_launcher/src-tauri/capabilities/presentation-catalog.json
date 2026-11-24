@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "presentation-catalog",
+  "description": "Read-only presentation catalog access for the main Launcher panel; Rust verifies the live panel URL",
+  "local": false,
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
+  },
+  "permissions": ["allow-get-presentation-catalog"]
+}

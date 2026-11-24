@@ -1,0 +1,117 @@
+{
+  "format": "tobkiri.pack/1",
+  "id": "local.pi-example-hello",
+  "version": "0.1.0",
+  "publisher_key": null,
+  "runtime": {
+    "kind": "wasm",
+    "component": "component.wasm",
+    "toolchain": "esbuild/0.28.2;componentize-js/0.23.0",
+    "config": {
+      "path": "config.json"
+    }
+  },
+  "shapes": [],
+  "ports": {
+    "provides": [
+      {
+        "shape": "local.pi-adapter.pi-extension",
+        "version": "1.0",
+        "optional": false
+      }
+    ],
+    "consumes": [],
+    "untyped": []
+  },
+  "flows": [],
+  "overlays": [],
+  "stores": [],
+  "ui": null,
+  "permissions": {
+    "network": {
+      "origins": []
+    },
+    "fs": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "native": false,
+    "cross_profile_storage": false,
+    "audit_read": false,
+    "audit_append": true,
+    "host_io": [
+      "display"
+    ],
+    "ports": [],
+    "mediator": false,
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "wall_ms": 300000,
+      "table_elements": 65536,
+      "output_bytes": 4194304
+    },
+    "loops": {
+      "max_iterations": 16,
+      "max_wall_ms": 300000,
+      "max_cost_units": 100000
+    }
+  },
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:f574d805f0f76e6e1dec8bab1f888373d8a8f0f8e68ae8619ccd970cccaa9306",
+      "size": 2221
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:d927c43a6aa7d5d2af9a895bd818d8d66388b596605275c62d68173c303d6150",
+      "size": 13117545
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "size": 3
+    },
+    {
+      "path": "upstream.json",
+      "sha256": "sha256:68a54a1cb6c66cfcc738be4fcf1c8632cba16914483686811bcefed5cca46c8c",
+      "size": 296
+    },
+    {
+      "path": "upstream/hello.ts",
+      "sha256": "sha256:0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
+      "size": 640
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/pi-adapter.wit",
+      "sha256": "sha256:12e9da7016300e7e7cd4a2dc627aa047c26f7aaeb1edf20c77d4665767d06cb9",
+      "size": 1094
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:aeb3b6feb676707370e84122da6ef9bc6d96594e4cbb9cf9e17c833542173568",
+      "size": 176
+    },
+    {
+      "path": "wrapper.js",
+      "sha256": "sha256:91f17dc8ff612e32c75435fb78d18530bc7889772a27159b7ebc0c5f588dd7ce",
+      "size": 117897
+    },
+    {
+      "path": "wrapper.js.map",
+      "sha256": "sha256:11aca53cf34751d9b06da38badaa1180a4cd5891c41282c42b9fc3b316a4098c",
+      "size": 291730
+    }
+  ]
+}

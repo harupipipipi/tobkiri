@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -12,6 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_component_catalog_selected")
 
 from domain.tool.executor import ToolExecutor  # noqa: E402
 from domain.tool.registry import ToolRegistry  # noqa: E402
@@ -26,6 +29,45 @@ from domain.ui_compiler import (  # noqa: E402
     calculate_complexity,
     compile_ui_plan,
 )
+
+
+def _attached_plan_context(tool_id: str, **context: object) -> dict[str, object]:
+    from core_runtime.capability_plan import canonical_capability_plan_digest
+
+    tool = ToolRegistry().get(tool_id)
+    assert isinstance(tool, dict), tool_id
+    schema = tool.get("schema")
+    if not isinstance(schema, dict):
+        contract = tool.get("contract")
+        schema = (
+            contract.get("input_schema")
+            if isinstance(contract, dict)
+            and isinstance(contract.get("input_schema"), dict)
+            else {}
+        )
+    plan = {
+        "schema_version": "tobkiri.capability-plan/v1",
+        "plan_id": f"plan_ui_compiler_{tool_id}",
+        "registry_revision": "registry_test",
+        "effective_capabilities": [],
+        "provider_selections": {},
+        "tools": {
+            "attached": [tool_id],
+            "schema_hashes": {
+                tool_id: hashlib.sha256(
+                    json.dumps(
+                        schema,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest()
+            },
+        },
+    }
+    plan["digest"] = canonical_capability_plan_digest(plan)
+    return {"principal_id": "defaultspack", "capability_plan": plan, **context}
 
 
 def _valid_inbox_tree() -> dict:
@@ -533,7 +575,10 @@ def test_read_only_compile_rejects_persist_and_compile_tool_needs_no_approval() 
     executed = ToolExecutor().execute(
         "tool_ui_compile_plan",
         {"ui_tree": _valid_inbox_tree(), "run_id": "tool-run"},
-        {"principal_id": "defaultspack", "profile_policy": {"yolo_mode": True}},
+        _attached_plan_context(
+            "tool_ui_compile_plan",
+            profile_policy={"yolo_mode": True},
+        ),
     )
 
     assert tool is not None
@@ -574,6 +619,7 @@ def test_commit_requires_internal_authorization_and_trusted_workspace(tmp_path: 
             "profile_policy": {"yolo_mode": True},
             "conversation_workspace_dir": str(tmp_path),
             "principal_id": "defaultspack",
+            **_attached_plan_context("tool_ui_commit_plan"),
         },
     )
 

@@ -1,0 +1,26 @@
+{
+  "id": "settings_assistant",
+  "category": "skill",
+  "version": "1.0.0",
+  "enabled": true,
+  "display_name": "Settings",
+  "description": "Inspect, explain, and safely change Tobkiri settings through normal chat.",
+  "triggers": [
+    "settings",
+    "setting",
+    "設定"
+  ],
+  "applies_to_tools": [
+    "settings_inspect",
+    "settings_update"
+  ],
+  "prompt_file": "instructions.md",
+  "metadata": {
+    "aliases": [
+      "settings",
+      "setting_mode",
+      "settings_mode"
+    ],
+    "source": "defaultspack"
+  }
+}

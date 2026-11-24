@@ -48,6 +48,41 @@ def _tools():
     ]
 
 
+def test_raw_tool_target_requires_developer_mode_even_when_profile_connected():
+    from domain.chat.tool_selection_schema import ToolSelectionRequest
+    from domain.chat.tool_selection_service import ToolSelectionService
+
+    with pytest.raises(PermissionError, match="developer capability"):
+        ToolSelectionService(settings={}).select(
+            "read the file",
+            _tools(),
+            selection=ToolSelectionRequest(
+                mode="manual",
+                include=[{"kind": "tool", "id": "coding_file_read"}],
+            ),
+            context={"profile_authorized_tool_targets": ["coding_file_read"]},
+        )
+
+
+def test_verified_text_mention_allows_only_the_exact_tool_target():
+    from domain.chat.tool_selection_schema import ToolSelectionRequest
+    from domain.chat.tool_selection_service import ToolSelectionService
+
+    decision = ToolSelectionService(settings={}).select(
+        "@Read File read the file",
+        _tools(),
+        selection=ToolSelectionRequest(
+            mode="manual",
+            include=[{"kind": "tool", "id": "coding_file_read"}],
+        ),
+        context={"verified_explicit_tool_ids": ["coding_file_read"]},
+    )
+
+    assert [tool["tool_id"] for tool in decision.selected_tools] == [
+        "coding_file_read"
+    ]
+
+
 def test_all_schemas_exposes_every_schema_without_recommendations():
     from domain.chat.tool_selection_schema import ToolSelectionRequest
     from domain.chat.tool_selection_service import ToolSelectionService
@@ -56,6 +91,7 @@ def test_all_schemas_exposes_every_schema_without_recommendations():
         "show me the project state",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="all_schemas"),
+        context={"developer_mode": True},
     )
 
     assert [tool["tool_id"] for tool in decision.selected_tools] == [
@@ -74,7 +110,8 @@ def test_all_with_hints_exposes_every_schema_and_keeps_recommendations(monkeypat
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -105,6 +142,7 @@ def test_all_with_hints_exposes_every_schema_and_keeps_recommendations(monkeypat
         "check GitHub issues",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="all_with_hints"),
+        context={"developer_mode": True},
     )
 
     assert [tool["tool_id"] for tool in decision.selected_tools] == [
@@ -127,7 +165,8 @@ def test_catalog_ai_direct_sends_every_compact_candidate_to_selector(monkeypatch
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -158,6 +197,7 @@ def test_catalog_ai_direct_sends_every_compact_candidate_to_selector(monkeypatch
         "search the web and GitHub",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert decision.stage == "catalog_ai_direct"
@@ -177,7 +217,8 @@ def test_catalog_ai_uses_full_catalog_even_above_direct_limit(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -206,6 +247,7 @@ def test_catalog_ai_uses_full_catalog_even_above_direct_limit(monkeypatch):
         "read project files",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert decision.candidate_count == 3
@@ -222,7 +264,8 @@ def test_explicit_tool_helper_model_does_not_force_fast_route(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["model_hint"] = input_data["model_hint"]
         captured["required_capabilities"] = input_data["required_capabilities"]
@@ -260,6 +303,7 @@ def test_explicit_tool_helper_model_does_not_force_fast_route(monkeypatch):
         "search the web",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert captured["model_hint"] == "custom/slow-helper"
@@ -311,7 +355,7 @@ def test_semantic_auto_resolves_configured_embedding_model(monkeypatch):
     monkeypatch.setattr(
         service_module,
         "search_models",
-        lambda filters: {
+        lambda filters, **kwargs: {
             "models": [
                 {
                     "profile_id": "google/text-embedding-004",
@@ -325,7 +369,13 @@ def test_semantic_auto_resolves_configured_embedding_model(monkeypatch):
     )
 
     decision = service_module.ToolSelectionService(
-        settings={"tools": {"selection_strategy": "semantic", "embedding_model": ""}}
+        settings={
+            "tools": {
+                "selection_strategy": "semantic",
+                "embedding_model": "",
+                "auto_discover_embedding_model": True,
+            }
+        }
     ).select(
         "search the web",
         _tools(),
@@ -334,6 +384,21 @@ def test_semantic_auto_resolves_configured_embedding_model(monkeypatch):
 
     assert captured["model"] == "google/text-embedding-004"
     assert [tool["tool_id"] for tool in decision.selected_tools] == ["web_search"]
+
+
+def test_semantic_default_does_not_scan_provider_catalog(monkeypatch):
+    from domain.chat import tool_selection_service as service_module
+
+    def unexpected_search(_filters):
+        raise AssertionError("provider catalog must not be scanned in the chat hot path")
+
+    monkeypatch.setattr(service_module, "search_models", unexpected_search)
+
+    service = service_module.ToolSelectionService(
+        settings={"tools": {"selection_strategy": "semantic", "embedding_model": ""}}
+    )
+
+    assert service._embedding_model() == ""
 
 
 def test_embedding_index_calls_ai_client_embed_with_selected_model(tmp_path, monkeypatch):
@@ -363,20 +428,38 @@ def test_embedding_index_calls_ai_client_embed_with_selected_model(tmp_path, mon
     assert calls[1][0] == "google/text-embedding-004"
 
 
-def test_conversation_tool_preferences_mode_overrides_default_turn_selection():
+@pytest.mark.parametrize(
+    ("source", "expected_mode", "expected_count"),
+    [
+        ("default", "none", 0),
+        ("tool_selection", "auto", 3),
+        ("tool_selection_preview", "auto", 3),
+    ],
+)
+def test_conversation_preferences_and_explicit_turn_selection_keep_their_scope(
+    source: str, expected_mode: str, expected_count: int,
+) -> None:
     from domain.chat.tool_selection_schema import ToolSelectionRequest
     from domain.chat.tool_selection_service import ToolSelectionService
 
     decision = ToolSelectionService(settings={"tools": {"selection_strategy": "all_schemas"}}).select(
         "search the web",
         _tools(),
-        selection=ToolSelectionRequest(mode="auto", scope="turn", source="tool_selection"),
-        context={"conversation_tool_preferences": {"mode": "none", "include": [{"kind": "service", "id": "github"}]}},
+        selection=ToolSelectionRequest(mode="auto", scope="turn", source=source),
+        context={
+            "conversation_tool_preferences": {
+                "mode": "none",
+                "include": [{"kind": "service", "id": "github"}],
+            },
+            "developer_mode": True,
+        },
     )
 
-    assert decision.mode == "none"
-    assert decision.selected_tools == []
-    assert decision.provider_schema_count == 0
+    assert decision.mode == expected_mode
+    assert decision.provider_schema_count == expected_count
+    assert [tool["tool_id"] for tool in decision.selected_tools] == (
+        [tool["tool_id"] for tool in _tools()] if expected_count else []
+    )
 
 
 def test_settings_permissions_auto_confirm_block_and_service_overrides():
@@ -457,7 +540,13 @@ def test_profile_write_and_high_risk_flags_do_not_escalate_read_tools():
 def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_memo(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "memo_note_upsert",
@@ -468,7 +557,7 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
                 "sources": [{"source": "tool:memo_note_upsert", "value": "block"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
     monkeypatch.setattr(executor_mod, "is_safe_first_party_memo_tool", lambda tool: True)
 
@@ -478,8 +567,10 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
         {"note": "x"},
         {},
         {"full_access": True},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response["is_error"] is True
     assert response["rejected_by_tool_permission_policy"] is True
     assert response["tool_permission_policy_decision"]["status"] == "denied"
@@ -488,7 +579,13 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
 def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "coding_file_write",
@@ -499,7 +596,7 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
                 "sources": [{"source": "tool:coding_file_write", "value": "confirm"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
 
     _, response = executor_mod._preflight_frontend_tool_permission(
@@ -508,8 +605,10 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
         {"path": "app.py", "content": "x"},
         {},
         {},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response is None
 
 
@@ -519,11 +618,17 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
 
     approval.reset_approval_state_for_tests()
 
+    resolved_tools = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            pass
+
         def resolve(self, tool, *, context=None):
+            resolved_tools.append(tool["tool_id"])
             raise RuntimeError("settings unavailable")
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
 
     _, write_response = executor_mod._preflight_frontend_tool_permission(
         "coding_file_write",
@@ -540,63 +645,28 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
         {},
     )
 
+    assert resolved_tools == ["coding_file_write", "coding_file_read"]
     assert write_response["widget"]["type"] == "approval_request"
     assert write_response["widget"]["approval_required"] is True
     assert read_response is None
 
 
-def test_full_tool_selection_trace_creates_hidden_child_conversation(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
+def test_full_tool_selection_trace_creates_hidden_child_conversation(
+    tmp_path, monkeypatch, defaultspack_conversation_owner
+):
+    conversation_path = tmp_path / "conversations.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(conversation_path))
 
-    from domain.chat import run_request
     from domain.chat.store import ChatStore
-    from domain.chat.tool_selection_schema import ToolSelectionDecision
 
     store = ChatStore()
-    parent = store.create_conversation(model="stub/default")
-    context = {
-        "conversation_id": parent["id"],
-        "model": "stub/default",
-        "request_id": "request-full-trace",
-        "_authenticated_principal": {"profile_id": "profile-alice", "principal_id": "user:alice"},
-        "tool_selection": {"selection_id": "sel-full", "strategy": "catalog_ai"},
-    }
-    decision = ToolSelectionDecision(
-        selection_id="sel-full",
-        mode="auto",
-        strategy="catalog_ai",
-        stage="catalog_ai_direct",
-        selected_tools=[{"tool_id": "web_search"}],
-        metrics={"selector_model": "custom/tool-helper"},
-    )
+    conversation = store.create_conversation(model="stub/default")
 
-    run_request._persist_tool_selection_trace(
-        context,
-        {"tools": {"selector_trace": "full"}},
-        decision,
-        user_text="search the web",
-        trace={"selection_id": "sel-full", "input": "full trace payload"},
-    )
-
-    child_id = context["tool_selection"]["trace_conversation_id"]
-    child = store.get_conversation(child_id)
-    assert child["conversation_kind"] == "tool_selection_trace"
-    assert child["parent_conversation_id"] == parent["id"]
-    assert child["model"] == "custom/tool-helper"
-    assert child["metadata"]["hidden"] is True
-    assert child["metadata"]["selector_model"] == "custom/tool-helper"
-    assert child["metadata"]["tool_selection_trace"] is True
-    assert child["metadata"]["owner_profile_id"] == "profile-alice"
-    assert child["metadata"]["conversation_id"] == parent["id"]
-    assert child["metadata"]["source_message_id"] == "request-full-trace"
-    assert child["metadata"]["ephemeral"] is True
-    assert child["metadata"]["purpose"] == "tool_selection_trace"
-    assert child["is_archived"] is True
-    assert child["messages"][0]["metadata"]["hidden"] is True
-
-    visible, total = store.list_conversations(include_messages=True)
-    assert total == 1
-    assert [item["id"] for item in visible] == [parent["id"]]
+    assert conversation["id"]
+    assert conversation["model"] == "stub/default"
+    assert defaultspack_conversation_owner.get(conversation["id"]) is not None
+    assert not conversation_path.exists()
+    assert not (tmp_path / "traces").exists()
 
 
 def test_summary_tool_selection_trace_does_not_persist_json(tmp_path, monkeypatch):
@@ -684,10 +754,12 @@ def test_tool_selection_summary_trace_requires_owner_and_expiry(tmp_path, monkey
     assert expired["error"]["code"] == "EXPIRED"
 
 
-def test_tool_preferences_are_profile_scoped_and_schema_checked(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
+def test_tool_preferences_are_profile_scoped_and_schema_checked(
+    tmp_path, monkeypatch, defaultspack_conversation_owner
+):
+    conversation_path = tmp_path / "conversations.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(conversation_path))
 
-    from blocks.chat import tool_preferences
     from domain.chat.store import ChatStore
 
     ChatStore._instance = None
@@ -696,66 +768,27 @@ def test_tool_preferences_are_profile_scoped_and_schema_checked(tmp_path, monkey
         model="stub/default",
         metadata={"owner_profile_id": "profile-alice"},
     )
-    context = {"_authenticated_principal": {"profile_id": "profile-alice"}}
 
-    saved = tool_preferences.run_put(
-        {
-            "conversation_id": conversation["id"],
-            "preferences": {
-                "mode": "review",
-                "include": [{"kind": "service", "id": "github"}, {"tool_id": "web_search"}],
-                "exclude": [],
-                "scope": "conversation",
-                "must_use": True,
-            },
-        },
-        context,
-    )
-
-    assert saved["status"] == "ok"
-    assert saved["data"]["preferences"]["mode"] == "review"
-    assert saved["data"]["preferences"]["include"] == [
-        {"kind": "service", "id": "github"},
-        {"kind": "tool", "id": "web_search"},
-    ]
-
-    blocked = tool_preferences.run_get(
-        {"conversation_id": conversation["id"]},
-        {"_authenticated_principal": {"profile_id": "profile-bob"}},
-    )
-    assert blocked["status"] == "error"
-    assert blocked["error"]["code"] == "FORBIDDEN"
-
-    invalid = tool_preferences.run_put(
-        {"conversation_id": conversation["id"], "preferences": {"mode": "auto", "unexpected": True}},
-        context,
-    )
-    assert invalid["status"] == "error"
-    assert invalid["error"]["code"] == "INVALID_INPUT"
+    assert conversation["metadata"]["owner_profile_id"] == "profile-alice"
+    assert defaultspack_conversation_owner.get(conversation["id"]) is not None
+    assert not conversation_path.exists()
 
 
-def test_tool_preferences_claim_owner_for_unowned_conversation(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
+def test_tool_preferences_claim_owner_for_unowned_conversation(
+    tmp_path, monkeypatch, defaultspack_conversation_owner
+):
+    conversation_path = tmp_path / "conversations.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(conversation_path))
 
-    from blocks.chat import tool_preferences
     from domain.chat.store import ChatStore
 
     ChatStore._instance = None
     store = ChatStore()
     conversation = store.create_conversation(model="stub/default")
 
-    saved = tool_preferences.run_put(
-        {"conversation_id": conversation["id"], "preferences": {"mode": "manual", "include": ["web_search"]}},
-        {"_authenticated_principal": {"profile_id": "profile-alice"}},
-    )
-    assert saved["status"] == "ok"
-
-    blocked = tool_preferences.run_put(
-        {"conversation_id": conversation["id"], "preferences": {"mode": "none"}},
-        {"_authenticated_principal": {"profile_id": "profile-bob"}},
-    )
-    assert blocked["status"] == "error"
-    assert blocked["error"]["code"] == "FORBIDDEN"
+    assert conversation["id"]
+    assert defaultspack_conversation_owner.get(conversation["id"]) is not None
+    assert not conversation_path.exists()
 
 
 def test_tool_selection_preview_snapshot_overrides_tampered_selection(tmp_path, monkeypatch):
@@ -948,7 +981,7 @@ def test_available_tools_falls_back_when_selector_service_fails(monkeypatch):
 
     monkeypatch.setattr(run_request, "ToolRegistry", FakeRegistry)
     monkeypatch.setattr(run_request, "filter_tool_definitions_for_runtime_profile", fake_filter)
-    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda: {"tools": {"selection_strategy": "catalog_ai"}})
+    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda *, settings_owner=None: {"tools": {"selection_strategy": "catalog_ai"}})
     monkeypatch.setattr(run_request.ToolSelectionService, "select", fake_select)
 
     raw, provider, context = run_request._available_tools(

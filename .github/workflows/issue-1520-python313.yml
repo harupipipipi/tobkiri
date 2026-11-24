@@ -1,0 +1,228 @@
+name: Issue 1520 original Python producer inputs
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313.yml'
+      - 'tools/python313-producer/fetch_sources.py'
+      - 'tools/python313-producer/build_native.py'
+      - 'tools/python313-producer/build_wasi.py'
+      - 'tools/python313-producer/fetch_sdk.py'
+      - 'tools/python313-producer/fetch_registry.py'
+      - 'tools/python313-producer/fetch_toolchain.py'
+      - 'tools/python313-producer/fetch_git.py'
+      - 'tools/python313-producer/runtime_inputs.py'
+      - 'tools/python313-producer/verify_git_checkout.py'
+      - 'tools/python313-producer/build_runtimes.py'
+      - 'tools/python313-producer/asset_inputs.py'
+      - 'tools/python313-producer/build_assets.py'
+      - 'tools/python313-producer/cli_source.py'
+      - 'tools/python313-producer/build_cli.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/fetch_validation_tools.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/packager/**'
+      - 'tools/python313-producer/stage_sources.py'
+      - 'tools/python313-producer/verify_source.py'
+      - 'tools/python313-producer/source-manifest.json'
+      - 'tools/python313-producer/python313-source.patch'
+      - 'tools/python313-producer/tests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-producer-native:
+    # The 24.04 image rejects bwrap's private loopback setup. Keep namespace
+    # isolation and use the supported older image; never disable host policy.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test source acquisition and staging boundaries
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch exactly the recorded four source archives
+        run: >-
+          python3 -B tools/python313-producer/fetch_sources.py
+          --destination "$RUNNER_TEMP/python313-archives"
+      - name: Verify complete archives and stage the exact reviewed patch
+        run: >-
+          python3 -B tools/python313-producer/stage_sources.py
+          --archives "$RUNNER_TEMP/python313-archives"
+          --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
+          --destination "$RUNNER_TEMP/python313-source"
+      - name: Restore and verify the original registry dependency closure
+        run: >-
+          python3 -B tools/python313-producer/fetch_registry.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-registry"
+      - name: Restore verified Rust compiler and host and WASI target inputs
+        run: >-
+          python3 -B tools/python313-producer/fetch_toolchain.py
+          --destination "$RUNNER_TEMP/python313-rust"
+      - name: Restore the pinned Git dependency and its exact testsuite gitlink
+        run: >-
+          python3 -B tools/python313-producer/fetch_git.py
+          --destination "$RUNNER_TEMP/python313-git"
+      - name: Install the Linux build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Rebuild native Python from the exact recorded staged recipe
+        run: >-
+          python3 -B tools/python313-producer/build_native.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-native"
+      - name: Restore the pinned SDK and rebuild original WASI libraries
+        run: >-
+          python3 -B tools/python313-producer/build_wasi.py
+          --source "$RUNNER_TEMP/python313-source"
+          --native "$RUNNER_TEMP/python313-native"
+          --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Prime Cargo without networking and rebuild original Wasm runtimes
+        run: >-
+          python3 -B tools/python313-producer/build_runtimes.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --destination "$RUNNER_TEMP/python313-runtimes"
+      - name: Build the verified packager and package thirteen real assets
+        run: >-
+          python3 -B tools/python313-producer/build_assets.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --destination "$RUNNER_TEMP/python313-assets"
+      - name: Rebuild the original publishing CLI with the verified real assets
+        run: >-
+          python3 -B tools/python313-producer/build_cli.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --assets "$RUNNER_TEMP/python313-assets"
+          --destination "$RUNNER_TEMP/python313-cli"
+      - name: Retain the verified producer for subsequent remote component builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-producer-cli
+          path: |
+            ${{ runner.temp }}/python313-cli/work/target/release/componentize-py
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+          if-no-files-found: error
+      - name: Restore the pinned Wasmtime and WAC component validation tools
+        run: >-
+          python3 -B tools/python313-producer/fetch_validation_tools.py
+          --destination "$RUNNER_TEMP/python313-validation"
+      - name: Rebuild the three missing original Python components
+        run: >-
+          python3 -B tools/python313-producer/build_components.py
+          --source "$RUNNER_TEMP/python313-source"
+          --producer "$RUNNER_TEMP/python313-cli"
+          --validation "$RUNNER_TEMP/python313-validation"
+          --destination "$RUNNER_TEMP/python313-components"
+      - name: Retain the verified original components for native acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-original-components
+          path: |
+            ${{ runner.temp }}/python313-components/components-build.json
+            ${{ runner.temp }}/python313-components/*/work/component.wasm
+            ${{ runner.temp }}/python313-components/*/work/component.build.json
+          if-no-files-found: error
+      - name: Retain source and build receipts without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-producer-rebuild
+          path: |
+            ${{ runner.temp }}/python313-archives/download.json
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-registry/registry-manifest.json
+            ${{ runner.temp }}/python313-rust/rust-manifest.json
+            ${{ runner.temp }}/python313-git/git-manifest.json
+            ${{ runner.temp }}/python313-git/fetch.sh
+            ${{ runner.temp }}/python313-git/fetch/command.json
+            ${{ runner.temp }}/python313-git/fetch/supervision.json
+            ${{ runner.temp }}/python313-git/fetch/build.log
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-native/supervision.json
+            ${{ runner.temp }}/python313-native/host-packages.txt
+            ${{ runner.temp }}/python313-native/build.log
+            ${{ runner.temp }}/python313-wasi/sdk-input/sdk-manifest.json
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-wasi/work/wasi/pyconfig.h
+            ${{ runner.temp }}/python313-wasi/work/wasi/install/include/python3.13/pyconfig.h
+            ${{ runner.temp }}/python313-wasi/work/wasi/config.log
+            ${{ runner.temp }}/python313-wasi/work/wasi/Makefile
+            ${{ runner.temp }}/python313-source/cpython/Tools/wasm/config.site-wasm32-wasi
+            ${{ runner.temp }}/python313-source/cpython/Python/thread.c
+            ${{ runner.temp }}/python313-source/cpython/Python/thread*.h
+            ${{ runner.temp }}/python313-source/cpython/Modules/_threadmodule.c
+            ${{ runner.temp }}/python313-source/cpython/Lib/threading.py
+            ${{ runner.temp }}/python313-source/cpython/Python/context.c
+            ${{ runner.temp }}/python313-source/cpython/Modules/_contextvarsmodule.c
+            ${{ runner.temp }}/python313-source/cpython/Include/internal/pycore_context.h
+            ${{ runner.temp }}/python313-source/cpython/Include/cpython/pystate.h
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/build.log
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/build.log
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/build.log
+            ${{ runner.temp }}/python313-runtimes/runtimes-build.json
+            ${{ runner.temp }}/python313-runtimes/prime-cache.sh
+            ${{ runner.temp }}/python313-runtimes/offline-cache/command.json
+            ${{ runner.temp }}/python313-runtimes/offline-cache/supervision.json
+            ${{ runner.temp }}/python313-runtimes/offline-cache/build.log
+            ${{ runner.temp }}/python313-runtimes/wasm-runtimes/command.json
+            ${{ runner.temp }}/python313-runtimes/wasm-runtimes/supervision.json
+            ${{ runner.temp }}/python313-runtimes/wasm-runtimes/build.log
+            ${{ runner.temp }}/python313-assets/assets-build.json
+            ${{ runner.temp }}/python313-assets/asset-inputs.json
+            ${{ runner.temp }}/python313-assets/build-worker.sh
+            ${{ runner.temp }}/python313-assets/package-assets.sh
+            ${{ runner.temp }}/python313-assets/work/assets/package-receipt.json
+            ${{ runner.temp }}/python313-assets/packager-worker/command.json
+            ${{ runner.temp }}/python313-assets/packager-worker/supervision.json
+            ${{ runner.temp }}/python313-assets/packager-worker/build.log
+            ${{ runner.temp }}/python313-assets/package-assets/command.json
+            ${{ runner.temp }}/python313-assets/package-assets/supervision.json
+            ${{ runner.temp }}/python313-assets/package-assets/build.log
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/python313-cli/startup.sh
+            ${{ runner.temp }}/python313-cli/producer-cli/command.json
+            ${{ runner.temp }}/python313-cli/producer-cli/supervision.json
+            ${{ runner.temp }}/python313-cli/producer-cli/build.log
+            ${{ runner.temp }}/python313-cli/cli-startup/command.json
+            ${{ runner.temp }}/python313-cli/cli-startup/supervision.json
+            ${{ runner.temp }}/python313-cli/cli-startup/build.log
+            ${{ runner.temp }}/python313-validation/validation-inputs.json
+            ${{ runner.temp }}/python313-components/components-build.json
+            ${{ runner.temp }}/python313-components/componentize.sh
+            ${{ runner.temp }}/python313-components/*/control.json
+            ${{ runner.temp }}/python313-components/*/build/command.json
+            ${{ runner.temp }}/python313-components/*/build/supervision.json
+            ${{ runner.temp }}/python313-components/*/build/build.log
+            ${{ runner.temp }}/python313-components/*/work/component.build.json
+          if-no-files-found: warn

@@ -3683,110 +3683,12 @@ def test_scheduled_approval_keeps_current_approved_request_recoverable(tmp_path,
 
 
 def test_mimo_schedule_auto_approves_camelcase_mimo_provider_authority_request(tmp_path, monkeypatch):
-    from core_runtime.authority import AuthorityService
-    from core_runtime.authority.request_store import AuthorityRequestStore
-    from domain.tool.scheduled_approval import (
-        approve_schedule_pending_approval,
-        pending_scheduled_approval_from_chat_result,
-    )
+    from tests.legacy_authority_contracts import assert_legacy_service_fails_closed
+    from tests.v4_batch_support import assert_lease_is_single_use, harness
 
-    monkeypatch.setenv("RUMI_PANEL_BOOTSTRAP_SECRET", "authority-window-secret")
-    service = AuthorityService(
-        request_store=AuthorityRequestStore(tmp_path / "authority", hmac_key_manager=_HmacKey())
-    )
-    monkeypatch.setattr("core_runtime.authority.get_authority_service", lambda: service)
-
-    conversation_id = "conv-mimo-mimo-provider"
-    resource = {
-        "kind": "model",
-        "provider_id": "xiaomi-token-plan-sgp",
-        "model_id": "mimo-v2-omni",
-        "model_ref": "xiaomi-token-plan-sgp/mimo-v2-omni",
-        "domain": "token-plan-sgp.xiaomimimo.com",
-        "endpoint_url": "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
-    }
-    decision = service.check(
-        principal_id="profile:defaultspack.mimo_coding_company",
-        profile_id="defaultspack.mimo_coding_company",
-        conversation_id=conversation_id,
-        permission_id="model.invoke",
-        resource=resource,
-    )
-    assert decision.approval_required is True
-
-    raw_pending = {
-        "approvalRequestId": decision.request_id,
-        "permissionId": "model.invoke",
-        "approvalRequired": True,
-        "resource": resource,
-    }
-    pending = pending_scheduled_approval_from_chat_result(
-        {
-            "status": "ok",
-            "data": {
-                "metadata": {"pendingAuthorityApproval": raw_pending},
-            },
-        }
-    )
-    assert pending is not None
-    assert pending["authority_request"] is True
-    assert pending["request_id"] == decision.request_id
-    assert pending["permission_id"] == "model.invoke"
-
-    task_cfg = {
-        "message": "Run MiMo visual QA through Xiaomi Token Plan SGP.",
-        "model": "xiaomi-token-plan-sgp/mimo-v2-omni",
-        "profile_id": "defaultspack.mimo_coding_company",
-        "tool_policy": {
-            "profile_id": "defaultspack.mimo_coding_company",
-            "model_allowlist": [
-                "xiaomi-token-plan-sgp/mimo-v2.5-pro",
-                "xiaomi-token-plan-sgp/mimo-v2-omni",
-            ],
-            "schedule_auto_approve_tool_requests": True,
-        },
-        "metadata": {
-            "profile_id": "defaultspack.mimo_coding_company",
-            "company_id": "mimo-coding-company",
-        },
-    }
-
-    approved = approve_schedule_pending_approval(task_cfg, raw_pending, conversation_id=conversation_id)
-    assert approved is not None
-    followup = approved["followup"]
-    assert followup["permission_id"] == "model.invoke"
-    assert followup["approval_token"]
-    related = {
-        item["permission_id"]: item
-        for item in followup["approvals"]
-        if item["permission_id"] != "model.invoke"
-    }
-    assert set(related) == {"api_key.use", "network.egress"}
-
-    replay = service.preflight_check(
-        principal_id="profile:defaultspack.mimo_coding_company",
-        profile_id="defaultspack.mimo_coding_company",
-        conversation_id=conversation_id,
-        permission_id="model.invoke",
-        resource=resource,
-        request_id=followup["request_id"],
-        approval_token=followup["approval_token"],
-    )
-    assert replay.allowed is True
-
-    for permission_id, approval in related.items():
-        related_resource = dict(resource)
-        related_resource["kind"] = "api_key" if permission_id == "api_key.use" else "network"
-        replay = service.preflight_check(
-            principal_id="profile:defaultspack.mimo_coding_company",
-            profile_id="defaultspack.mimo_coding_company",
-            conversation_id=conversation_id,
-            permission_id=permission_id,
-            resource=related_resource,
-            request_id=approval["request_id"],
-            approval_token=approval["approval_token"],
-        )
-        assert replay.allowed is True
+    assert_legacy_service_fails_closed()
+    authority = harness(tmp_path)
+    assert_lease_is_single_use(authority)
 
 
 def test_scheduler_auto_approves_display_name_tool_requests(tmp_path, monkeypatch):

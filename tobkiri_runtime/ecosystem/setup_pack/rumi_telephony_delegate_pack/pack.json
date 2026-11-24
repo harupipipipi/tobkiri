@@ -27,13 +27,13 @@
     "asr_tts_runtime": "handoff_to_defaultspack_tool_runtime",
     "media_transcript_runtime": "handoff_to_defaultspack_tool_runtime",
     "contact_or_calendar_lookup": "handoff_to_defaultspack_tool_runtime",
-    "meeting_recap": "handoff_to_rumi_local_agent_pack",
+    "meeting_recap": "handoff_to_rumi_meeting_intelligence_pack",
     "external_business_action": "handoff_to_rumi_operations_company_pack",
     "real_world_action_risk_review": "handoff_to_rumi_operations_company_pack",
     "telephony_contract": "owned_by_rumi_telephony_delegate_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Telephony Delegate Pack is a declarative setup pack. Promotion requires owner-pack integration evidence, local-first audit receipts, and real-world success cases before any defaultspack inclusion.",
     "criteria": [

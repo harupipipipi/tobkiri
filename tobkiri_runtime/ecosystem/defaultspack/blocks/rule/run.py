@@ -7,14 +7,11 @@ blocks.chat._context_helpers, so context compaction cannot delete them.
 
 from __future__ import annotations
 
-import os
-import sys
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from blocks._common import error, ok  # noqa: E402
-from domain.chat.rules import ConversationRuleStore  # noqa: E402
+from blocks._common import error, ok
+from domain.chat.rules import ConversationRuleStore
 
 
 def run(input_data: Any = None, context: Any = None) -> dict[str, Any]:

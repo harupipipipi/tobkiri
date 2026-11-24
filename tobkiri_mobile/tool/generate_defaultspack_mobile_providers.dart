@@ -20,11 +20,16 @@ const _fallbackCompatibility = <String, String>{
   'opencode-zen': 'anthropic_messages',
 };
 
-void main() {
-  final providersDir =
-      Directory('../tobkiri_runtime/ecosystem/defaultspack/domain/providers')
-          .absolute
-          .normalize();
+void main(List<String> arguments) {
+  if (arguments.length != 2) {
+    stderr.writeln(
+      'usage: dart run tool/generate_defaultspack_mobile_providers.dart '
+      '<providers-dir> <output-file>',
+    );
+    exitCode = 64;
+    return;
+  }
+  final providersDir = Directory(arguments[0]).absolute;
   if (!providersDir.existsSync()) {
     stderr.writeln('defaultspack provider directory not found: $providersDir');
     exitCode = 1;
@@ -85,7 +90,7 @@ void main() {
   }
 
   configs.sort((a, b) => a.displayName.compareTo(b.displayName));
-  final outFile = File('lib/src/settings/defaultspack_mobile_providers.g.dart');
+  final outFile = File(arguments[1]).absolute;
   outFile.writeAsStringSync(_render(configs));
 }
 
@@ -188,10 +193,4 @@ class _ProviderConfig {
   final bool local;
   final bool catalogOnly;
   final String apiCompatibility;
-}
-
-extension on Directory {
-  Directory normalize() {
-    return Directory(resolveSymbolicLinksSync());
-  }
 }

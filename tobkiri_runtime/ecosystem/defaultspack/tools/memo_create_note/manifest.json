@@ -1,0 +1,53 @@
+{
+  "id": "memo_create_note",
+  "category": "tool",
+  "description": "Create a durable local memo note.",
+  "source_pack_id": "defaultspack",
+  "config": {
+    "tool_id": "memo_create_note",
+    "name": "memo_create_note",
+    "summary": "Create a durable local memo note in Memory2.",
+    "tool_category": "memory",
+    "action_type": "write",
+    "write_action": true,
+    "requires_approval": false,
+    "tags": [
+      "memory",
+      "memo"
+    ],
+    "execution": {
+      "type": "handler",
+      "handler": "blocks.memory.memo_notes:tool_create_note"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "folder_id": {
+            "type": "string",
+            "description": "Memo folder id or slug. Defaults to personalization."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-sensitive memo metadata."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short memo title."
+          },
+          "content": {
+            "type": "string",
+            "description": "Memo note body."
+          },
+          "source": {
+            "type": "string",
+            "description": "Optional source label."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    }
+  }
+}

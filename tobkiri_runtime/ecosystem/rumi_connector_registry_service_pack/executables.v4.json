@@ -1,0 +1,76 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:b2b0f106ddf63eb7dd8c57294d91f21405d03d03793a6b134898821a19a872c3",
+  "pack_id": "rumi_connector_registry_service_pack",
+  "source_identity": "sha256:7a958c2a915402a0cc419303b3815e58cd71e94512a0e57fba8bc76a465bb077",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_registry_service_pack.connector-registry.action",
+      "implementation_digest": "sha256:86e41154adfd84c3ffc0b583d0cc2835a327033716eb16c42efda4afda07909c",
+      "implementation_path": "runtime/registry.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.connector.registry.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_registry_service_pack.connector-registry-action",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:af6c678f72efe4f40c80c85799e0aecdd122d6d18b46a40ed5c8fc880c672882",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_registry_service_pack.connector-registry.action.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_registry_service_pack.connector-registry.resource",
+      "implementation_digest": "sha256:86e41154adfd84c3ffc0b583d0cc2835a327033716eb16c42efda4afda07909c",
+      "implementation_path": "runtime/registry.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.connector.registry.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_registry_service_pack.connector-registry-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:e81212a769da85c16293ea86c7ea2ecbfd27e79220a807dd1304bc30a04f66db",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_registry_service_pack.connector-registry.resource.python"
+    }
+  ]
+}

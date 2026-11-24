@@ -1,0 +1,19 @@
+package local:outer-resource-proof@1.0.0;
+
+interface objects {
+  resource object;
+  make: func(value: u32) -> object;
+  inspect: func(value: borrow<object>) -> u32;
+  consume: func(value: object) -> u32;
+  drops: func() -> u32;
+}
+
+interface observer {
+  use objects.{object};
+  inspect: func(value: borrow<object>) -> u32;
+}
+
+world proof {
+  export objects;
+  export observer;
+}

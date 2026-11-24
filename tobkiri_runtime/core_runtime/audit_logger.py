@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import atexit
 import json
-import os
 import threading
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
@@ -96,7 +95,7 @@ class AuditLogger:
     
     DEFAULT_AUDIT_DIR = "user_data/audit"
     
-    def __init__(self, audit_dir: str = None):
+    def __init__(self, audit_dir: Optional[str] = None):
         self._audit_dir = Path(audit_dir) if audit_dir else Path(self.DEFAULT_AUDIT_DIR)
         self._lock = threading.RLock()
         self._buffer: List[AuditEntry] = []
@@ -193,8 +192,8 @@ class AuditLogger:
         success: bool,
         step_count: int = 0,
         execution_time_ms: float = 0,
-        error: str = None,
-        details: Dict[str, Any] = None
+        error: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None
     ) -> None:
         """Flow実行ログを記録"""
         entry = AuditEntry(
@@ -219,9 +218,9 @@ class AuditLogger:
         target_flow_id: str,
         action: str,
         success: bool,
-        target_step_id: str = None,
-        skipped_reason: str = None,
-        error: str = None
+        target_step_id: Optional[str] = None,
+        skipped_reason: Optional[str] = None,
+        error: Optional[str] = None
     ) -> None:
         """modifier適用ログを記録"""
         entry = AuditEntry(
@@ -248,10 +247,10 @@ class AuditLogger:
         success: bool,
         execution_mode: str,
         execution_time_ms: float = 0,
-        error: str = None,
-        error_type: str = None,
-        rejection_reason: str = None,
-        warnings: List[str] = None
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
+        rejection_reason: Optional[str] = None,
+        warnings: Optional[List[str]] = None
     ) -> None:
         """python_file_call実行ログを記録"""
         severity: AuditSeverity = "info"
@@ -288,10 +287,10 @@ class AuditLogger:
         pack_id: str,
         action: str,
         success: bool,
-        previous_status: str = None,
-        new_status: str = None,
-        reason: str = None,
-        error: str = None
+        previous_status: Optional[str] = None,
+        new_status: Optional[str] = None,
+        reason: Optional[str] = None,
+        error: Optional[str] = None
     ) -> None:
         """承認イベントログを記録"""
         entry = AuditEntry(
@@ -316,8 +315,8 @@ class AuditLogger:
         permission_type: str,
         action: str,
         success: bool,
-        details: Dict[str, Any] = None,
-        rejection_reason: str = None
+        details: Optional[Dict[str, Any]] = None,
+        rejection_reason: Optional[str] = None
     ) -> None:
         """権限イベントログを記録"""
         entry = AuditEntry(
@@ -341,15 +340,12 @@ class AuditLogger:
         domain: str,
         port: int,
         allowed: bool,
-        reason: str = None,
-        request_details: Dict[str, Any] = None
+        reason: Optional[str] = None,
+        request_details: Optional[Dict[str, Any]] = None
     ) -> None:
         """ネットワークイベントログを記録"""
         # severity を allowed に基づいて設定
-        if allowed:
-            severity: AuditSeverity = "info"
-        else:
-            severity: AuditSeverity = "warning"
+        severity: AuditSeverity = "info" if allowed else "warning"
         
         entry = AuditEntry(
             ts=self._now_ts(),
@@ -373,8 +369,8 @@ class AuditLogger:
         event_type: str,
         severity: AuditSeverity,
         description: str,
-        pack_id: str = None,
-        details: Dict[str, Any] = None
+        pack_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None
     ) -> None:
         """セキュリティイベントログを記録"""
         entry = AuditEntry(
@@ -395,8 +391,8 @@ class AuditLogger:
         self,
         event_type: str,
         success: bool,
-        details: Dict[str, Any] = None,
-        error: str = None
+        details: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None
     ) -> None:
         """システムイベントログを記録"""
         entry = AuditEntry(
@@ -412,12 +408,12 @@ class AuditLogger:
     
     def query_logs(
         self,
-        category: AuditCategory = None,
-        start_date: str = None,
-        end_date: str = None,
-        pack_id: str = None,
-        flow_id: str = None,
-        success_only: bool = None,
+        category: Optional[AuditCategory] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        pack_id: Optional[str] = None,
+        flow_id: Optional[str] = None,
+        success_only: Optional[bool] = None,
         limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
@@ -437,7 +433,7 @@ class AuditLogger:
         """
         self.flush()
         
-        results = []
+        results: List[Dict[str, Any]] = []
         
         # 対象ファイルを特定
         if category:
@@ -497,8 +493,8 @@ class AuditLogger:
     
     def get_summary(
         self,
-        category: AuditCategory = None,
-        date: str = None
+        category: Optional[AuditCategory] = None,
+        date: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         監査ログのサマリーを取得
@@ -508,7 +504,7 @@ class AuditLogger:
         """
         date = date or self._today_str()
         
-        summary = {
+        summary: Dict[str, Any] = {
             "date": date,
             "categories": {},
             "total_entries": 0,
@@ -524,7 +520,7 @@ class AuditLogger:
         
         for cat in categories:
             log_file = self._audit_dir / f"{cat}_{date}.jsonl"
-            cat_summary = {"success": 0, "failure": 0, "total": 0}
+            cat_summary: Dict[str, int] = {"success": 0, "failure": 0, "total": 0}
             
             if log_file.exists():
                 try:
@@ -587,7 +583,7 @@ def get_audit_logger() -> AuditLogger:
     return get_container().get("audit_logger")
 
 
-def reset_audit_logger(audit_dir: str = None) -> AuditLogger:
+def reset_audit_logger(audit_dir: Optional[str] = None) -> AuditLogger:
     """
     AuditLogger をリセットする（テスト用）。
 

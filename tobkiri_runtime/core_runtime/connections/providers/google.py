@@ -78,7 +78,7 @@ GOOGLE_PROVIDER = ConnectionProvider(
         },
     ],
     adapter={
-        "python": "ecosystem.defaultspack.domain.connections.google:GoogleConnectionAdapter",
+        "python": "core_runtime.connections.adapter:GenericConnectionAdapter",
         "sdk_optional": True,
     },
     metadata={

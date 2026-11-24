@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
+import { ErrorNotice } from "../components/ErrorNotice";
 import type { AdaptiveTone } from "../lib/adaptiveApi";
 import type { AdaptiveResourceStatus } from "./useAdaptiveResource";
 
@@ -99,15 +100,32 @@ export function ResourceBanner({
     );
   }
   const isError = status === "error";
+  const message = isError
+    ? `Adaptive API error.${error ? ` ${error}` : ""}`
+    : `Local placeholder adaptive state.${error ? ` ${error}` : ""}`;
+  if (isError) {
+    return (
+      <ErrorNotice
+        className="rounded-none border-x-0 border-b-0 border-t px-3 py-2 text-[11px]"
+        copyLabel="Copy adaptive API error"
+        copyText={message}
+        errorIcon="adaptive-api"
+        message={message}
+        messageClassName="whitespace-normal"
+        trailing={onRefresh ? (
+          <button type="button" className={adaptiveControlClass} onClick={onRefresh} aria-label="Refresh adaptive state">
+            Retry
+          </button>
+        ) : undefined}
+      />
+    );
+  }
   return (
-    <div className={`flex flex-col gap-2 border-t border-zinc-800/70 px-3 py-2 text-[11px] sm:flex-row sm:items-center sm:justify-between ${
-      isError ? "bg-rose-500/5 text-rose-100" : "bg-amber-500/5 text-amber-100"
-    }`}>
+    <div className="flex flex-col gap-2 border-t border-zinc-800/70 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
       <span className="flex min-w-0 items-center gap-2">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="min-w-0 whitespace-normal break-words" title={error ?? undefined}>
-          {isError ? "Adaptive API error." : "Local placeholder adaptive state."}
-          {error ? ` ${error}` : ""}
+          {message}
         </span>
       </span>
       {onRefresh ? (

@@ -1,0 +1,70 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "turn",
+  "implements": "local.harness-chat.turn-flow@1.0",
+  "loop_limits": "profile-default",
+  "on_error": {
+    "default": "fail",
+    "steps": {}
+  },
+  "steps": [
+    {
+      "call": {
+        "args": {
+          "conversation": "$input.conversation"
+        },
+        "op": "load",
+        "shape": "local.harness-chat.conversation-store@1.0"
+      },
+      "id": "load",
+      "out": "ctx",
+      "overlay": "open",
+      "role": "local.harness-chat.load-context@1.0"
+    },
+    {
+      "call": {
+        "args": {
+          "ctx": "$ctx",
+          "input": "$input"
+        },
+        "op": "build",
+        "shape": "local.harness-chat.prompt-builder@1.0"
+      },
+      "id": "prompt",
+      "out": "prompt",
+      "overlay": "open",
+      "role": "local.harness-chat.assemble-prompt@1.0"
+    },
+    {
+      "call": {
+        "args": {
+          "prompt": "$prompt"
+        },
+        "op": "chat",
+        "shape": "local.harness-chat.llm-provider@1.0"
+      },
+      "id": "generate",
+      "overlay": "open",
+      "role": "local.harness-chat.generate@1.0",
+      "stream": {
+        "collect": "turn",
+        "emit": "local.harness-chat.assistant-output@1.0"
+      }
+    },
+    {
+      "call": {
+        "args": {
+          "conversation": "$input.conversation",
+          "events": "$turn",
+          "input": "$input"
+        },
+        "op": "append",
+        "shape": "local.harness-chat.conversation-store@1.0"
+      },
+      "id": "save"
+    }
+  ],
+  "trigger": {
+    "input": "local.harness-chat.user-input@1.0"
+  }
+}

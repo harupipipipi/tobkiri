@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 
+from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
+
 # secrets_store.py と同じ制約を早期にチェックする
 _KEY_PATTERN = re.compile(r"^[A-Z0-9_]{1,64}$")
 
 # value の最大サイズ (1 MB)
 _MAX_VALUE_BYTES = 1_048_576
-
-from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
 
 
 def _get_secrets_grant_manager():

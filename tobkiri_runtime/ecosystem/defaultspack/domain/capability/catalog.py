@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+
+from core_runtime.profile_content_projection import selected_projection_roots
+from core_runtime.resolved_profile_scope import (
+    effective_pack_ids,
+    effective_profile_projections,
+)
 
 
 class CapabilityCatalog:
@@ -16,36 +22,46 @@ class CapabilityCatalog:
     def _load_yaml_dir(self, directory_name: str, suffix: str) -> List[Dict[str, Any]]:
         return self._load_yaml_dir_from_roots(directory_name, suffix, self._catalog_roots())
 
-    def _catalog_roots(self) -> List[Path]:
+    def _catalog_sources(self) -> List[Tuple[str, Path, str]]:
         ecosystem_dir = self._ecosystem_root()
-        roots: List[Path] = []
+        sources: List[Tuple[str, Path, str]] = []
+        effective = effective_pack_ids()
         if ecosystem_dir.is_dir():
-            for path in sorted(ecosystem_dir.iterdir()):
+            for pack_id in sorted(effective):
+                path = ecosystem_dir / pack_id
                 try:
-                    is_pack_root = path.is_dir() and (path / "ecosystem.json").is_file()
+                    is_pack_root = path.is_dir() and self._pack_id(path) == pack_id
                 except OSError:
                     continue
                 if is_pack_root:
-                    roots.append(path)
-        if self.pack_root not in roots:
-            roots.insert(0, self.pack_root)
-        return roots
+                    sources.append((pack_id, path, "pack"))
+        pack_id = self._pack_id(self.pack_root)
+        if pack_id in effective and all(path != self.pack_root for _, path, _ in sources):
+            sources.insert(0, (pack_id, self.pack_root, "pack"))
+        for projection_id, root in selected_projection_roots(
+            effective_profile_projections(), kind="profile_content"
+        ):
+            sources.append((projection_id, root, "profile_projection"))
+        return sources
+
+    def _catalog_roots(self) -> List[Path]:
+        return [root for _source_id, root, _kind in self._catalog_sources()]
 
     def _ecosystem_root(self) -> Path:
-        if (self.pack_root / "ecosystem.json").exists() and self.pack_root.parent.name == "ecosystem":
+        if self._pack_id(self.pack_root) and self.pack_root.parent.name == "ecosystem":
             return self.pack_root.parent
         return Path(__file__).resolve().parents[3]
 
     @staticmethod
     def _pack_id(pack_root: Path) -> str:
         try:
-            raw = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
-            pack_id = str(raw.get("pack_id") or "").strip()
+            raw = json.loads((pack_root / "pack.v4.json").read_text(encoding="utf-8"))
+            pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
             if pack_id:
                 return pack_id
         except Exception:
             pass
-        return pack_root.name
+        return ""
 
     def _load_yaml_dir_from_roots(
         self,
@@ -54,11 +70,34 @@ class CapabilityCatalog:
         roots: List[Path],
     ) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
+        source_by_root = {
+            root: (source_id, source_kind)
+            for source_id, root, source_kind in self._catalog_sources()
+        }
         for root in roots:
-            items.extend(self._load_yaml_dir_from_root(root, directory_name, suffix))
+            source_id, source_kind = source_by_root.get(
+                root, (self._pack_id(root), "pack")
+            )
+            items.extend(
+                self._load_yaml_dir_from_root(
+                    root,
+                    directory_name,
+                    suffix,
+                    source_id=source_id,
+                    source_kind=source_kind,
+                )
+            )
         return items
 
-    def _load_yaml_dir_from_root(self, pack_root: Path, directory_name: str, suffix: str) -> List[Dict[str, Any]]:
+    def _load_yaml_dir_from_root(
+        self,
+        pack_root: Path,
+        directory_name: str,
+        suffix: str,
+        *,
+        source_id: str,
+        source_kind: str,
+    ) -> List[Dict[str, Any]]:
         directory = pack_root / directory_name
         if not directory.is_dir():
             return []
@@ -70,8 +109,13 @@ class CapabilityCatalog:
                 data = {"id": path.stem, "error": str(exc)}
             if isinstance(data, dict):
                 data.setdefault("id", path.name.replace(suffix, ""))
-                data["source_pack_id"] = self._pack_id(pack_root)
-                data["_source_pack_id"] = data["source_pack_id"]
+                data["source_authority_id"] = source_id
+                data["source_authority_kind"] = source_kind
+                if source_kind == "pack":
+                    data["source_pack_id"] = source_id
+                    data["_source_pack_id"] = source_id
+                else:
+                    data["source_projection_id"] = source_id
                 try:
                     data["_source_path"] = str(path.relative_to(pack_root))
                 except ValueError:
@@ -123,11 +167,10 @@ class CapabilityCatalog:
 
     def prompts(self) -> List[Dict[str, Any]]:
         prompts: List[Dict[str, Any]] = []
-        for pack_root in self._catalog_roots():
+        for source_id, pack_root, source_kind in self._catalog_sources():
             prompt_dir = pack_root / "prompts"
             if not prompt_dir.is_dir():
                 continue
-            source_pack_id = self._pack_id(pack_root)
             for path in sorted(prompt_dir.glob("*.system.md")):
                 text = path.read_text(encoding="utf-8")
                 prompts.append(
@@ -136,8 +179,13 @@ class CapabilityCatalog:
                         "name": path.stem.replace(".system", ""),
                         "content_ref": str(path.relative_to(pack_root)),
                         "preview": text.strip().splitlines()[0] if text.strip() else "",
-                        "source_pack_id": source_pack_id,
-                        "_source_pack_id": source_pack_id,
+                        "source_authority_id": source_id,
+                        "source_authority_kind": source_kind,
+                        **(
+                            {"source_pack_id": source_id, "_source_pack_id": source_id}
+                            if source_kind == "pack"
+                            else {"source_projection_id": source_id}
+                        ),
                     }
                 )
         return prompts
@@ -150,7 +198,9 @@ class CapabilityCatalog:
         for prompt in self.prompts():
             if str(prompt.get("id") or "").strip() != target_id:
                 continue
-            if target_pack and str(prompt.get("source_pack_id") or "").strip() != target_pack:
+            if target_pack and str(
+                prompt.get("source_authority_id") or ""
+            ).strip() != target_pack:
                 continue
             return prompt
         return None
@@ -160,11 +210,13 @@ class CapabilityCatalog:
         if not isinstance(prompt, dict):
             return None
         content_ref = str(prompt.get("content_ref") or "").strip()
-        prompt_pack_id = str(prompt.get("source_pack_id") or source_pack_id or "").strip()
+        source_id = str(
+            prompt.get("source_authority_id") or source_pack_id or ""
+        ).strip()
         if not content_ref:
             return None
-        for pack_root in self._catalog_roots():
-            if prompt_pack_id and self._pack_id(pack_root) != prompt_pack_id:
+        for candidate_id, pack_root, _source_kind in self._catalog_sources():
+            if source_id and candidate_id != source_id:
                 continue
             path = pack_root / content_ref
             if path.is_file():

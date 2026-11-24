@@ -2,14 +2,22 @@ name: Flutter Mobile
 
 on:
   pull_request:
-    branches: [master, soon]
+    branches: [master, soon, codex/pack-architecture-program-soon]
     paths:
       - "tobkiri_mobile/**"
+      # Generated mobile catalogs are validated against these source manifests.
+      - "tobkiri_runtime/ecosystem/defaultspack/functions/**"
+      - "tobkiri_runtime/ecosystem/defaultspack/tools/**"
+      - "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/providers/**"
       - ".github/workflows/flutter-mobile.yml"
   push:
     branches: [master, soon]
     paths:
       - "tobkiri_mobile/**"
+      # Generated mobile catalogs are validated against these source manifests.
+      - "tobkiri_runtime/ecosystem/defaultspack/functions/**"
+      - "tobkiri_runtime/ecosystem/defaultspack/tools/**"
+      - "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/providers/**"
       - ".github/workflows/flutter-mobile.yml"
 
 concurrency:

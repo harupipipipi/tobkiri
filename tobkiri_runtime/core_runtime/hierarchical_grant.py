@@ -73,7 +73,7 @@ def intersect_config(configs: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _intersect_two(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
-    result = {}
+    result: Dict[str, Any] = {}
     for key in set(a.keys()) & set(b.keys()):
         va, vb = a[key], b[key]
         if isinstance(va, list) and isinstance(vb, list):

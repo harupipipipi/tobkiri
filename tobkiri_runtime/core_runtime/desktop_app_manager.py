@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .host_contract import host_contract_value
 from .validation import check_path_within, validate_pack_id
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 _PACK_SHELL_PATH_ENV = "RUMI_PACK_SHELL_PATH"
 _PACK_API_TOKEN_ENV = "RUMI_API_TOKEN"
 
-# 登録済みアプリのメタデータ保存先（REPO/user_data/apps/ 相当）
+# Development fallback for registered app metadata.
 _APPS_SUBDIR = "user_data/apps"
 
 
@@ -72,6 +73,14 @@ def _default_repo_dir() -> str:
     return str(Path(__file__).resolve().parents[1])
 
 
+def _default_apps_dir(repo_dir: str) -> str:
+    """Resolve durable app metadata storage, falling back to a development repo."""
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return str(Path(user_data).expanduser() / "apps")
+    return os.path.join(repo_dir, _APPS_SUBDIR)
+
+
 def _pack_shell_binary_name() -> str:
     return "pack-shell.exe" if sys.platform == "win32" else "pack-shell"
 
@@ -105,7 +114,7 @@ class DesktopAppManager:
 
     def __init__(self, repo_dir: Optional[str] = None):
         self._repo_dir = repo_dir or os.environ.get("REPO") or _default_repo_dir()
-        self._apps_dir = os.path.join(self._repo_dir, _APPS_SUBDIR) if self._repo_dir else ""
+        self._apps_dir = _default_apps_dir(self._repo_dir) if self._repo_dir else ""
         self._running: Dict[str, subprocess.Popen] = {}
 
     # ------------------------------------------------------------------
@@ -245,7 +254,7 @@ class DesktopAppManager:
 
         requires_api_token = meta.get("requires_api_token", True)
         issued_desktop_token = api_token
-        effective_api_token = api_token or os.environ.get(_PACK_API_TOKEN_ENV, "")
+        effective_api_token = api_token or host_contract_value("desktop_api_token")
         if requires_api_token and not effective_api_token:
             return {
                 "success": False,
@@ -262,7 +271,6 @@ class DesktopAppManager:
         env["RUMI_PACK_ID"] = pack_id
         if effective_api_token:
             env[_PACK_API_TOKEN_ENV] = effective_api_token
-            env["RUMI_DEFAULTSPACK_LOCAL_TOKEN"] = effective_api_token
         if issued_desktop_token:
             env["RUMI_TOKEN"] = issued_desktop_token
             env.setdefault("RUMI_PORT", os.environ.get("RUMI_PORT", "8765"))

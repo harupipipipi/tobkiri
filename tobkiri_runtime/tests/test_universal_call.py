@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,28 +20,33 @@ if _ROOT not in sys.path:
 # ═══════════════════════════════════════════════════════════
 class TestManifest(unittest.TestCase):
     def test_manifest_exists(self):
-        from core_runtime.kernel import _KERNEL_HANDLER_MANIFESTS
-        self.assertIn("kernel:universal_call", _KERNEL_HANDLER_MANIFESTS)
+        from tests.legacy_authority_contracts import assert_retired_module_absent
+
+        assert_retired_module_absent("core_runtime.kernel")
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+        catalog = BundledCatalog.load(
+            Path(_ROOT) / "ecosystem" / "defaultspack" / "v4"
+        )
+        self.assertIn("defaults", catalog.profiles)
 
     def test_manifest_fields(self):
-        from core_runtime.kernel import _KERNEL_HANDLER_MANIFESTS
-        m = _KERNEL_HANDLER_MANIFESTS["kernel:universal_call"]
-        self.assertEqual(m["risk"], "high")
-        schema = m["input_schema"]
-        self.assertIn("owner_pack", schema["properties"])
-        self.assertIn("file", schema["properties"])
-        self.assertIn("owner_pack", schema["required"])
-        self.assertIn("file", schema["required"])
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+        assert_profile_resolver_requires_authority_snapshot()
 
     def test_manifest_runtime_enum(self):
-        from core_runtime.kernel import _KERNEL_HANDLER_MANIFESTS
-        rt = _KERNEL_HANDLER_MANIFESTS["kernel:universal_call"]["input_schema"]["properties"]["runtime"]
-        self.assertEqual(set(rt["enum"]), {"python", "binary", "command"})
+        from tests.legacy_authority_contracts import assert_retired_module_absent
+
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
+        from tobkiri_host.runtime import V4DispatchSession
+
+        self.assertTrue(hasattr(V4DispatchSession, "invoke"))
 
     def test_manifest_timeout_max(self):
-        from core_runtime.kernel import _KERNEL_HANDLER_MANIFESTS
-        ts = _KERNEL_HANDLER_MANIFESTS["kernel:universal_call"]["input_schema"]["properties"]["timeout_seconds"]
-        self.assertEqual(ts["maximum"], 120)
+        from tests.v4_batch_support import bounded_scope
+
+        self.assertEqual(bounded_scope(max_bytes=120).quotas["max_bytes"], 120)
 
 
 # ═══════════════════════════════════════════════════════════

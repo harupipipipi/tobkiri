@@ -1,0 +1,1 @@
+{"case_id":"host-profile-binding-incomplete","purpose":"Capture the original host factory's rejection of an unbound context.","profile_id":"defaults","initial_store_text":null,"actions":[{"action_id":"capture-without-provider-bindings","operation":"host.capture","payload":{"factory":"readonly","binding_mode":"empty"}}]}

@@ -5,7 +5,6 @@ import {
   artifactDialogItemFromToolPreview,
   buildCanvasTabPickerItems,
   buildToolPreviewDisplayItems,
-  buildToolPreviewTimelineItems,
   CANVAS_CLOSE_LABEL,
   CanvasCloseButton,
   hasCanvasItems,
@@ -15,6 +14,7 @@ import {
   safePreviewImageUrl,
   MEMO_PREVIEW_ID,
   selectCanvasTab,
+  shouldApplyPreviewRequest,
   WEB_PREVIEW_IFRAME_SANDBOX,
   type ToolPreviewItem,
 } from "./ToolPreview";
@@ -90,7 +90,6 @@ test("canvas filters planned-tool placeholders", () => {
   assert.equal(isCanvasPreviewItemRenderable(placeholder), false);
   assert.equal(hasCanvasItems([placeholder], ""), false);
   assert.deepEqual(buildToolPreviewDisplayItems([placeholder], "", null), []);
-  assert.deepEqual(buildToolPreviewTimelineItems([placeholder]), []);
 });
 
 test("memo is shown first only when it is active or has content", () => {
@@ -131,13 +130,6 @@ test("canvas picker omits memo when editing is not supported and never duplicate
     ).length,
     1,
   );
-});
-
-test("tool preview timeline is chronological regardless of display ordering", () => {
-  const displayItems = buildToolPreviewDisplayItems(previews, "", "tool-a");
-
-  assert.deepEqual(displayItems.map((item) => item.id), ["first", "second"]);
-  assert.deepEqual(buildToolPreviewTimelineItems(displayItems).map((item) => item.id), ["second", "first"]);
 });
 
 test("web preview iframe sandbox disables active capabilities", () => {
@@ -183,4 +175,27 @@ test("HTML preview document has a fail-closed CSP and no injected base URL", () 
   assert.match(document, /form-action 'none'/);
   assert.match(document, /base-uri 'none'/);
   assert.doesNotMatch(document, /<base\s/i);
+});
+
+test("preview header has no Auto toggle, Canvas label or Timeline tab", async () => {
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { createElement } = await import("react");
+  const { ToolPreviewPanel } = await import("./ToolPreview");
+  const html = renderToStaticMarkup(createElement(ToolPreviewPanel, {
+    previews, isVisible: true, onClose: () => {}, activePreviewId: "first", memo: "", onMemoChange: () => {},
+  }));
+  assert.doesNotMatch(html, />Canvas<|>Timeline<|>Auto<|>Manual</);
+  assert.match(html, /Canvas タブを追加/);
+  assert.match(html, /Canvasを閉じる/);
+});
+
+test("external preview requests do not resurrect a closed tab when another artifact arrives", () => {
+  const firstRequest = JSON.stringify(["A", 1]);
+  assert.equal(shouldApplyPreviewRequest(null, firstRequest, true), true);
+  // A was applied then closed by the user. An unrelated B changes the display list.
+  assert.equal(shouldApplyPreviewRequest(firstRequest, firstRequest, true), false);
+  assert.equal(shouldApplyPreviewRequest(firstRequest, JSON.stringify(["A", 2]), true), true);
+  const pending = JSON.stringify(["later", 3]);
+  assert.equal(shouldApplyPreviewRequest(firstRequest, pending, false), false);
+  assert.equal(shouldApplyPreviewRequest(firstRequest, pending, true), true);
 });

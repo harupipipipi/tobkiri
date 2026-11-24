@@ -23,20 +23,20 @@ class ComponentDiscoveryResult:
 
 
 def _source_pack_id_for_domain_root(domain_root: Path) -> str:
-    pack_root = domain_root.parent
-    if domain_root.name != "domain":
+    if domain_root.name not in {"domain", "catalog"}:
         return ""
+    pack_root = domain_root.parent
     fallback_pack_id = pack_root.name
-    ecosystem = pack_root / "ecosystem.json"
-    if ecosystem.is_file():
+    manifest_path = pack_root / "pack.v4.json"
+    if manifest_path.is_file():
         try:
-            raw = json.loads(ecosystem.read_text(encoding="utf-8"))
-            declared_pack_id = str(raw.get("pack_id") or raw.get("id") or "").strip()
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+            declared_pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
             if declared_pack_id == fallback_pack_id:
                 return declared_pack_id
         except Exception:
             pass
-    return fallback_pack_id
+    return ""
 
 
 def discover_components(

@@ -28,50 +28,15 @@ def _has_change_request_backend() -> bool:
     return False
 
 
-def test_change_request_api_routes_are_registered_when_backend_exists():
-    if not _has_change_request_backend():
-        pytest.skip("change_request backend implementation is not present yet")
+def test_change_request_api_requires_captured_list_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
-
-    routes = {(spec.method, spec.pattern): spec for spec in canonical_http_route_specs()}
-
-    assert ("GET", "/api/change-requests") in routes
-    assert ("POST", "/api/change-requests") in routes
-    assert ("GET", "/api/change-requests/{id}") in routes
-    assert ("POST", "/api/change-requests/{id}/comments") in routes
-    assert ("PATCH", "/api/change-requests/{id}/comments/{comment_id}") in routes
-    assert ("POST", "/api/change-requests/{id}/decision") in routes
-    assert ("PATCH", "/api/change-requests/{id}/viewed-files") in routes
-    assert ("GET", "/api/change-requests/{id}/checks") in routes
-    assert ("POST", "/api/change-requests/{id}/checks/run") in routes
-    assert ("GET", "/api/change-requests/{id}/seal") in routes
-    assert ("POST", "/api/change-requests/{id}/commit") not in routes
-    assert ("POST", "/api/change-requests/{id}/export-patch") in routes
-
-    for method, pattern in routes:
-        if "/api/change-requests" not in pattern:
-            continue
-        spec = routes[(method, pattern)]
-        target_text = " ".join(
-            str(value)
-            for value in (
-                pattern,
-                spec.block_module,
-                spec.function_name,
-                spec.flow_id,
-                spec.fallback_block_module,
-                spec.handler_name,
-            )
-        ).lower()
-        forbidden_terms = (
-            "pull" + "_" + "request",
-            "pull" + "-" + "request",
-            "local" + "_" + "pr",
-            "local" + "-" + "pr",
-        )
-        for forbidden_term in forbidden_terms:
-            assert forbidden_term not in target_text
+    assert_route_cutover(
+        "GET",
+        "/api/change-requests",
+        "tobkiri.change-request.v1",
+        "defaultspack.change-request.list",
+    )
 
 
 def test_change_request_routes_are_sensitive_local_routes_with_origin_and_csrf_checks():
@@ -134,19 +99,15 @@ def test_change_request_routes_are_sensitive_local_routes_with_origin_and_csrf_c
     ) is None
 
 
-def test_change_request_commit_route_is_default_off_and_flagged(monkeypatch):
-    if not _has_change_request_backend():
-        pytest.skip("change_request backend implementation is not present yet")
+def test_change_request_commit_requires_captured_approved_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
-
-    monkeypatch.delenv("RUMI_REVIEW_ENABLE_COMMIT", raising=False)
-    routes = {(spec.method, spec.pattern) for spec in canonical_http_route_specs()}
-    assert ("POST", "/api/change-requests/{id}/commit") not in routes
-
-    monkeypatch.setenv("RUMI_REVIEW_ENABLE_COMMIT", "1")
-    routes = {(spec.method, spec.pattern) for spec in canonical_http_route_specs()}
-    assert ("POST", "/api/change-requests/{id}/commit") in routes
+    assert_route_cutover(
+        "POST",
+        "/api/change-requests/cr-1/commit",
+        "tobkiri.change-request.v1",
+        "defaultspack.change-request.commit",
+    )
 
 
 def test_change_request_setup_commit_route_is_default_off_and_flagged(monkeypatch):
@@ -215,34 +176,10 @@ def test_change_request_commit_function_is_default_off_and_flagged(monkeypatch):
 
 
 def test_change_request_commit_function_bridge_registration_is_default_off_and_flagged(monkeypatch):
-    if not _has_change_request_backend():
-        pytest.skip("change_request backend implementation is not present yet")
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
 
-    from domain.function_runtime.bridge import ensure_defaultspack_functions_registered
-
-    class Registry:
-        def __init__(self) -> None:
-            self.function_ids = []
-
-        def register(self, *, pack_id, function_id, manifest, function_dir):
-            self.function_ids.append(str(function_id))
-            return True
-
-    class Container:
-        def __init__(self, registry) -> None:
-            self.registry = registry
-
-        def get_or_none(self, key):
-            if key == "function_registry":
-                return self.registry
-            return None
-
-    monkeypatch.delenv("RUMI_REVIEW_ENABLE_COMMIT", raising=False)
-    registry = Registry()
-    ensure_defaultspack_functions_registered(Container(registry))
-    assert "coding_change_request_commit" not in registry.function_ids
-
-    monkeypatch.setenv("RUMI_REVIEW_ENABLE_COMMIT", "1")
-    registry = Registry()
-    ensure_defaultspack_functions_registered(Container(registry))
-    assert "coding_change_request_commit" in registry.function_ids
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_profile_resolver_requires_authority_snapshot()

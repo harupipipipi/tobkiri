@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 CANONICAL_MODEL_CAPABILITY_KEYS = {
@@ -65,8 +65,9 @@ class ModelMetadataSchemaError(ValueError):
 
 
 def normalize_capability_map(raw: Any) -> dict[str, Any]:
+    items: Iterable[tuple[object, object]]
     if isinstance(raw, dict):
-        items = raw.items()
+        items = ((key, value) for key, value in raw.items())
     elif isinstance(raw, (list, tuple, set)):
         items = ((str(item), True) for item in raw if str(item or "").strip())
     else:
@@ -101,8 +102,10 @@ def normalize_request_features(raw: Any) -> dict[str, Any]:
 
 
 def normalize_routing_defaults(model: dict[str, Any]) -> dict[str, bool]:
-    routing = model.get("routing") if isinstance(model.get("routing"), dict) else {}
-    defaults = model.get("defaults") if isinstance(model.get("defaults"), dict) else {}
+    routing_value = model.get("routing")
+    routing: dict[str, object] = dict(routing_value) if isinstance(routing_value, dict) else {}
+    defaults_value = model.get("defaults")
+    defaults: dict[str, object] = dict(defaults_value) if isinstance(defaults_value, dict) else {}
     default_for = routing.get("default_for")
     if isinstance(default_for, str):
         values = [default_for]
@@ -128,7 +131,12 @@ def context_window_value(model: dict[str, Any], *, default: int = 0) -> int:
     values: dict[str, int] = {}
     for key, raw in raw_values.items():
         try:
-            values[key] = int(raw)
+            if isinstance(raw, bool):
+                values[key] = int(raw)
+            elif isinstance(raw, (int, float, str)):
+                values[key] = int(raw)
+            else:
+                raise TypeError
         except (TypeError, ValueError) as exc:
             raise ModelMetadataSchemaError(f"{key} must be an integer") from exc
     unique = set(values.values())

@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import sys
 import time
 from collections import deque
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import error, ok
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from blocks._common import error, ok
 
 from domain.safety.audit import append_record
 

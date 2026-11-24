@@ -719,7 +719,10 @@ test("attaches tool artifact files to the matching activity item", () => {
   assert.equal(groups[0].items[0].toolCallId, "call_1");
   assert.equal(artifact?.kind, "image");
   assert.equal(artifact?.name, "click-1-model.jpg");
-  assert.match(artifact?.url ?? "", /\/api\/chat\/conversations\/conv_1\/artifact-file/);
+  assert.match(
+    decodeURIComponent(artifact?.url ?? ""),
+    /GET \/api\/chat\/conversations\/conv_1\/artifact-file/,
+  );
 });
 
 test("classifies common tool families", () => {
@@ -729,4 +732,26 @@ test("classifies common tool families", () => {
   assert.equal(toolFolderFor("subagent").id, "agent/delegation");
   assert.equal(toolFolderFor("coding_terminal_exec").id, "coding/terminal");
   assert.equal(toolFolderFor("git_status").id, "coding/git");
+});
+
+
+test("canonical saved tool JSON logs expose success and failure without changing the transcript", () => {
+  const success = { tool_name: "calculator", tool_call_id: "call-success", arguments: { expression: "1+2" },
+    result: JSON.stringify({ status: "success", result: 3, error: null }) };
+  const failed = { tool_name: "web_search", tool_call_id: "call-error", arguments: { query: "news" },
+    result: JSON.stringify({ status: "error", result: null, error: { code: "TOOL_UNAVAILABLE", message: "Tool unavailable" } }) };
+  const items = buildToolActivityItems([success, failed]);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].status, "completed");
+  assert.equal(items[1].status, "failed");
+  assert.equal(items[1].detail, "Tool unavailable");
+  assert.equal(typeof success.result, "string");
+  assert.equal(typeof failed.result, "string");
+});
+
+test("plain or malformed log strings stay display content and never fabricate an error", () => {
+  for (const result of ["ordinary output", "{broken", '{"status":"error"}']) {
+    const items = buildToolActivityItems([{ tool_name: "calculator", result }]);
+    assert.equal(items[0].status, "completed");
+  }
 });

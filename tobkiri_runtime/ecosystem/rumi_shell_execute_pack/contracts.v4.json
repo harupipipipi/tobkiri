@@ -1,0 +1,123 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.shell.execute.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:shell.inspect",
+            "capability:workspace.metadata.read"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:d0a37498d9c52cc7d15e47dfaa6d257b8afee5c1cdafac39718878814e05eed5",
+          "operation_id": "rumi_shell_execute_pack.shell-prepare",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:shell.execute",
+            "capability:workspace.metadata.read"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:d0a37498d9c52cc7d15e47dfaa6d257b8afee5c1cdafac39718878814e05eed5",
+          "operation_id": "rumi_shell_execute_pack.shell-execute",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_shell_execute_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_shell_execute_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_shell_execute_pack.shell-execute.service",
+        "required_capabilities": [
+          "shell.execute",
+          "shell.inspect",
+          "workspace.metadata.read"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d0a37498d9c52cc7d15e47dfaa6d257b8afee5c1cdafac39718878814e05eed5": {
+          "additionalProperties": false,
+          "properties": {
+            "arguments": {
+              "type": "object"
+            },
+            "command": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "type": "string"
+            },
+            "env": {
+              "type": "object"
+            },
+            "plan_digest": {
+              "type": "string"
+            },
+            "redacted_plan": {
+              "type": "object"
+            },
+            "shell": {
+              "type": "boolean"
+            },
+            "timeout": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "workspace_id": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_shell_execute_pack",
+  "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
+}

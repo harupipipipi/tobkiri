@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:c29973235ac7124eb27e5c0ab69aff94663f2c14ef6664849d4345bf20d0fc8b",
+  "artifacts": [
+    {
+      "digest": "sha256:77e3ddd4ccad911208e72ee4ad4eb582499513b1f3b2b8068084b58bad720168",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:b7de544648fb4c0a702222e7af3a68a6db6c36ecb3317382483bc17071577791",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:bf470016206ac928c438b6084aed81c0b53d81ec9e8efda99aa98be0d260bd1e",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:f5d20e862418385b9aedf06cb2e58fc3cd4a824022971061add8738c48747573",
+      "path": "runtime/broker.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:af61dfd44ea0fdec9b6e34de0163198e18900144503ff8b2e47738c5d8f1e1fd"
+  },
+  "pack_id": "rumi_connector_outbound_broker_pack",
+  "source_identity": "sha256:93807f1a61d02cbc97aa2548e390207ad5b5def201a53ed240ca55ba855d38fd"
+}

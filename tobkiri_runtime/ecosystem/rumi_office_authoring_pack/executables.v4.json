@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:1d4f91a31037e70494f60073360cf121b47dc2368ce29ea8be020e937dae4635",
+  "pack_id": "rumi_office_authoring_pack",
+  "source_identity": "sha256:e489b6f68de7fc0f729929d1212c89ee0e4c6902d3b43f6bd7346d28f4affbfd",
+  "variants": []
+}

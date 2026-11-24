@@ -1,0 +1,119 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:cacbd870b832da949051686761f40916685640d1b0984b116d30b1a673e491e8",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3a1ca8334510d8fdbbf41437f444ea32c6345fccdc1ca8ad298d470dbf8a4bd7",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54",
+      "kind": "executable",
+      "path": "runtime/normalizer.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ],
+      "revision_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad",
+      "id": "rumi_ai_stream_pack.ai-stream.normalize",
+      "implementation_digest": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1",
+    "contract_catalog_digest": "sha256:ab5aad4f16b9b8cb17cc5ebde231ee5e23346555633695dcfaba872d2fe4e0ae",
+    "source_identity": "sha256:b07d05d87207e0f894ab63b6c75edf74097d47bcc08a40589f2c973003af061d"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.stream.normalize.v1",
+      "rumi:ecosystem/rumi_ai_stream_pack",
+      "rumi_ai_stream_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.stream.normalize.v1",
+      "effect_ceiling": [
+        "capability:ai.stream.normalize",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+      "owner": "rumi_ai_stream_pack",
+      "provider_id": "rumi_ai_stream_pack.ai-stream.normalize",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1",
+    "display_name": "Rumi AI Stream",
+    "id": "rumi_ai_stream_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:b07d05d87207e0f894ab63b6c75edf74097d47bcc08a40589f2c973003af061d",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:b07d05d87207e0f894ab63b6c75edf74097d47bcc08a40589f2c973003af061d",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_stream_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.stream.normalize.v1",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ],
+      "owner": "rumi_ai_stream_pack",
+      "provider_id": "rumi_ai_stream_pack.ai-stream.normalize"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.stream.normalize"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

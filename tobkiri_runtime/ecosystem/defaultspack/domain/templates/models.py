@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from ._helpers import canonical_json
 
 
 CURRENT_TEMPLATE_SCHEMA_VERSION = 1
+_TemplateEnum = TypeVar("_TemplateEnum", bound=Enum)
 
 
 class TemplatePieceKind(str, Enum):
@@ -354,7 +355,7 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
-def _enum_or_raw(enum_type: type[Enum], value: Any) -> Enum | str:
+def _enum_or_raw(enum_type: type[_TemplateEnum], value: Any) -> _TemplateEnum | str:
     raw = value.value if isinstance(value, Enum) else str(value)
     try:
         return enum_type(raw)

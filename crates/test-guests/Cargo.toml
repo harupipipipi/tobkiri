@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["provider", "consumer"]
+
+[workspace.dependencies]
+wit-bindgen = "=0.62.0"
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+debug = 0
+incremental = false

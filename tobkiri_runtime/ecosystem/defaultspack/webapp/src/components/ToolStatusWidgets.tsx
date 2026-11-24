@@ -11,9 +11,9 @@ import {
 
 function countCard(label: string, value: number, tone: string) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/45 p-2">
-      <p className="text-[9px] uppercase tracking-wider text-zinc-600">{label}</p>
-      <p className={`mt-1 text-lg font-semibold ${tone}`}>{value}</p>
+    <div style={{ gridTemplateColumns: "minmax(0,1fr) auto" }} className="grid min-w-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/45 px-2.5 py-2">
+      <p className="min-w-0 text-xs leading-4 text-zinc-500">{label}</p>
+      <p className={`shrink-0 whitespace-nowrap text-right text-lg font-semibold leading-6 tabular-nums ${tone}`}>{value}</p>
     </div>
   );
 }
@@ -33,11 +33,11 @@ export function ToolManagerWidget({
   const blockedEntries = filterEntries.filter((entry) => entry.status === "blocked" || entry.status === "rejected");
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-5 rumi-stagger-tight">
-        {countCard("今回", summary.onCount, "text-emerald-300")}
-        {countCard("権限ブロック", summary.offByUserCount, "text-zinc-300")}
-        {countCard("利用不可", summary.blockedCount, "text-amber-300")}
-        {countCard("確認あり", summary.needsApprovalCount, "text-sky-300")}
+      <div data-testid="tool-manager-status-counts" className="grid grid-cols-2 gap-2 rumi-stagger-tight">
+        {countCard("許可中", summary.onCount, "text-emerald-300")}
+        {countCard("権限で無効", summary.offByUserCount, "text-zinc-300")}
+        {countCard("実行不可", summary.blockedCount, "text-amber-300")}
+        {countCard("承認が必要", summary.needsApprovalCount, "text-sky-300")}
         {countCard("設定が必要", summary.missingSetupCount, "text-rose-300")}
       </div>
       {summary.hiddenCount > 0 && (

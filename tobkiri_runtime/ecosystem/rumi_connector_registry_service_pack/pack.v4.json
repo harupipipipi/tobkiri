@@ -1,0 +1,160 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:68b51a8bbfdd1d3d869b4ee5585075eb45f1acffbb05e7196704a14c60218018",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:86e41154adfd84c3ffc0b583d0cc2835a327033716eb16c42efda4afda07909c",
+      "kind": "executable",
+      "path": "runtime/registry.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.connector.registry.v1",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-action"
+      ],
+      "revision_digest": "sha256:af6c678f72efe4f40c80c85799e0aecdd122d6d18b46a40ed5c8fc880c672882"
+    },
+    {
+      "contract_id": "tobkiri.resource.connector.registry.v1",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-resource"
+      ],
+      "revision_digest": "sha256:e81212a769da85c16293ea86c7ea2ecbfd27e79220a807dd1304bc30a04f66db"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:af6c678f72efe4f40c80c85799e0aecdd122d6d18b46a40ed5c8fc880c672882",
+      "id": "rumi_connector_registry_service_pack.connector-registry.action",
+      "implementation_digest": "sha256:86e41154adfd84c3ffc0b583d0cc2835a327033716eb16c42efda4afda07909c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-action"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:e81212a769da85c16293ea86c7ea2ecbfd27e79220a807dd1304bc30a04f66db",
+      "id": "rumi_connector_registry_service_pack.connector-registry.resource",
+      "implementation_digest": "sha256:86e41154adfd84c3ffc0b583d0cc2835a327033716eb16c42efda4afda07909c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-resource"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:f612b76a1363d40e46e6912eb011c33f46709892ebacc54431a377a59b09d192",
+    "contract_catalog_digest": "sha256:7b2fde9eb5a91ddaa6f4dbea2f6f6905f57bde74bee70f9f91195cf0318e7cf7",
+    "source_identity": "sha256:7a958c2a915402a0cc419303b3815e58cd71e94512a0e57fba8bc76a465bb077"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.connector.registry.v1",
+      "rumi.resource.connector.registry.v1",
+      "rumi:ecosystem/rumi_connector_registry_service_pack",
+      "rumi_connector_registry_service_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.connector.registry.v1",
+      "effect_ceiling": [
+        "capability:connector.registry.manage"
+      ],
+      "operation_id": "rumi_connector_registry_service_pack.connector-registry-action",
+      "owner": "rumi_connector_registry_service_pack",
+      "provider_id": "rumi_connector_registry_service_pack.connector-registry.action",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.connector.registry.v1",
+      "effect_ceiling": [
+        "capability:connector.registry.read"
+      ],
+      "operation_id": "rumi_connector_registry_service_pack.connector-registry-resource",
+      "owner": "rumi_connector_registry_service_pack",
+      "provider_id": "rumi_connector_registry_service_pack.connector-registry.resource",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:f612b76a1363d40e46e6912eb011c33f46709892ebacc54431a377a59b09d192",
+    "display_name": "Rumi Connector Registry Service",
+    "id": "rumi_connector_registry_service_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:7a958c2a915402a0cc419303b3815e58cd71e94512a0e57fba8bc76a465bb077",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:7a958c2a915402a0cc419303b3815e58cd71e94512a0e57fba8bc76a465bb077",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_registry_service_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.connector.registry.v1",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-action"
+      ],
+      "owner": "rumi_connector_registry_service_pack",
+      "provider_id": "rumi_connector_registry_service_pack.connector-registry.action"
+    },
+    {
+      "contract_reference": "tobkiri.resource.connector.registry.v1",
+      "operations": [
+        "rumi_connector_registry_service_pack.connector-registry-resource"
+      ],
+      "owner": "rumi_connector_registry_service_pack",
+      "provider_id": "rumi_connector_registry_service_pack.connector-registry.resource"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "connector.registry.manage",
+      "connector.registry.read",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

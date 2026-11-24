@@ -11,7 +11,10 @@ from .providers.stub_provider import StubProvider
 class LLMGateway:
     """Thin gateway that keeps orchestration concerns out of provider adapters."""
 
-    def __init__(self, client: Optional[AIClient] = None) -> None:
+    def __init__(
+        self,
+        client: Optional[AIClient] = None,
+    ) -> None:
         self._client = client or AIClient()
 
     def complete(self, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,6 +33,7 @@ class LLMGateway:
 
     def _params_for_client(self, request: Dict[str, Any]) -> Dict[str, Any]:
         params = dict(request.get("params", {}))
+        params.pop("_v4_authority_kernel_admitted", None)
         authority_context = request.get("authority_context")
         if isinstance(authority_context, dict) and callable(
             getattr(self._client, "_check_authority_for_model_api", None)

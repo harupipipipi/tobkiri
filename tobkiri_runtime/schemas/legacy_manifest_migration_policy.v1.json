@@ -1,0 +1,6 @@
+{
+  "policy_api_version": "io.tobkiri.legacy-manifest-migration-policy.v1",
+  "runtime_dependency_aliases": [
+    "defaultspack"
+  ]
+}

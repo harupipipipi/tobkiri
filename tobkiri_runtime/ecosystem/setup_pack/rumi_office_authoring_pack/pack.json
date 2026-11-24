@@ -27,7 +27,7 @@
     "office_authoring_contract": "owned_by_rumi_office_authoring_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Office authoring contracts need renderer, evidence, and workspace owner integration before defaultspack promotion.",
     "promotion_blockers": [

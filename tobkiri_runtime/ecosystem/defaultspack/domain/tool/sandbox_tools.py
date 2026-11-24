@@ -291,8 +291,9 @@ def _sandbox_exec_call(
 
 def _timeout_ms(arguments: dict[str, Any]) -> int:
     try:
-        if arguments.get("timeout_ms") is not None:
-            return int(arguments.get("timeout_ms"))
+        timeout_ms = arguments.get("timeout_ms")
+        if timeout_ms is not None:
+            return int(timeout_ms)
         return int(arguments.get("timeout") or 60) * 1000
     except (TypeError, ValueError):
         return 60_000

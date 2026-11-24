@@ -1,0 +1,169 @@
+name: Issue 1520 schema with verified monotonic producer
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-monotonic-schema.yml'
+      - 'tools/python313-producer/fetch_schema.py'
+      - 'tools/python313-producer/fetch_schema_stdlib.py'
+      - 'tools/python313-producer/build_schema.py'
+      - 'tools/python313-producer/schema_probe/**'
+      - 'tools/python313-producer/tests/test_schema_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-monotonic-schema-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-monotonic-schema:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PRODUCER_RUN: '40194048589'
+      PRODUCER_HEAD: 301208a9929ffdf85b702b5e50ae09d5c3340a22
+      PRODUCER_JOB: '121170971949'
+      PRODUCER_ARTIFACT: '12599796667'
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check locked inputs and closed source resource IO
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
+      - name: Authenticate actual predecessor runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/schema-producer-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$PRODUCER_JOB" > "$RUNNER_TEMP/schema-producer-job.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT" > "$RUNNER_TEMP/schema-producer-artifact.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+          python3 -B - "$RUNNER_TEMP" "$PRODUCER_HEAD" "$RPDS_HEAD" "$PRODUCER_RUN" "$PRODUCER_JOB" "$PRODUCER_ARTIFACT" <<'PY'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          producer = json.loads((root / 'schema-producer-run.json').read_bytes())
+          job = json.loads((root / 'schema-producer-job.json').read_bytes())
+          artifact = json.loads((root / 'schema-producer-artifact.json').read_bytes())
+          rpds = json.loads((root / 'schema-rpds-run.json').read_bytes())
+          if producer['head_sha'] != sys.argv[2] or producer['id'] != int(sys.argv[4]):
+              raise SystemExit('producer source/run identity differs')
+          # This supplier run has only the authenticated producer job.
+          if producer['status'] != 'completed' or producer['conclusion'] != 'success':
+              raise SystemExit('complete monotonic supplier run did not succeed')
+          if (job['id'] != int(sys.argv[5]) or job['run_id'] != producer['id']
+                  or job['name'] != 'ui-monotonic-producer' or job['status'] != 'completed'
+                  or job['conclusion'] != 'success'):
+              raise SystemExit('actual fresh producer job did not succeed')
+          required = {'Rebuild native Python from the exact recorded staged recipe',
+                      'Restore the pinned SDK and rebuild original WASI libraries',
+                      'Prime Cargo without networking and rebuild original Wasm runtimes',
+                      'Build the verified packager and package thirteen real assets',
+                      'Rebuild the original publishing CLI with the verified real assets',
+                      'Retain the separate clock producer without replacing historical artifacts'}
+          if not required <= {step['name'] for step in job['steps'] if step['conclusion'] == 'success'}:
+              raise SystemExit('producer required stages were not all executed successfully')
+          if (artifact['id'] != int(sys.argv[6]) or artifact['expired']
+                  or artifact['name'] != 'python313-ui-monotonic-clock-producer-cli'
+                  or artifact['workflow_run']['id'] != producer['id']
+                  or artifact['workflow_run']['head_sha'] != sys.argv[2]
+                  or artifact['digest'] != 'sha256:1e18d58ae43f381caf5f37553b2592e49f054fba978e640181d348ad2c416c76'):
+              raise SystemExit('exact fresh producer artifact differs')
+          if rpds['head_sha'] != sys.argv[3] or rpds['status'] != 'completed' or rpds['conclusion'] != 'success':
+              raise SystemExit('actual genuine rpds predecessor source/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ env.PRODUCER_ARTIFACT }}
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-producer
+      - name: Verify exact decoded producer and derivation bytes
+        run: |
+          python3 -B - "$RUNNER_TEMP/schema-producer" <<'PY'
+          import hashlib, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          expected = {
+              'work/target/release/componentize-py': (44842048, '93b0bb8642db87ac5ee46c53870659ef72740e2b9ccec2baabef5499f54ee676'),
+              'cli-build.json': (6325, '6ef6b11449a6b9b91241fbd83eaf53ef4f5e10bc68cb7c24c171ed080c1e64ac'),
+              'cli-source.json': (48993, '563b5d5e0c804ca936b74b3d8b6ba5e40d3a3804fcdaa34ea725ad9cff540110'),
+          }
+          for name, (size, digest) in expected.items():
+              path = root / name
+              if path.is_symlink() or not path.is_file() or path.stat().st_size != size:
+                  raise SystemExit('decoded producer input shape/size differs')
+              actual = hashlib.sha256()
+              with path.open('rb') as stream:
+                  while block := stream.read(65536):
+                      actual.update(block)
+              if actual.hexdigest() != digest:
+                  raise SystemExit('decoded producer input identity differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Restore complete locked package and validation inputs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+      - name: Compare original native packages with post-snapshot Wasm behavior
+        run: >-
+          python3 -B tools/python313-producer/build_schema.py
+          --inputs "$RUNNER_TEMP/schema-inputs"
+          --producer "$RUNNER_TEMP/schema-producer"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+          --validation "$RUNNER_TEMP/schema-validation"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --destination "$RUNNER_TEMP/schema-candidate"
+          --allow-ui-wall-clock
+          --allow-ui-monotonic-clock
+      - name: Retain original observations, target observations and supervision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-monotonic-schema-candidate-evidence
+          path: |
+            ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+            ${{ runner.temp }}/schema-candidate/native/
+            ${{ runner.temp }}/schema-candidate/wasm/
+            ${{ runner.temp }}/schema-candidate/work/native.json
+            ${{ runner.temp }}/schema-candidate/work/wasm-observation.json
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/work/stage-inputs.json
+            ${{ runner.temp }}/schema-candidate/work/ui-clock-probes.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain inactive verified schema candidate on CI
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-monotonic-schema-inactive-component
+          path: |
+            ${{ runner.temp }}/schema-candidate/work/stage/outer.wasm
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+          if-no-files-found: error
+          retention-days: 14

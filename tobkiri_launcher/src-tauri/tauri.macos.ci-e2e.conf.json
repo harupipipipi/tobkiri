@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tobkiri Launcher CI E2E",
+  "identifier": "dev.tobkiri.launcher.ci-e2e",
+  "bundle": {
+    "resources": {
+      "./ci-e2e/NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt": "NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt",
+      "./ci-e2e/ci-e2e-artifact-policy.v1.json": "ci-e2e-artifact-policy.v1.json"
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

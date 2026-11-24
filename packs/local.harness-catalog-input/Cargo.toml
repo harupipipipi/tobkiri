@@ -1,0 +1,13 @@
+[package]
+name = "tobkiri-pack-harness-catalog-input"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tobkiri-guest-sdk.workspace = true
+wit-bindgen.workspace = true

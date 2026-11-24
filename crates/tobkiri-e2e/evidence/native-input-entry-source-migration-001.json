@@ -1,0 +1,253 @@
+{
+  "component_bytes_or_guest_WIT_changed": false,
+  "format": "tobkiri.native-input-source-migration/1",
+  "manifest_changes": {
+    "local.echo-input": {
+      "after": "sha256:2bab2d45a07b89c630783f6cd251b4c0fe888c0825840437da8854c30e8cbfbc",
+      "before": "sha256:502fb5e2b0f4c0b05907ba3a569b7071b31d281a9afafe2a2c34060b5d9ead2c",
+      "declaration": {
+        "exact_input_view": "local.echo-chat.user-input@1.0",
+        "operation": "read"
+      },
+      "file_inventory_unchanged": true
+    },
+    "local.terminal-input": {
+      "after": "sha256:89732d772e423375e2959ab18314154309723a647c2c38d6159fc5a8e5070378",
+      "before": "sha256:bbf83d832b139a38eab26fd7fcc4e4a6f38e2945ac49bd43007b703e39815269",
+      "declaration": {
+        "exact_input_view": "local.harness-chat.user-input@1.0",
+        "operation": "read"
+      },
+      "file_inventory_unchanged": true
+    }
+  },
+  "old_receipts_and_837_todo_unchanged": true,
+  "profile_changes": {
+    "packs/profiles/echo.profile.json": {
+      "after": "sha256:2380a57c94e4387f1506b074deeb595a3ce6f084ce4e1a35685031861c1e11ef",
+      "before": "sha256:cfbfa2aaf676777b503527dd832f6279d00d8715623877ba47852c15655b39d3",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.echo-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.echo-input"
+        }
+      ],
+      "startup_before": [
+        "local.echo-input"
+      ]
+    },
+    "packs/profiles/echo.published.json": {
+      "after": "sha256:40aa3bba86658c101c6105b5c53b6246cd95cbd2de98721ef06fa6a2305653eb",
+      "before": "sha256:4b6d746610a5b9c9d6d8b9df4a21fd29a5afdf79bc1028adbaa3f29a7613144c",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.echo-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.echo-input"
+        }
+      ],
+      "startup_before": [
+        "local.echo-input"
+      ]
+    },
+    "packs/profiles/harness-live.profile.json": {
+      "after": "sha256:55c02a7fd28f2fd6aeb53ce8cf3e8369e3d188b8fb07c9db1bac62396102522c",
+      "before": "sha256:b9c2cc148f4eb98e35370fc1c637082e7976689c7d93f726cd61b43ecfe28328",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/harness-live.published.json": {
+      "after": "sha256:f3a2cecd2395e826d79898d2b0dfe67db87811d39e04979a4860b12392f6a256",
+      "before": "sha256:d3df3bdac0aa77b29a18a462156d398d8921e3f8244497d1cf2cb798e4d436d1",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/harness-mock.profile.json": {
+      "after": "sha256:55e42dea21a4f97ea0f44187904b3b84c7b7a23c15f7a9e6a43e45cb23419cc9",
+      "before": "sha256:2473b450cbe28bc7d6a94f87999ee9cf7f5a9971a04a1ef79484a13010ea7331",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/harness-mock.published.json": {
+      "after": "sha256:91e9c62f58c3f5f3d478e8648a591f2100510cfe5f95844f6dae2f4b1c9d5357",
+      "before": "sha256:a4ca67ab69895d3de0019957e05bdb3f3b266c929b8f404a745d1e587d2fde73",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/harness-ui.profile.json": {
+      "after": "sha256:a06d526e29f6816d316c7e9a2a6c2e162b547aa3f479fb6f9bcb64aa1242369e",
+      "before": "sha256:9e771d0e5d23caeed1301dacce209ad0fdf7ad06b3ae77f184a94d782ae6a97c",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/chatgpt_agent_deep_research_service.published.json": {
+      "after": "sha256:860714c7daa4c455d278338266f3002e5bc7d50a8989e4dcc8a27e7d19b14a8a",
+      "before": "sha256:694af7528a777da3097c6e17f421ce57ab70463f97c9c6f4283308bff3acc2ba",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/claude_code_service.published.json": {
+      "after": "sha256:7adcb6919d52cdbd4b7dacde61dfa9f02454e4eaa8f501d81eeaab415d1c2774",
+      "before": "sha256:2d23985d9645bb38d4b07eaf5484f8c812e87ec7dca13bd5fda292365f13db30",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/cline_pair_programmer_service.published.json": {
+      "after": "sha256:d2110226b846140fbc828febc0341f76c728bf28ba5a3b8ff85ac8c236996a14",
+      "before": "sha256:8f7e42bc675c940a84bd3d6c4a6b95c68460761ddb7df5f764d28e3dfab4ba89",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/gemini_cli_service.published.json": {
+      "after": "sha256:5018892f97c848464cc60a44ef0332f2d26d382616d88498715f49954f7f9515",
+      "before": "sha256:7a2ed0b11125ea9a361c02eabaab7f0b0e7216b6fe4e999a1c01714fc8cf1abd",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/genspark_report_service.published.json": {
+      "after": "sha256:949a7e3e89334b2cde40b6fe194fae1f6d54f98470f0f52941d868d594eca6e4",
+      "before": "sha256:52f10a0c1af8b96048bb1b4585bee228e719936f14a6cf1bd9f0760b845949eb",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/manus_project_service.published.json": {
+      "after": "sha256:c3872123e5dc50dba34290dfab0841f4bd4922e400d3fc749d260cbe75d997c6",
+      "before": "sha256:f4f3c5dde10883b13118e40a2e814d75cf8635f9dcd1b8cacd8aa115833c1925",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    },
+    "packs/profiles/presets/openclaw_hermes_local_service.published.json": {
+      "after": "sha256:5870d977cec99cb105eae7f41b988b61829ed1bccf9086a0bae4de65a7b0236f",
+      "before": "sha256:58c1718c12a53d7a998b16be648fad91cda111e38c73a1064baeaa7c375e308a",
+      "ceiling_unchanged": true,
+      "pack_limits_unchanged": true,
+      "startup_after": [
+        {
+          "exact_input_view": "local.harness-chat.user-input@1.0",
+          "operation": "read",
+          "source_pack": "local.terminal-input"
+        }
+      ],
+      "startup_before": [
+        "local.terminal-input"
+      ]
+    }
+  },
+  "rust_tests_executed": false,
+  "source_only": true
+}

@@ -1,0 +1,26 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "capability.project",
+  "implements": "local.harness-capability-input.projection-flow@1.0",
+  "loop_limits": "profile-default",
+  "on_error": {
+    "default": "fail",
+    "steps": {}
+  },
+  "steps": [
+    {
+      "call": {
+        "args": {
+          "payload": "$input.payload"
+        },
+        "op": "project",
+        "shape": "local.harness-capability-projection-python.projection@1.0"
+      },
+      "id": "projection",
+      "out": "projection"
+    }
+  ],
+  "trigger": {
+    "input": "local.harness-capability-input.requests@1.0"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "core_session_started": false,
+  "files": [
+    {
+      "bytes": 2356,
+      "path": "bundled-index.json",
+      "sha256": "0441bde565b5e1765a8fdc262e61db00a5fff0c160624d99d5d841f65c737d96"
+    },
+    {
+      "bytes": 6490,
+      "path": "bundled-static-loader.log",
+      "sha256": "5e90d1f6c710739b67793b38b1ba6ee333fa81f4a06ca09c43b75a8d8096e7a4"
+    },
+    {
+      "bytes": 2280,
+      "path": "failed-split-index.json",
+      "sha256": "bba570d8d1bc2f5f1b0bceb4e2b22b47875634a8cb47ed78d0e02da80838683a"
+    },
+    {
+      "bytes": 4048,
+      "path": "failed-split-loader.log",
+      "sha256": "fb2d7d3edbd9a921bf70826c179eaf6220bb92d3bd858083af870f25b19b7857"
+    },
+    {
+      "bytes": 4516,
+      "path": "focused-clippy.log",
+      "sha256": "e93d11537c5b7dbcd6031197ea885a396776d77162a9debe62ef3be018b49f34"
+    },
+    {
+      "bytes": 5129,
+      "path": "focused-units.log",
+      "sha256": "1d4607bd75a89dc6ceef90ddc2f22e6fbb9e154df84077474df8838c4b4a4029"
+    },
+    {
+      "bytes": 181,
+      "path": "materializer-tests.log",
+      "sha256": "da7d7b30d1e2c10403eed7420768d1094fd8ed343a5d9289dd64c89acf98bb64"
+    },
+    {
+      "bytes": 3746,
+      "path": "production-parser.log",
+      "sha256": "a16e35059d545baf00703604a34cfd4bdbfd1363152baa887f39ec3af410a416"
+    },
+    {
+      "bytes": 1117,
+      "path": "source-bindings.json",
+      "sha256": "dfd4b5fdb4aef17009babf0f02c12ad7350e410b25c27115ab6b5d435658a79b"
+    },
+    {
+      "bytes": 3279,
+      "path": "static-result.json",
+      "sha256": "a42ab69aeea31d88f29147ec611251736a6bfda9bcfd6cf2c00764729d4df4f3"
+    }
+  ],
+  "format": "tobkiri.two-pack-static-trial/1",
+  "native_core_acceptance": false,
+  "wasm_execution_performed": false
+}

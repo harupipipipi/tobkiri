@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-signed-pack-admission-status"
+description = "Enables the signed_pack_admission_status command without any pre-configured scope."
+commands.allow = ["signed_pack_admission_status"]
+
+[[permission]]
+identifier = "deny-signed-pack-admission-status"
+description = "Denies the signed_pack_admission_status command without any pre-configured scope."
+commands.deny = ["signed_pack_admission_status"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arm-debug-approval"
+description = "Enables the arm_debug_approval command without any pre-configured scope."
+commands.allow = ["arm_debug_approval"]
+
+[[permission]]
+identifier = "deny-arm-debug-approval"
+description = "Denies the arm_debug_approval command without any pre-configured scope."
+commands.deny = ["arm_debug_approval"]

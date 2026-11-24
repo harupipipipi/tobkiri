@@ -1,0 +1,302 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.ai.strategy.execute.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ai.strategy.execute"
+          ],
+          "error_schema_digest": "sha256:8da8cc8253f96ca806dd20452200f023f4f7a4615543984507f352c70f1d108b",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:63fdcb58e22c43ac17d3f98759b456f6c74c61e141b3374bd4ca26aa25a00292",
+          "operation_id": "rumi_deepthink_pack.deepthink.execute",
+          "output_schema_digest": "sha256:d4cf5b36f52fb574bc38f70e935648b8e53f392e176248fd5e45d198c63f3421",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "rumi_deepthink_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:ac9ca2277749d092109d1d57c69b16b087a561acb7824e01e14b6c2ac177db4d",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:ac9ca2277749d092109d1d57c69b16b087a561acb7824e01e14b6c2ac177db4d",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_deepthink_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_deepthink_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_deepthink_pack.deepthink.execute",
+        "required_capabilities": [
+          "ai.strategy.execute"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:e1ef41b40fbecfb0e906995c37545b94b0c70ac46d95031b666804f03ba2f761",
+      "schema_catalog": {
+        "sha256:63fdcb58e22c43ac17d3f98759b456f6c74c61e141b3374bd4ca26aa25a00292": {
+          "$defs": {
+            "identifier": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F\\s](?:[^\\u0000-\\u001F\\u007F]{0,254}[^\\u0000-\\u001F\\u007F\\s])?$",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "required": [
+                "model_profile_id"
+              ]
+            },
+            {
+              "required": [
+                "model_reference"
+              ]
+            }
+          ],
+          "properties": {
+            "allow_failover": {
+              "type": "boolean"
+            },
+            "deadline": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "idempotency_key": {
+              "$ref": "#/$defs/identifier"
+            },
+            "input": {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            "maximum_cost_microusd": {
+              "maximum": 1000000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "messages": {
+              "items": {
+                "type": "object"
+              },
+              "maxItems": 2048,
+              "minItems": 1,
+              "type": "array"
+            },
+            "model_profile_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "model_reference": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/identifier"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "profile_id": {
+                      "$ref": "#/$defs/identifier"
+                    }
+                  },
+                  "required": [
+                    "profile_id"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "parameters": {
+              "type": "object"
+            },
+            "policy_revision": {
+              "$ref": "#/$defs/identifier"
+            },
+            "profile_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "request_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "requirements": {
+              "type": "object"
+            },
+            "system_prompt_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "object"
+              },
+              "maxItems": 128,
+              "type": "array"
+            }
+          },
+          "required": [
+            "request_id",
+            "messages",
+            "deadline",
+            "idempotency_key"
+          ],
+          "type": "object"
+        },
+        "sha256:8da8cc8253f96ca806dd20452200f023f4f7a4615543984507f352c70f1d108b": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "message": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "sha256:d4cf5b36f52fb574bc38f70e935648b8e53f392e176248fd5e45d198c63f3421": {
+          "additionalProperties": true,
+          "properties": {
+            "catalog_provider_instance_id": {
+              "type": "string"
+            },
+            "catalog_revision": {
+              "type": "string"
+            },
+            "finish_reason": {
+              "type": "string"
+            },
+            "model_id": {
+              "type": "string"
+            },
+            "output": {},
+            "pricing_revision": {
+              "type": "string"
+            },
+            "provider_instance_id": {
+              "type": "string"
+            },
+            "request_id": {
+              "type": "string"
+            },
+            "status": {
+              "const": "ok"
+            },
+            "strategy_runtime": {
+              "additionalProperties": false,
+              "properties": {
+                "approved": {
+                  "type": "boolean"
+                },
+                "calls": {
+                  "maximum": 5,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "maximum_calls": {
+                  "const": 5
+                },
+                "maximum_cost_microusd": {
+                  "maximum": 1000000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "phases": {
+                  "maxItems": 5,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "provider": {
+                  "const": "rumi_deepthink_pack"
+                },
+                "reserved_cost_usd": {
+                  "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                  "type": "string"
+                },
+                "tool_deferred": {
+                  "type": "boolean"
+                },
+                "used_cost_usd": {
+                  "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "const": "1"
+                }
+              },
+              "required": [
+                "version",
+                "provider",
+                "approved",
+                "tool_deferred",
+                "calls",
+                "maximum_calls",
+                "maximum_cost_microusd",
+                "reserved_cost_usd",
+                "used_cost_usd",
+                "phases"
+              ],
+              "type": "object"
+            },
+            "tool_intents": {
+              "type": "array"
+            },
+            "usage": {
+              "type": "object"
+            },
+            "usage_cost": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "status",
+            "request_id",
+            "model_id",
+            "provider_instance_id",
+            "output",
+            "tool_intents",
+            "usage",
+            "usage_cost",
+            "strategy_runtime"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_deepthink_pack",
+  "source_identity": "sha256:ac9ca2277749d092109d1d57c69b16b087a561acb7824e01e14b6c2ac177db4d"
+}

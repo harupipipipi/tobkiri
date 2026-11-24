@@ -9,10 +9,7 @@
     {"status": "ok", "data": { ... 会話コンテキスト情報 ... }}
 """
 
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error
 
 from domain.context.analyzer import analyze_conversation
